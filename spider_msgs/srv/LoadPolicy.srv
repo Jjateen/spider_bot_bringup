@@ -1,0 +1,5 @@
+# Hot-swap the ONNX policy without restarting the node.
+string model_path
+---
+bool success
+string message

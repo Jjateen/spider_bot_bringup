@@ -1,0 +1,5 @@
+# Arm or disarm the gait safely.
+bool enabled
+---
+bool success
+string message
