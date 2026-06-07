@@ -1,0 +1,6 @@
+# Binary robot mesh assets are stored via Git LFS to keep the repo lean and
+# to stay under the pre-commit large-file guard. The trained policy weights
+# (*.onnx) are intentionally committed directly (small, ~452 KB) and are NOT
+# LFS-tracked.
+*.stl filter=lfs diff=lfs merge=lfs -text
+*.dae filter=lfs diff=lfs merge=lfs -text

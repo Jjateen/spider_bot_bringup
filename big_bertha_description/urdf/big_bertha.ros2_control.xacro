@@ -1,0 +1,60 @@
+<?xml version="1.0" ?>
+<!--
+  ros2_control hardware description for Big Bertha under gz_ros2_control.
+
+  All 12 leg joints (Revolute_110 .. Revolute_121) are exposed with a
+  position command interface and position/velocity state interfaces, so the
+  policy controller can stream targets on /position_controller/commands and
+  read /joint_states. The <param>initial_value</param> reproduces the
+  training default pose ([0.0, 0.5, 0.0] per leg).
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- One leg joint with a position command + position/velocity state. -->
+  <xacro:macro name="bb_joint" params="name init:=0.0">
+    <joint name="${name}">
+      <command_interface name="position">
+        <param name="min">-3.14159</param>
+        <param name="max">3.14159</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">${init}</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </xacro:macro>
+
+  <ros2_control name="GazeboSimSystem" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+
+    <!-- Leg 4 (back-left) -->
+    <xacro:bb_joint name="Revolute_110" init="0.0"/>
+    <xacro:bb_joint name="Revolute_111" init="0.5"/>
+    <xacro:bb_joint name="Revolute_112" init="0.0"/>
+    <!-- Leg 1 (front-left) -->
+    <xacro:bb_joint name="Revolute_113" init="0.0"/>
+    <xacro:bb_joint name="Revolute_114" init="0.5"/>
+    <xacro:bb_joint name="Revolute_115" init="0.0"/>
+    <!-- Leg 2 (front-right) -->
+    <xacro:bb_joint name="Revolute_116" init="0.0"/>
+    <xacro:bb_joint name="Revolute_117" init="0.5"/>
+    <xacro:bb_joint name="Revolute_118" init="0.0"/>
+    <!-- Leg 3 (back-right) -->
+    <xacro:bb_joint name="Revolute_119" init="0.0"/>
+    <xacro:bb_joint name="Revolute_120" init="0.5"/>
+    <xacro:bb_joint name="Revolute_121" init="0.0"/>
+  </ros2_control>
+
+  <!-- gz_ros2_control system plugin: loads controller_manager inside gz,
+       parameterised by config/ros2_control.yaml. -->
+  <gazebo>
+    <plugin filename="gz_ros2_control-system"
+            name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(arg ros2_control_config)</parameters>
+    </plugin>
+  </gazebo>
+
+</robot>

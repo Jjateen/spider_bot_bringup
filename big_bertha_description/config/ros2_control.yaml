@@ -1,0 +1,39 @@
+# ros2_control configuration for Big Bertha under gz_ros2_control.
+#
+# Loaded by the gz_ros2_control system plugin (declared in
+# urdf/big_bertha.ros2_control.xacro). Spawns:
+#   - joint_state_broadcaster -> /joint_states (position + velocity)
+#   - position_controller     -> /position_controller/commands
+#     (std_msgs/Float64MultiArray, the interface gz_ros2_control expects)
+#
+# Joint order matches the policy contract: Revolute_110 .. Revolute_121.
+controller_manager:
+  ros__parameters:
+    update_rate: 200  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    position_controller:
+      type: forward_command_controller/ForwardCommandController
+
+joint_state_broadcaster:
+  ros__parameters:
+    use_local_topics: false
+
+position_controller:
+  ros__parameters:
+    interface_name: position
+    joints:
+      - Revolute_110
+      - Revolute_111
+      - Revolute_112
+      - Revolute_113
+      - Revolute_114
+      - Revolute_115
+      - Revolute_116
+      - Revolute_117
+      - Revolute_118
+      - Revolute_119
+      - Revolute_120
+      - Revolute_121
