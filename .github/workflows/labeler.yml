@@ -1,0 +1,56 @@
+name: Auto Label
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  labeler:
+    name: Apply labels
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label by changed files
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          sync-labels: false
+
+      - name: Label by conventional commit type
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title;
+            const typeMap = {
+              feat:  { label: 'enhancement',   color: '0075ca' },
+              fix:   { label: 'bug',           color: 'd73a4a' },
+              docs:  { label: 'documentation', color: '0052cc' },
+              chore: { label: 'maintenance',   color: 'e4e669' },
+              ci:    { label: 'ci',            color: '1d76db' },
+              test:  { label: 'test',          color: 'bfd4f2' },
+              refactor: { label: 'refactor',   color: 'd4c5f9' },
+            };
+            const match = title.match(/^(\w+)(\(.+\))?:/);
+            if (!match) return;
+            const entry = typeMap[match[1]];
+            if (!entry) return;
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: entry.label,
+                color: entry.color,
+              });
+            } catch (e) {
+              if (e.status !== 422) console.log(`Label create warning: ${e.message}`);
+            }
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              labels: [entry.label],
+            });

@@ -1,0 +1,47 @@
+name: Compliance
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  commit-lint:
+    name: Commit message lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: .commitlintrc.yml
+
+  file-checks:
+    name: Required files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check LICENSE exists
+        run: test -f LICENSE
+      - name: Check README exists
+        run: test -f README.md
+      - name: Every package has package.xml
+        run: |
+          for d in spider_msgs big_bertha_description big_bertha_policy_controller \
+                   big_bertha_sim_bringup big_bertha_bringup; do
+            if [ -d "$d" ]; then
+              test -f "$d/package.xml" || { echo "missing $d/package.xml"; exit 1; }
+            fi
+          done
+
+  pre-commit:
+    name: Pre-commit hooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: pre-commit/action@v3.0.1
