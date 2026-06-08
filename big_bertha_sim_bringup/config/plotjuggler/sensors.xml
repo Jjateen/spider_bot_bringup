@@ -1,0 +1,98 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!--
+  PlotJuggler layout: Big Bertha raw sensor feeds.
+
+  Plots /imu (angular velocity + linear acceleration), /joint_states (the 12
+  leg joints' positions + velocities), and /odom (body twist). Load with:
+
+      ros2 run plotjuggler plotjuggler -l \
+        $(ros2 pkg prefix big_bertha_sim_bringup)/share/big_bertha_sim_bringup/config/plotjuggler/sensors.xml
+
+  or via launch/visualization/plotjuggler.launch.py layout:=sensors. The
+  DataStreamROS2 plugin subscribes live; the topics resolve once the sim +
+  policy controller are running.
+-->
+<root>
+  <tabbed_widget name="Sensors" parent="main_window">
+    <Tab tab_name="IMU + Odom" containers="2">
+      <Container>
+        <DockSplitter sizes="1" count="1" orientation="-">
+          <DockArea name="IMU angular velocity">
+            <plot mode="TimeSeries" style="Lines" flip_y="false" flip_x="false">
+              <range bottom="-1.000000" top="1.000000" left="0.000000" right="1.000000"/>
+              <limitY/>
+              <curve name="/imu/angular_velocity/x" color="#1f77b4"/>
+              <curve name="/imu/angular_velocity/y" color="#d62728"/>
+              <curve name="/imu/angular_velocity/z" color="#1ac938"/>
+            </plot>
+          </DockArea>
+        </DockSplitter>
+      </Container>
+      <Container>
+        <DockSplitter sizes="0.5;0.5" count="2" orientation="-">
+          <DockArea name="IMU linear acceleration">
+            <plot mode="TimeSeries" style="Lines" flip_y="false" flip_x="false">
+              <range bottom="-12.000000" top="12.000000" left="0.000000" right="1.000000"/>
+              <limitY/>
+              <curve name="/imu/linear_acceleration/x" color="#1f77b4"/>
+              <curve name="/imu/linear_acceleration/y" color="#d62728"/>
+              <curve name="/imu/linear_acceleration/z" color="#1ac938"/>
+            </plot>
+          </DockArea>
+          <DockArea name="Odom twist">
+            <plot mode="TimeSeries" style="Lines" flip_y="false" flip_x="false">
+              <range bottom="-1.000000" top="1.000000" left="0.000000" right="1.000000"/>
+              <limitY/>
+              <curve name="/odom/twist/twist/linear/x" color="#1f77b4"/>
+              <curve name="/odom/twist/twist/linear/y" color="#ff7f0e"/>
+              <curve name="/odom/twist/twist/angular/z" color="#9467bd"/>
+            </plot>
+          </DockArea>
+        </DockSplitter>
+      </Container>
+    </Tab>
+    <Tab tab_name="Joint States" containers="1">
+      <Container>
+        <DockSplitter sizes="0.5;0.5" count="2" orientation="-">
+          <DockArea name="Joint positions">
+            <plot mode="TimeSeries" style="Lines" flip_y="false" flip_x="false">
+              <range bottom="-3.200000" top="3.200000" left="0.000000" right="1.000000"/>
+              <limitY/>
+              <curve name="/joint_states/position[0]" color="#1f77b4"/>
+              <curve name="/joint_states/position[1]" color="#d62728"/>
+              <curve name="/joint_states/position[2]" color="#1ac938"/>
+              <curve name="/joint_states/position[3]" color="#ff7f0e"/>
+              <curve name="/joint_states/position[4]" color="#9467bd"/>
+              <curve name="/joint_states/position[5]" color="#17becf"/>
+            </plot>
+          </DockArea>
+          <DockArea name="Joint velocities">
+            <plot mode="TimeSeries" style="Lines" flip_y="false" flip_x="false">
+              <range bottom="-10.000000" top="10.000000" left="0.000000" right="1.000000"/>
+              <limitY/>
+              <curve name="/joint_states/velocity[0]" color="#1f77b4"/>
+              <curve name="/joint_states/velocity[1]" color="#d62728"/>
+              <curve name="/joint_states/velocity[2]" color="#1ac938"/>
+              <curve name="/joint_states/velocity[3]" color="#ff7f0e"/>
+              <curve name="/joint_states/velocity[4]" color="#9467bd"/>
+              <curve name="/joint_states/velocity[5]" color="#17becf"/>
+            </plot>
+          </DockArea>
+        </DockSplitter>
+      </Container>
+    </Tab>
+  </tabbed_widget>
+  <use_relative_time_offset enabled="1"/>
+  <Plugins>
+    <plugin ID="DataStreamROS2">
+      <selected_topics>
+        <topic name="/imu"/>
+        <topic name="/joint_states"/>
+        <topic name="/odom"/>
+      </selected_topics>
+    </plugin>
+  </Plugins>
+  <previouslyLoaded_Datafiles/>
+  <customMathEquations/>
+  <snippets/>
+</root>

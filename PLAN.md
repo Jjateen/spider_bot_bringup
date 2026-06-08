@@ -141,7 +141,8 @@ spider_bot_bringup/
 │   │   ├── mapping/          slam_toolbox
 │   │   ├── localization/     amcl + map_server
 │   │   ├── planning/         nav2 (planner/controller/costmaps/bt)
-│   │   └── bringup.launch.py # one-shot: description→sim→loco→se→{mapping|loc}→planning
+│   │   ├── visualization/    rviz.launch.py + plotjuggler.launch.py
+│   │   └── bringup.launch.py # one-shot: description→sim→loco→se→{mapping|loc}→planning (+rviz)
 │   ├── config/
 │   │   ├── ros2_control.yaml
 │   │   ├── policy.yaml
@@ -149,7 +150,8 @@ spider_bot_bringup/
 │   │   ├── slam_toolbox.yaml
 │   │   ├── amcl.yaml
 │   │   ├── nav2_params.yaml  ·  behavior_trees/
-│   │   └── rviz/bringup.rviz
+│   │   ├── rviz/{simulation,mapping,planning,integration}.rviz
+│   │   └── plotjuggler/{sensors,control}.xml
 │   ├── worlds/  obstacle_world.sdf   # dummy map: walls + boxes + pillars
 │   ├── maps/    obstacle_world.yaml + obstacle_world.pgm   # saved grid for known-map mode
 │   ├── test/    verification scripts (shell + ros2 CLI + launch_testing)
@@ -265,6 +267,7 @@ flowchart LR
 | localization | load saved map; AMCL pose covariance converges below threshold after motion; estimated pose within tolerance of ground-truth `/odom` |
 | planning | send goal A→B (obstacle between) via `ros2 action send_goal /navigate_to_pose`; assert result `SUCCEEDED`; assert min distance to every obstacle in the `/odom` trajectory > inflation radius (no collision); finite path length |
 | integration | full headless run, scripted A→B in `obstacle_world`; assert goal reached; capture rosbag + screenshots as artifacts |
+| visualization | `rviz2 -d <cfg>` loads each of the four configs (`simulation`/`mapping`/`planning`/`integration`) without a fatal/plugin-load error; both PlotJuggler layouts (`sensors`/`control`) parse as well-formed XML |
 
 Verification tooling is **shell + ROS 2 CLI + `launch_testing`** (not deployed nodes), so the "all runtime nodes in C++" rule is unaffected. Where a goal must be sent, the CLI action interface (`ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose ...`) is used — no Python node required.
 
