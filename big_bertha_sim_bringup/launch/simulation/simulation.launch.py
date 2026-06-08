@@ -61,6 +61,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     spawn_controllers = LaunchConfiguration('spawn_controllers')
     odom_tf = LaunchConfiguration('odom_tf')
+    sim_drive = LaunchConfiguration('sim_drive')
     x = LaunchConfiguration('x')
     y = LaunchConfiguration('y')
     z = LaunchConfiguration('z')
@@ -88,6 +89,7 @@ def generate_launch_description():
             'use_gz': 'true',
             'publish_odom': 'true',
             'odom_tf': odom_tf,
+            'sim_drive': sim_drive,
         }.items(),
     )
 
@@ -137,6 +139,19 @@ def generate_launch_description():
         }],
     )
 
+    # Sim-only: bridge ROS /cmd_vel -> gz cmd_vel so a scripted drive can
+    # move the base via the gz VelocityControl system (mapping/localization/
+    # planning verification). Only active when sim_drive:=true.
+    cmd_vel_bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        name='cmd_vel_bridge',
+        output='screen',
+        arguments=['/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist'],
+        parameters=[{'use_sim_time': use_sim_time}],
+        condition=IfCondition(sim_drive),
+    )
+
     # ros2_control spawners (loaded by gz_ros2_control inside the sim).
     jsb_spawner = Node(
         package='controller_manager',
@@ -176,8 +191,12 @@ def generate_launch_description():
                               description='Use /clock time'),
         DeclareLaunchArgument('spawn_controllers', default_value='true',
                               description='Load ros2_control spawners'),
-        DeclareLaunchArgument('odom_tf', default_value='true',
-                              description='gz publishes odom tf (false: EKF owns it)'),
+        DeclareLaunchArgument(
+            'odom_tf', default_value='true',
+            description='gz publishes odom tf (false: EKF owns it)'),
+        DeclareLaunchArgument(
+            'sim_drive', default_value='false',
+            description='Enable sim-only gz VelocityControl drive + cmd_vel bridge'),
         DeclareLaunchArgument('x', default_value='-3.5'),
         DeclareLaunchArgument('y', default_value='-3.5'),
         DeclareLaunchArgument('z', default_value='0.12'),
@@ -188,6 +207,7 @@ def generate_launch_description():
         gz_server,
         gz_gui,
         bridge,
+        cmd_vel_bridge,
         spawn_robot,
         load_jsb_after_spawn,
         load_position_after_jsb,
