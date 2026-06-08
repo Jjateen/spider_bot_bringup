@@ -5,10 +5,11 @@
 # already running. Asserts the EKF publishes a continuous odom->base_link
 # transform and a /odometry/filtered with bounded covariance. Evidence goes
 # to verification_artifacts/state_estimation/.
-set -uo pipefail
+# Source ROS first (its setup scripts trip 'set -u'), then enable strict mode.
 source /opt/ros/jazzy/setup.bash
 # shellcheck disable=SC1091
 source install/setup.bash
+set -uo pipefail
 
 ART="${ART:-verification_artifacts/state_estimation}"
 mkdir -p "${ART}"
