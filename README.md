@@ -8,8 +8,8 @@ Gazebo Harmonic world full of obstacles.
 > Simulation bringup first; hardware bringup is scaffolded but empty.
 > Everything is built **for Big Bertha** for now (URDF, meshes, weights).
 
-See **[PLAN.md](./PLAN.md)** for the full architecture, module decomposition,
-diagrams, CI, and execution plan.
+The full architecture, module decomposition, diagrams, CI, and execution plan
+are maintained as a local design doc (not tracked in the repo).
 
 ---
 
@@ -21,7 +21,7 @@ diagrams, CI, and execution plan.
 | [`big_bertha_description`](./big_bertha_description) | `ament_cmake` | URDF/xacro, meshes, `ros2_control` |
 | [`big_bertha_policy_controller`](./big_bertha_policy_controller) | `ament_cmake` (C++) | ONNX gait node: `/cmd_vel` → 12 joint targets |
 | [`big_bertha_sim_bringup`](./big_bertha_sim_bringup) | `ament_cmake` | Gazebo sim: world, SLAM, Nav2, RViz |
-| [`big_bertha_bringup`](./big_bertha_bringup) | `ament_cmake` | Hardware bringup (empty stub — see BOM in PLAN.md) |
+| [`big_bertha_bringup`](./big_bertha_bringup) | `ament_cmake` | Hardware bringup (empty stub — BOM in its README) |
 
 ## Quick start (simulation)
 

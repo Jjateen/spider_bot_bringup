@@ -22,3 +22,6 @@ verification_artifacts/
 
 # ONNX Runtime (downloaded at build time)
 .onnxruntime/
+
+# Local-only planning doc (not tracked)
+PLAN.md
