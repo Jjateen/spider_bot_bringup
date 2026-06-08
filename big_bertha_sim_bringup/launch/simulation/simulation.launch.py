@@ -48,7 +48,6 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
 from launch_ros.actions import Node
-from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
@@ -61,6 +60,7 @@ def generate_launch_description():
     world = LaunchConfiguration('world')
     use_sim_time = LaunchConfiguration('use_sim_time')
     spawn_controllers = LaunchConfiguration('spawn_controllers')
+    odom_tf = LaunchConfiguration('odom_tf')
     x = LaunchConfiguration('x')
     y = LaunchConfiguration('y')
     z = LaunchConfiguration('z')
@@ -87,6 +87,7 @@ def generate_launch_description():
             'use_sim_time': use_sim_time,
             'use_gz': 'true',
             'publish_odom': 'true',
+            'odom_tf': odom_tf,
         }.items(),
     )
 
@@ -175,6 +176,8 @@ def generate_launch_description():
                               description='Use /clock time'),
         DeclareLaunchArgument('spawn_controllers', default_value='true',
                               description='Load ros2_control spawners'),
+        DeclareLaunchArgument('odom_tf', default_value='true',
+                              description='gz publishes odom tf (false: EKF owns it)'),
         DeclareLaunchArgument('x', default_value='-3.5'),
         DeclareLaunchArgument('y', default_value='-3.5'),
         DeclareLaunchArgument('z', default_value='0.12'),
