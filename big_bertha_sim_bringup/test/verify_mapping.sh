@@ -19,16 +19,26 @@ mkdir -p "${ART}" "${MAP_DIR}"
 PASS=0
 
 echo "[verify] /map metadata"
-META=$(timeout 8 ros2 topic echo /map --once --field info 2>/dev/null)
+# /map is published with transient_local (latched) QoS. A default volatile
+# subscriber races the next periodic publish and 'echo --once' often times out
+# with "topic does not appear to be published yet" -> empty W/H/RES and a bogus
+# extent FAIL even when the map is fine. Subscribe transient_local so we always
+# get the last-published grid metadata immediately.
+META=$(timeout 8 ros2 topic echo /map --once --field info \
+        --qos-durability transient_local --qos-reliability reliable 2>/dev/null)
 echo "${META}" > "${ART}/map_info.txt"
 W=$(echo "${META}" | grep -oP 'width:\s*\K[0-9]+' | head -1)
 H=$(echo "${META}" | grep -oP 'height:\s*\K[0-9]+' | head -1)
 RES=$(echo "${META}" | grep -oP 'resolution:\s*\K[0-9.]+' | head -1)
-echo "map: ${W} x ${H} cells @ ${RES} m/cell" | tee -a "${ART}/gate.txt"
-if [ -n "${W}" ] && [ -n "${H}" ] && [ "${W}" -gt 50 ] && [ "${H}" -gt 50 ]; then
-  EXT_W=$(awk "BEGIN{print ${W}*${RES}}"); EXT_H=$(awk "BEGIN{print ${H}*${RES}}")
+if [ -n "${W}" ] && [ -n "${H}" ] && [ -n "${RES}" ] \
+   && [ "${W}" -gt 50 ] && [ "${H}" -gt 50 ]; then
+  EXT_W=$(awk "BEGIN{printf \"%.2f\", ${W}*${RES}}")
+  EXT_H=$(awk "BEGIN{printf \"%.2f\", ${H}*${RES}}")
+  RES_F=$(awk "BEGIN{printf \"%.3f\", ${RES}}")
+  echo "map: ${W} x ${H} cells @ ${RES_F} m/cell" | tee -a "${ART}/gate.txt"
   echo "[PASS] plausible extent ~${EXT_W} x ${EXT_H} m" | tee -a "${ART}/gate.txt"
 else
+  echo "map: ${W:-?} x ${H:-?} cells @ ${RES:-?} m/cell" | tee -a "${ART}/gate.txt"
   echo "[FAIL] map extent too small / missing" | tee -a "${ART}/gate.txt"; PASS=1
 fi
 
