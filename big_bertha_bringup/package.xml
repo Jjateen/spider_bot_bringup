@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>big_bertha_bringup</name>
+  <version>0.1.0</version>
+  <description>
+    Hardware bringup for the physical Big Bertha quadruped (Arduino UNO Q,
+    MG995 servos, YDLidar X2, MPU6050). Empty stub for now: the README
+    documents the real BOM (see PLAN.md sec 11) so the hardware bringup mirrors
+    the sim modules. The autonomy stack (state_estimation, mapping,
+    localization, planning) is hardware-agnostic and reused with
+    use_sim_time:=false; only the sensor drivers and the servo bridge replace
+    the simulation layer.
+  </description>
+  <maintainer email="jjateen97@gmail.com">Jjateen Gundesha</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
