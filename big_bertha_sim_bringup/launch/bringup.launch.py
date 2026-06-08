@@ -59,7 +59,6 @@ from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
-from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -70,7 +69,8 @@ def generate_launch_description():
     launch_dir = os.path.join(sim_pkg, 'launch')
 
     slam = LaunchConfiguration('slam')
-    rviz = LaunchConfiguration('rviz')
+    rviz_enabled = LaunchConfiguration('rviz')
+    rviz_config = LaunchConfiguration('rviz_config')
     use_sim_time = LaunchConfiguration('use_sim_time')
     gui = LaunchConfiguration('gui')
     world = LaunchConfiguration('world')
@@ -84,7 +84,6 @@ def generate_launch_description():
     default_map = PathJoinSubstitution(
         [FindPackageShare('big_bertha_sim_bringup'),
          'maps', 'obstacle_world.yaml'])
-    default_rviz = os.path.join(sim_pkg, 'config', 'rviz', 'integration.rviz')
 
     def include(rel_path, args, condition=None):
         return IncludeLaunchDescription(
@@ -144,15 +143,16 @@ def generate_launch_description():
         {'use_sim_time': use_sim_time},
     )
 
-    # Optional RViz integration view.
-    rviz_node = Node(
-        package='rviz2',
-        executable='rviz2',
-        name='rviz2',
-        output='screen',
-        arguments=['-d', default_rviz],
-        parameters=[{'use_sim_time': use_sim_time}],
-        condition=IfCondition(rviz),
+    # Optional RViz view (the visualization module's rviz.launch.py picks the
+    # config under config/rviz/; defaults to the combined integration view).
+    rviz = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(launch_dir, 'visualization', 'rviz.launch.py')),
+        launch_arguments={
+            'config': rviz_config,
+            'use_sim_time': use_sim_time,
+        }.items(),
+        condition=IfCondition(rviz_enabled),
     )
 
     return LaunchDescription([
@@ -161,7 +161,11 @@ def generate_launch_description():
             description='true: SLAM (mapping); false: known-map (localization)'),
         DeclareLaunchArgument(
             'rviz', default_value='false',
-            description='Also launch RViz with the integration view'),
+            description='Also launch RViz'),
+        DeclareLaunchArgument(
+            'rviz_config', default_value='integration',
+            description='RViz config in config/rviz/ (simulation|mapping|'
+                        'planning|integration)'),
         DeclareLaunchArgument(
             'use_sim_time', default_value='true',
             description='Use /clock time'),
@@ -188,5 +192,5 @@ def generate_launch_description():
         mapping,
         localization,
         planning,
-        rviz_node,
+        rviz,
     ])

@@ -3,9 +3,10 @@ project(big_bertha_sim_bringup)
 
 find_package(ament_cmake REQUIRED)
 
-# Install all bringup assets into the package share directory.
+# Install all bringup assets into the package share directory. RViz +
+# PlotJuggler configs live under config/ (config/rviz, config/plotjuggler).
 install(
-  DIRECTORY launch config worlds rviz
+  DIRECTORY launch config worlds
   DESTINATION share/${PROJECT_NAME}
 )
 

@@ -33,15 +33,36 @@ bash scripts/install_jazzy.sh
 source /opt/ros/jazzy/setup.bash
 colcon build && source install/setup.bash
 
-# 3. Bring up the full sim (obstacle world + gait + SLAM + Nav2 + RViz)
-ros2 launch big_bertha_sim_bringup bringup.launch.py
+# 3. Bring up the full sim (obstacle world + gait + state est + Nav2)
+#    known-map mode (AMCL) by default; add rviz:=true for the live view
+ros2 launch big_bertha_sim_bringup bringup.launch.py rviz:=true
+
+# SLAM mode (build the map live instead of loading the saved one)
+ros2 launch big_bertha_sim_bringup bringup.launch.py slam:=true rviz:=true
 ```
+
+`bringup.launch.py` chains every module and takes `slam:=` (SLAM vs known-map),
+`rviz:=` / `rviz_config:=` (simulation|mapping|planning|integration),
+`use_sim_time:=`, `gui:=`, `world:=`, `sim_drive:=`, `map:=`, and the spawn pose.
 
 ## Autonomy stack (functional modules)
 
 ```
 description → simulation → locomotion → state_estimation → mapping → localization → planning
 ```
+
+## Visualization
+
+```bash
+# RViz with a specific view (simulation | mapping | planning | integration)
+ros2 launch big_bertha_sim_bringup rviz.launch.py config:=planning
+
+# PlotJuggler layout (sensors: /imu /joint_states /odom;
+#                     control: /cmd_vel vs /odom + spider_msgs/PolicyStatus)
+ros2 launch big_bertha_sim_bringup plotjuggler.launch.py layout:=control
+```
+
+Configs live under `big_bertha_sim_bringup/config/{rviz,plotjuggler}/`.
 
 ## Hardware target
 

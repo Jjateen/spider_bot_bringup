@@ -1,0 +1,93 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!--
+  PlotJuggler layout: Big Bertha control loop.
+
+  Compares the Nav2 velocity command (/cmd_vel) against the achieved body twist
+  (/odom) to show command tracking, and plots the policy controller health
+  (spider_msgs/PolicyStatus on /policy_status: rate_hz, inference_ms,
+  action_norm, enabled). Load with:
+
+      ros2 run plotjuggler plotjuggler -l \
+        $(ros2 pkg prefix big_bertha_sim_bringup)/share/big_bertha_sim_bringup/config/plotjuggler/control.xml
+
+  or via launch/visualization/plotjuggler.launch.py layout:=control.
+-->
+<root>
+  <tabbed_widget name="Control" parent="main_window">
+    <Tab tab_name="cmd_vel vs odom" containers="2">
+      <Container>
+        <DockSplitter sizes="1" count="1" orientation="-">
+          <DockArea name="Linear x: command vs achieved">
+            <plot mode="TimeSeries" style="Lines" flip_y="false" flip_x="false">
+              <range bottom="-0.500000" top="0.500000" left="0.000000" right="1.000000"/>
+              <limitY/>
+              <curve name="/cmd_vel/linear/x" color="#d62728"/>
+              <curve name="/odom/twist/twist/linear/x" color="#1f77b4"/>
+            </plot>
+          </DockArea>
+        </DockSplitter>
+      </Container>
+      <Container>
+        <DockSplitter sizes="0.5;0.5" count="2" orientation="-">
+          <DockArea name="Linear y: command vs achieved">
+            <plot mode="TimeSeries" style="Lines" flip_y="false" flip_x="false">
+              <range bottom="-0.500000" top="0.500000" left="0.000000" right="1.000000"/>
+              <limitY/>
+              <curve name="/cmd_vel/linear/y" color="#d62728"/>
+              <curve name="/odom/twist/twist/linear/y" color="#1f77b4"/>
+            </plot>
+          </DockArea>
+          <DockArea name="Yaw rate: command vs achieved">
+            <plot mode="TimeSeries" style="Lines" flip_y="false" flip_x="false">
+              <range bottom="-1.500000" top="1.500000" left="0.000000" right="1.000000"/>
+              <limitY/>
+              <curve name="/cmd_vel/angular/z" color="#d62728"/>
+              <curve name="/odom/twist/twist/angular/z" color="#1f77b4"/>
+            </plot>
+          </DockArea>
+        </DockSplitter>
+      </Container>
+    </Tab>
+    <Tab tab_name="Policy Status" containers="1">
+      <Container>
+        <DockSplitter sizes="0.34;0.33;0.33" count="3" orientation="-">
+          <DockArea name="Control rate (Hz)">
+            <plot mode="TimeSeries" style="Lines" flip_y="false" flip_x="false">
+              <range bottom="0.000000" top="60.000000" left="0.000000" right="1.000000"/>
+              <limitY/>
+              <curve name="/policy_status/rate_hz" color="#1ac938"/>
+            </plot>
+          </DockArea>
+          <DockArea name="Inference time (ms) + action norm">
+            <plot mode="TimeSeries" style="Lines" flip_y="false" flip_x="false">
+              <range bottom="0.000000" top="5.000000" left="0.000000" right="1.000000"/>
+              <limitY/>
+              <curve name="/policy_status/inference_ms" color="#9467bd"/>
+              <curve name="/policy_status/action_norm" color="#ff7f0e"/>
+            </plot>
+          </DockArea>
+          <DockArea name="Gait enabled">
+            <plot mode="TimeSeries" style="Steps" flip_y="false" flip_x="false">
+              <range bottom="-0.200000" top="1.200000" left="0.000000" right="1.000000"/>
+              <limitY/>
+              <curve name="/policy_status/enabled" color="#d62728"/>
+            </plot>
+          </DockArea>
+        </DockSplitter>
+      </Container>
+    </Tab>
+  </tabbed_widget>
+  <use_relative_time_offset enabled="1"/>
+  <Plugins>
+    <plugin ID="DataStreamROS2">
+      <selected_topics>
+        <topic name="/cmd_vel"/>
+        <topic name="/odom"/>
+        <topic name="/policy_status"/>
+      </selected_topics>
+    </plugin>
+  </Plugins>
+  <previouslyLoaded_Datafiles/>
+  <customMathEquations/>
+  <snippets/>
+</root>
