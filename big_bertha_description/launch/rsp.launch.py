@@ -40,7 +40,8 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
-from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import Command, LaunchConfiguration
+from launch.substitutions import PathJoinSubstitution
 
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -56,6 +57,7 @@ def generate_launch_description():
     use_gz = LaunchConfiguration('use_gz')
     publish_jsp = LaunchConfiguration('publish_jsp')
     publish_odom = LaunchConfiguration('publish_odom')
+    odom_tf = LaunchConfiguration('odom_tf')
 
     ros2_control_config = PathJoinSubstitution(
         [FindPackageShare('big_bertha_description'),
@@ -67,6 +69,7 @@ def generate_launch_description():
             'xacro ', xacro_file,
             ' use_gz:=', use_gz,
             ' publish_odom:=', publish_odom,
+            ' odom_tf:=', odom_tf,
             ' ros2_control_config:=', ros2_control_config,
         ]),
         value_type=str,
@@ -85,6 +88,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'publish_odom', default_value='true',
             description='Emit the gz OdometryPublisher (/odom + odom tf)'),
+        DeclareLaunchArgument(
+            'odom_tf', default_value='true',
+            description='gz publishes odom->base_link tf (false: EKF owns it)'),
 
         Node(
             package='robot_state_publisher',
