@@ -27,6 +27,8 @@
   <xacro:arg name="publish_odom" default="true"/>
   <!-- When false, the EKF (state_estimation) owns the odom->base_link tf. -->
   <xacro:arg name="odom_tf" default="true"/>
+  <!-- Sim-only kinematic drive (gz VelocityControl) for verification gates. -->
+  <xacro:arg name="sim_drive" default="false"/>
 
   <xacro:property name="use_gz" value="$(arg use_gz)"/>
 

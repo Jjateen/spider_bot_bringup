@@ -8,16 +8,16 @@
 # verification_artifacts/simulation/.
 #
 # Usage: test/verify_simulation.sh
+echo "[verify] sourcing ROS 2 + workspace"
+# Source ROS first (its setup scripts trip 'set -u'), then enable strict mode.
+source /opt/ros/jazzy/setup.bash
+# shellcheck disable=SC1091
+source install/setup.bash
 set -uo pipefail
 
 ART_DIR="${ART_DIR:-verification_artifacts/simulation}"
 RUN_SECS="${RUN_SECS:-45}"
 mkdir -p "${ART_DIR}"
-
-echo "[verify] sourcing ROS 2 + workspace"
-source /opt/ros/jazzy/setup.bash
-# shellcheck disable=SC1091
-source install/setup.bash
 
 cleanup() {
   echo "[verify] cleaning up"

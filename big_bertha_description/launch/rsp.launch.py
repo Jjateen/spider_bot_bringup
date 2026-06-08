@@ -58,6 +58,7 @@ def generate_launch_description():
     publish_jsp = LaunchConfiguration('publish_jsp')
     publish_odom = LaunchConfiguration('publish_odom')
     odom_tf = LaunchConfiguration('odom_tf')
+    sim_drive = LaunchConfiguration('sim_drive')
 
     ros2_control_config = PathJoinSubstitution(
         [FindPackageShare('big_bertha_description'),
@@ -70,6 +71,7 @@ def generate_launch_description():
             ' use_gz:=', use_gz,
             ' publish_odom:=', publish_odom,
             ' odom_tf:=', odom_tf,
+            ' sim_drive:=', sim_drive,
             ' ros2_control_config:=', ros2_control_config,
         ]),
         value_type=str,
@@ -91,6 +93,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'odom_tf', default_value='true',
             description='gz publishes odom->base_link tf (false: EKF owns it)'),
+        DeclareLaunchArgument(
+            'sim_drive', default_value='false',
+            description='Enable the sim-only gz VelocityControl drive'),
 
         Node(
             package='robot_state_publisher',

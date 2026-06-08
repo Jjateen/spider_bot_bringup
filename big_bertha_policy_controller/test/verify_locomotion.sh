@@ -8,10 +8,11 @@
 # goes to verification_artifacts/locomotion/.
 #
 # Usage: test/verify_locomotion.sh
-set -uo pipefail
+# Source ROS first (its setup scripts trip 'set -u'), then enable strict mode.
 source /opt/ros/jazzy/setup.bash
 # shellcheck disable=SC1091
 source install/setup.bash
+set -uo pipefail
 
 ART="${ART:-verification_artifacts/locomotion}"
 mkdir -p "${ART}"
