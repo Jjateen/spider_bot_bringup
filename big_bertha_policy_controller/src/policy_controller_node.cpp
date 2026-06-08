@@ -61,6 +61,7 @@ public:
     enabled_ = declare_parameter<bool>("start_enabled", true);
     cmd_timeout_ = declare_parameter<double>("cmd_vel_timeout", 0.5);
     joint_limit_ = declare_parameter<double>("joint_limit", 3.14159);
+    action_clip_ = declare_parameter<double>("action_clip", 1.0);
     joint_names_ = declare_parameter<std::vector<std::string>>(
       "joint_names",
       {"Revolute_110", "Revolute_111", "Revolute_112",
@@ -289,13 +290,21 @@ private:
     {
       std::lock_guard<std::mutex> lk(state_mutex_);
       for (int i = 0; i < bbpc::kNumJoints; ++i) {
-        double a = std::isfinite(action[i]) ? action[i] : 0.0;
+        double a_raw = std::isfinite(action[i]) ? action[i] : 0.0;
+        // The training env clamps the raw policy action to [-1, 1] BEFORE
+        // scaling (big_bertha_env.py _pre_physics_step:
+        //   self._actions = torch.clamp(actions, -1.0, 1.0)).
+        // The policy is trained to rely on this saturation, so we must
+        // replicate it here; otherwise large raw outputs slam every joint
+        // to the limit and the gait collapses.
+        double a = std::clamp(a_raw, -action_clip_, action_clip_);
         double target = action_scale_ * a + obs_.default_joint_pos[i];
-        // Clamp to the joint range so a diverged action cannot drive the
-        // simulated joints to a degenerate state and abort the physics.
+        // Final safety clamp to the joint range.
         target = std::clamp(target, -joint_limit_, joint_limit_);
         cmd.data[i] = target;
         norm_sq += a * a;
+        // Feed back the CLAMPED action, matching the env's
+        // self._previous_actions = self._actions.clone().
         obs_.prev_actions[i] = static_cast<float>(a);
       }
     }
@@ -325,6 +334,7 @@ private:
   double control_rate_{50.0};
   double cmd_timeout_{0.5};
   double joint_limit_{3.14159};
+  double action_clip_{1.0};
   bool enabled_{true};
 
   // ROS
