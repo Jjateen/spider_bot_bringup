@@ -30,7 +30,11 @@ timeout 5 ros2 topic pub -r 20 /cmd_vel geometry_msgs/msg/Twist \
   '{linear: {x: 0.3}}' > /dev/null 2>&1 || true
 
 echo "[verify] AMCL pose + covariance"
-POSE=$(timeout 8 ros2 topic echo /amcl_pose --once 2>/dev/null)
+# /amcl_pose is latched (transient_local). Match the publisher's durability so
+# 'echo --once' reliably returns the last estimate instead of racing the next
+# AMCL update (which only fires on motion) and timing out empty.
+POSE=$(timeout 8 ros2 topic echo /amcl_pose --once \
+        --qos-durability transient_local --qos-reliability reliable 2>/dev/null)
 echo "${POSE}" > "${ART}/amcl_pose.txt"
 # Max diagonal covariance (x var = entry 0, y var = entry 7, yaw var = 35).
 XVAR=$(echo "${POSE}" | grep -A1 'covariance:' | grep -oE '[0-9.]+e?-?[0-9]*' | head -1)
@@ -49,24 +53,38 @@ else
   fi
 fi
 
-echo "[verify] estimate vs ground-truth (both in their own frame: map vs odom)"
-# Compare base_link expressed in map (AMCL) against base_link in odom
-# (dead-reckoned ground truth). With a correct map->odom these agree; the raw
-# /amcl_pose and /odom topics live in different frames so are not comparable
-# numerically.
-MB=$(timeout 5 ros2 run tf2_ros tf2_echo map base_link 2>/dev/null \
-  | grep -A1 'Translation' | grep -oE '[-0-9.]+' | tr '\n' ' ')
-OB=$(timeout 5 ros2 run tf2_ros tf2_echo odom base_link 2>/dev/null \
-  | grep -A1 'Translation' | grep -oE '[-0-9.]+' | tr '\n' ' ')
-ERR=$(awk -v m="${MB}" -v o="${OB}" 'BEGIN{
+echo "[verify] estimate vs ground-truth (world frame)"
+# AMCL's map->base_link is the robot's estimated pose in the world (map) frame.
+# Ground truth is spawn-pose A composed with the EKF's odom displacement
+# (odom->base_link), since the odom frame is anchored at the spawn point, not
+# at the world origin -- so map->base and odom->base are NOT directly
+# comparable (the old check subtracted them and warned spuriously). Compose
+# A * odom_displacement to get the true world pose and compare that to AMCL.
+SX="${SPAWN_X:--3.5}"; SY="${SPAWN_Y:--3.5}"; SYAW="${SPAWN_YAW:-0.785}"
+# Parse just the Translation triple from tf2_echo (first match only).
+read_xy() {  # read_xy <parent> <child> -> "x y"
+  timeout 5 ros2 run tf2_ros tf2_echo "$1" "$2" 2>/dev/null \
+    | grep -m1 -oP 'Translation:\s*\[\K[^]]+' | tr ',' ' ' | awk '{print $1, $2}'
+}
+MB=$(read_xy map base_link)
+OB=$(read_xy odom base_link)
+ERR=$(awk -v sx="${SX}" -v sy="${SY}" -v syaw="${SYAW}" \
+          -v m="${MB}" -v o="${OB}" 'BEGIN{
   split(m,a," "); split(o,b," ");
-  print sqrt((a[1]-b[1])^2+(a[2]-b[2])^2)}')
-echo "map->base=(${MB}) odom->base=(${OB}) err=${ERR} m" | tee -a "${ART}/gate.txt"
+  # true world pose = A (rotate odom displacement by spawn yaw, then translate)
+  c=cos(syaw); s=sin(syaw);
+  tx = sx + (c*b[1] - s*b[2]);
+  ty = sy + (s*b[1] + c*b[2]);
+  if (a[1]=="" || b[1]=="") { print "nan"; exit }
+  print sqrt((a[1]-tx)^2 + (a[2]-ty)^2)}')
+echo "amcl map->base=(${MB}) ground-truth world=(via A * odom=(${OB})) err=${ERR} m" \
+  | tee -a "${ART}/gate.txt"
 if awk "BEGIN{exit !(${ERR:-99} < 1.0)}"; then
-  echo "[PASS] AMCL estimate within 1.0 m of ground truth (map frame)" \
+  echo "[PASS] AMCL estimate within 1.0 m of ground truth (world frame)" \
     | tee -a "${ART}/gate.txt"
 else
-  echo "[WARN] AMCL ${ERR} m from ground truth" | tee -a "${ART}/gate.txt"
+  echo "[WARN] AMCL ${ERR} m from ground truth (needs more motion to converge)" \
+    | tee -a "${ART}/gate.txt"
 fi
 
 echo "================ GATE ================"; cat "${ART}/gate.txt"
