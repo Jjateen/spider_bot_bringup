@@ -13,6 +13,26 @@
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+  <!-- Emit a gz OdometryPublisher for base_link -> /odom + odom->base_link
+       tf. Enabled in simulation; the real robot fuses wheel/leg odom in the
+       EKF instead, so this stays behind an arg. -->
+  <xacro:arg name="publish_odom" default="true"/>
+  <xacro:property name="publish_odom" value="$(arg publish_odom)"/>
+
+  <xacro:if value="${publish_odom}">
+    <gazebo>
+      <plugin filename="gz-sim-odometry-publisher-system"
+              name="gz::sim::systems::OdometryPublisher">
+        <odom_frame>odom</odom_frame>
+        <robot_base_frame>base_link</robot_base_frame>
+        <odom_topic>odom</odom_topic>
+        <tf_topic>/tf</tf_topic>
+        <dimensions>3</dimensions>
+        <odom_publish_frequency>50</odom_publish_frequency>
+      </plugin>
+    </gazebo>
+  </xacro:if>
+
   <!-- ===================== Friction / materials ====================== -->
   <xacro:macro name="bb_surface" params="link color:=Gazebo/Silver mu:=1.0">
     <gazebo reference="${link}">

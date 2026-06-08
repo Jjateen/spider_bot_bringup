@@ -1,0 +1,41 @@
+# ros_gz_bridge topic mapping for the Big Bertha sim.
+#
+# Maps gz transport topics (produced by the world/sensor plugins and the
+# OdometryPublisher injected at spawn time) onto the ROS 2 topics the rest of
+# the stack consumes. Consumed by `ros_gz_bridge parameter_bridge`.
+#
+#   gz "scan" / "imu" come from the sensors in big_bertha.gazebo.xacro.
+#   "/clock" is required so every node can run with use_sim_time:=true.
+#   "/odom" + "/tf" come from the gz OdometryPublisher system added at spawn.
+#   "/cmd_vel" is bridged ROS->gz only for optional manual teleop / debugging
+#   (the policy controller normally consumes /cmd_vel inside ROS directly).
+
+- ros_topic_name: "/clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "gz.msgs.Clock"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/scan"
+  gz_topic_name: "/scan"
+  ros_type_name: "sensor_msgs/msg/LaserScan"
+  gz_type_name: "gz.msgs.LaserScan"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/imu"
+  gz_topic_name: "/imu"
+  ros_type_name: "sensor_msgs/msg/Imu"
+  gz_type_name: "gz.msgs.IMU"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/odom"
+  gz_topic_name: "/odom"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "gz.msgs.Odometry"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/tf"
+  gz_topic_name: "/tf"
+  ros_type_name: "tf2_msgs/msg/TFMessage"
+  gz_type_name: "gz.msgs.Pose_V"
+  direction: GZ_TO_ROS

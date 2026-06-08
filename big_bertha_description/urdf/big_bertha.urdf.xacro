@@ -23,6 +23,8 @@
   <!-- ros2_control.yaml passed to the gz_ros2_control plugin. -->
   <xacro:arg name="ros2_control_config"
              default="$(find big_bertha_description)/config/ros2_control.yaml"/>
+  <!-- Forwarded to the gz OdometryPublisher in big_bertha.gazebo.xacro. -->
+  <xacro:arg name="publish_odom" default="true"/>
 
   <xacro:property name="use_gz" value="$(arg use_gz)"/>
 

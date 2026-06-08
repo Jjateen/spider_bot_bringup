@@ -55,6 +55,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     use_gz = LaunchConfiguration('use_gz')
     publish_jsp = LaunchConfiguration('publish_jsp')
+    publish_odom = LaunchConfiguration('publish_odom')
 
     ros2_control_config = PathJoinSubstitution(
         [FindPackageShare('big_bertha_description'),
@@ -65,6 +66,7 @@ def generate_launch_description():
         Command([
             'xacro ', xacro_file,
             ' use_gz:=', use_gz,
+            ' publish_odom:=', publish_odom,
             ' ros2_control_config:=', ros2_control_config,
         ]),
         value_type=str,
@@ -80,6 +82,9 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'publish_jsp', default_value='false',
             description='Also run joint_state_publisher (no sim/controller)'),
+        DeclareLaunchArgument(
+            'publish_odom', default_value='true',
+            description='Emit the gz OdometryPublisher (/odom + odom tf)'),
 
         Node(
             package='robot_state_publisher',
