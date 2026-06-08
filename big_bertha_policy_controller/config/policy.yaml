@@ -1,0 +1,33 @@
+# Parameters for the Big Bertha policy controller (C++ ONNX gait node).
+#
+# The trained policy contract (PLAN.md section 2):
+#   obs = 48 floats, action = 12 floats
+#   joint_target = action_scale * action + default_joint_pos
+# Joints Revolute_110 .. Revolute_121, default per-leg pose [0.0, 0.5, 0.0].
+/**:
+  ros__parameters:
+    # Absolute path is supplied by the launch file (package share /models).
+    model_path: ""
+    action_scale: 0.25
+    control_rate: 50.0       # Hz
+    start_enabled: true
+    cmd_vel_timeout: 0.5     # s; stale /cmd_vel -> command zeroed (safe stop)
+    joint_limit: 3.14159     # rad; clamp joint targets (guards physics solver)
+    joint_names:
+      - Revolute_110
+      - Revolute_111
+      - Revolute_112
+      - Revolute_113
+      - Revolute_114
+      - Revolute_115
+      - Revolute_116
+      - Revolute_117
+      - Revolute_118
+      - Revolute_119
+      - Revolute_120
+      - Revolute_121
+    default_joint_pos:
+      [0.0, 0.5, 0.0,
+       0.0, 0.5, 0.0,
+       0.0, 0.5, 0.0,
+       0.0, 0.5, 0.0]
