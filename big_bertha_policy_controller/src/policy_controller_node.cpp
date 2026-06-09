@@ -22,6 +22,8 @@
 // Also publishes spider_msgs/PolicyStatus and offers the SetPolicyEnabled +
 // LoadPolicy services to arm/disarm and hot-swap the model.
 
+#include <onnxruntime_cxx_api.h>
+
 #include <algorithm>
 #include <chrono>
 #include <map>
@@ -30,20 +32,16 @@
 #include <string>
 #include <vector>
 
-#include <onnxruntime_cxx_api.h>
-
-#include "rclcpp/rclcpp.hpp"
+#include "big_bertha_policy_controller/observation_builder.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
-#include "std_msgs/msg/float64_multi_array.hpp"
-
 #include "spider_msgs/msg/policy_status.hpp"
 #include "spider_msgs/srv/load_policy.hpp"
 #include "spider_msgs/srv/set_policy_enabled.hpp"
-
-#include "big_bertha_policy_controller/observation_builder.hpp"
+#include "std_msgs/msg/float64_multi_array.hpp"
 
 using namespace std::chrono_literals;
 namespace bbpc = big_bertha_policy_controller;
@@ -51,8 +49,7 @@ namespace bbpc = big_bertha_policy_controller;
 class PolicyControllerNode : public rclcpp::Node
 {
 public:
-  PolicyControllerNode()
-  : Node("policy_controller")
+  PolicyControllerNode() : Node("policy_controller")
   {
     // ----------------------------- Parameters ----------------------------
     model_path_ = declare_parameter<std::string>("model_path", "");
@@ -63,18 +60,13 @@ public:
     joint_limit_ = declare_parameter<double>("joint_limit", 3.14159);
     action_clip_ = declare_parameter<double>("action_clip", 1.0);
     joint_names_ = declare_parameter<std::vector<std::string>>(
-      "joint_names",
-      {"Revolute_110", "Revolute_111", "Revolute_112",
-       "Revolute_113", "Revolute_114", "Revolute_115",
-       "Revolute_116", "Revolute_117", "Revolute_118",
-       "Revolute_119", "Revolute_120", "Revolute_121"});
+      "joint_names", {"Revolute_110", "Revolute_111", "Revolute_112", "Revolute_113",
+                      "Revolute_114", "Revolute_115", "Revolute_116", "Revolute_117",
+                      "Revolute_118", "Revolute_119", "Revolute_120", "Revolute_121"});
     auto default_pose = declare_parameter<std::vector<double>>(
-      "default_joint_pos",
-      {0.0, 0.5, 0.0, 0.0, 0.5, 0.0, 0.0, 0.5, 0.0, 0.0, 0.5, 0.0});
+      "default_joint_pos", {0.0, 0.5, 0.0, 0.0, 0.5, 0.0, 0.0, 0.5, 0.0, 0.0, 0.5, 0.0});
 
-    for (int i = 0; i < bbpc::kNumJoints && i < static_cast<int>(default_pose.size());
-         ++i)
-    {
+    for (int i = 0; i < bbpc::kNumJoints && i < static_cast<int>(default_pose.size()); ++i) {
       obs_.default_joint_pos[i] = default_pose[i];
     }
     for (size_t i = 0; i < joint_names_.size(); ++i) {
@@ -84,15 +76,13 @@ public:
     // ----------------------------- ONNX model -----------------------------
     if (!load_model(model_path_)) {
       RCLCPP_ERROR(
-        get_logger(), "failed to load policy model '%s'; node will idle",
-        model_path_.c_str());
+        get_logger(), "failed to load policy model '%s'; node will idle", model_path_.c_str());
     }
 
     // --------------------------- Pub / Sub / Srv --------------------------
     cmd_pub_ = create_publisher<std_msgs::msg::Float64MultiArray>(
       "/position_controller/commands", rclcpp::QoS(1));
-    status_pub_ = create_publisher<spider_msgs::msg::PolicyStatus>(
-      "policy_status", rclcpp::QoS(1));
+    status_pub_ = create_publisher<spider_msgs::msg::PolicyStatus>("policy_status", rclcpp::QoS(1));
 
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
       "/odom", rclcpp::SensorDataQoS(),
@@ -109,12 +99,12 @@ public:
 
     set_enabled_srv_ = create_service<spider_msgs::srv::SetPolicyEnabled>(
       "set_policy_enabled",
-      std::bind(&PolicyControllerNode::on_set_enabled, this,
-                std::placeholders::_1, std::placeholders::_2));
+      std::bind(
+        &PolicyControllerNode::on_set_enabled, this, std::placeholders::_1, std::placeholders::_2));
     load_policy_srv_ = create_service<spider_msgs::srv::LoadPolicy>(
       "load_policy",
-      std::bind(&PolicyControllerNode::on_load_policy, this,
-                std::placeholders::_1, std::placeholders::_2));
+      std::bind(
+        &PolicyControllerNode::on_load_policy, this, std::placeholders::_1, std::placeholders::_2));
 
     const auto period = std::chrono::duration<double>(1.0 / control_rate_);
     timer_ = create_wall_timer(
@@ -122,21 +112,21 @@ public:
       std::bind(&PolicyControllerNode::control_loop, this));
 
     RCLCPP_INFO(
-      get_logger(),
-      "policy_controller up: rate=%.1f Hz, scale=%.2f, enabled=%s",
-      control_rate_, action_scale_, enabled_ ? "true" : "false");
+      get_logger(), "policy_controller up: rate=%.1f Hz, scale=%.2f, enabled=%s", control_rate_,
+      action_scale_, enabled_ ? "true" : "false");
   }
 
 private:
   bool load_model(const std::string & path)
   {
-    if (path.empty()) {return false;}
+    if (path.empty()) {
+      return false;
+    }
     try {
       Ort::SessionOptions opts;
       opts.SetIntraOpNumThreads(1);
       opts.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-      auto session = std::make_unique<Ort::Session>(
-        env_, path.c_str(), opts);
+      auto session = std::make_unique<Ort::Session>(env_, path.c_str(), opts);
       std::lock_guard<std::mutex> lk(model_mutex_);
       session_ = std::move(session);
       model_path_ = path;
@@ -154,21 +144,16 @@ private:
     // Odometry twist is reported in the child (body) frame by the gz
     // OdometryPublisher, matching root_lin_vel_b.
     obs_.root_lin_vel_b = {
-      msg->twist.twist.linear.x,
-      msg->twist.twist.linear.y,
-      msg->twist.twist.linear.z};
+      msg->twist.twist.linear.x, msg->twist.twist.linear.y, msg->twist.twist.linear.z};
   }
 
   void on_imu(const sensor_msgs::msg::Imu::SharedPtr msg)
   {
     std::lock_guard<std::mutex> lk(state_mutex_);
     obs_.root_ang_vel_b = {
-      msg->angular_velocity.x,
-      msg->angular_velocity.y,
-      msg->angular_velocity.z};
+      msg->angular_velocity.x, msg->angular_velocity.y, msg->angular_velocity.z};
     obs_.set_gravity_from_quaternion(
-      msg->orientation.x, msg->orientation.y,
-      msg->orientation.z, msg->orientation.w);
+      msg->orientation.x, msg->orientation.y, msg->orientation.z, msg->orientation.w);
   }
 
   void on_joints(const sensor_msgs::msg::JointState::SharedPtr msg)
@@ -176,10 +161,16 @@ private:
     std::lock_guard<std::mutex> lk(state_mutex_);
     for (size_t i = 0; i < msg->name.size(); ++i) {
       auto it = joint_index_.find(msg->name[i]);
-      if (it == joint_index_.end()) {continue;}
+      if (it == joint_index_.end()) {
+        continue;
+      }
       const int idx = it->second;
-      if (i < msg->position.size()) {obs_.joint_pos[idx] = msg->position[i];}
-      if (i < msg->velocity.size()) {obs_.joint_vel[idx] = msg->velocity[i];}
+      if (i < msg->position.size()) {
+        obs_.joint_pos[idx] = msg->position[i];
+      }
+      if (i < msg->velocity.size()) {
+        obs_.joint_vel[idx] = msg->velocity[i];
+      }
     }
     have_joints_ = true;
   }
@@ -238,9 +229,7 @@ private:
     std::vector<float> input;
     {
       std::lock_guard<std::mutex> lk(state_mutex_);
-      if (cmd_timeout_ > 0.0 &&
-          (now() - last_cmd_time_).seconds() > cmd_timeout_)
-      {
+      if (cmd_timeout_ > 0.0 && (now() - last_cmd_time_).seconds() > cmd_timeout_) {
         obs_.commands = {0.0, 0.0, 0.0};
       }
       input = obs_.build();
@@ -250,7 +239,9 @@ private:
     // velocity) would propagate NaN through the policy and destabilise the
     // physics. Replace any non-finite entry with 0 before inference.
     for (float & v : input) {
-      if (!std::isfinite(v)) {v = 0.0f;}
+      if (!std::isfinite(v)) {
+        v = 0.0f;
+      }
     }
 
     // -------------------------- ONNX inference --------------------------
@@ -260,24 +251,24 @@ private:
       std::lock_guard<std::mutex> lk(model_mutex_);
       try {
         const std::array<int64_t, 2> shape{1, bbpc::kObsDim};
-        Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(
-          OrtArenaAllocator, OrtMemTypeDefault);
+        Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
         Ort::Value in_tensor = Ort::Value::CreateTensor<float>(
           mem, input.data(), input.size(), shape.data(), shape.size());
 
         const char * in_names[] = {"obs"};
         const char * out_names[] = {"actions"};
         auto t0 = std::chrono::steady_clock::now();
-        auto outputs = session_->Run(
-          Ort::RunOptions{nullptr}, in_names, &in_tensor, 1, out_names, 1);
+        auto outputs =
+          session_->Run(Ort::RunOptions{nullptr}, in_names, &in_tensor, 1, out_names, 1);
         auto t1 = std::chrono::steady_clock::now();
         inf_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
         const float * out = outputs.front().GetTensorData<float>();
-        for (int i = 0; i < bbpc::kActionDim; ++i) {action[i] = out[i];}
+        for (int i = 0; i < bbpc::kActionDim; ++i) {
+          action[i] = out[i];
+        }
       } catch (const std::exception & e) {
-        RCLCPP_ERROR_THROTTLE(
-          get_logger(), *get_clock(), 2000, "inference error: %s", e.what());
+        RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000, "inference error: %s", e.what());
         status_pub_->publish(status);
         return;
       }

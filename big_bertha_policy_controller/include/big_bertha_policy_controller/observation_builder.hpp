@@ -42,11 +42,8 @@ struct ObservationBuilder
 {
   // Default per-leg pose [0.0, 0.5, 0.0] repeated for 4 legs (12 joints),
   // ordered Revolute_110 .. Revolute_121.
-  std::array<double, kNumJoints> default_joint_pos{
-    0.0, 0.5, 0.0,
-    0.0, 0.5, 0.0,
-    0.0, 0.5, 0.0,
-    0.0, 0.5, 0.0};
+  std::array<double, kNumJoints> default_joint_pos{0.0, 0.5, 0.0, 0.0, 0.5, 0.0,
+                                                   0.0, 0.5, 0.0, 0.0, 0.5, 0.0};
 
   // Cached inputs (updated by subscription callbacks).
   std::array<double, 3> root_lin_vel_b{0.0, 0.0, 0.0};
@@ -67,14 +64,11 @@ struct ObservationBuilder
     const double gx = 0.0, gy = 0.0, gz = -1.0;
     // R^T columns from quaternion; project (0,0,-1).
     projected_gravity_b[0] =
-      gx * (1 - 2 * (y * y + z * z)) + gy * (2 * (x * y + z * w)) +
-      gz * (2 * (x * z - y * w));
+      gx * (1 - 2 * (y * y + z * z)) + gy * (2 * (x * y + z * w)) + gz * (2 * (x * z - y * w));
     projected_gravity_b[1] =
-      gx * (2 * (x * y - z * w)) + gy * (1 - 2 * (x * x + z * z)) +
-      gz * (2 * (y * z + x * w));
+      gx * (2 * (x * y - z * w)) + gy * (1 - 2 * (x * x + z * z)) + gz * (2 * (y * z + x * w));
     projected_gravity_b[2] =
-      gx * (2 * (x * z + y * w)) + gy * (2 * (y * z - x * w)) +
-      gz * (1 - 2 * (x * x + y * y));
+      gx * (2 * (x * z + y * w)) + gy * (2 * (y * z - x * w)) + gz * (1 - 2 * (x * x + y * y));
   }
 
   /// Assemble the full 48-d observation vector in the trained order.
@@ -82,17 +76,27 @@ struct ObservationBuilder
   {
     std::vector<float> obs;
     obs.reserve(kObsDim);
-    for (double v : root_lin_vel_b) {obs.push_back(static_cast<float>(v));}
-    for (double v : root_ang_vel_b) {obs.push_back(static_cast<float>(v));}
-    for (double v : projected_gravity_b) {obs.push_back(static_cast<float>(v));}
-    for (double v : commands) {obs.push_back(static_cast<float>(v));}
+    for (double v : root_lin_vel_b) {
+      obs.push_back(static_cast<float>(v));
+    }
+    for (double v : root_ang_vel_b) {
+      obs.push_back(static_cast<float>(v));
+    }
+    for (double v : projected_gravity_b) {
+      obs.push_back(static_cast<float>(v));
+    }
+    for (double v : commands) {
+      obs.push_back(static_cast<float>(v));
+    }
     for (int i = 0; i < kNumJoints; ++i) {
       obs.push_back(static_cast<float>(joint_pos[i] - default_joint_pos[i]));
     }
     for (int i = 0; i < kNumJoints; ++i) {
       obs.push_back(static_cast<float>(joint_vel[i]));
     }
-    for (double v : prev_actions) {obs.push_back(static_cast<float>(v));}
+    for (double v : prev_actions) {
+      obs.push_back(static_cast<float>(v));
+    }
     return obs;
   }
 };
