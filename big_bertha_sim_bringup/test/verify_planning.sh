@@ -19,9 +19,9 @@ PASS=0
 # Demo A->B. Spawn (start) is point A; the goal is point B. Both lie in the
 # saved map's connected free region with the central obstacle cluster between
 # them (pillars + boxes near the origin), so the global planner must route
-# around the obstacles. A=(-4,0) -> B=(0,4).
-GOAL_X="${GOAL_X:-0.0}"
-GOAL_Y="${GOAL_Y:-4.0}"
+# around the obstacles. A=(-3.5,-3.5) -> B=(3.5,3.5) (matches the demo).
+GOAL_X="${GOAL_X:-3.5}"
+GOAL_Y="${GOAL_Y:-3.5}"
 
 # --- Primary gate: the Nav2 planner produces a valid global path -----------
 # ComputePathToPose exercises the global costmap + planner without depending on
