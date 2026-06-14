@@ -49,7 +49,8 @@ namespace bbpc = big_bertha_policy_controller;
 class PolicyControllerNode : public rclcpp::Node
 {
 public:
-  PolicyControllerNode() : Node("policy_controller")
+  PolicyControllerNode()
+  : Node("policy_controller")
   {
     // ----------------------------- Parameters ----------------------------
     model_path_ = declare_parameter<std::string>("model_path", "");
@@ -61,8 +62,8 @@ public:
     action_clip_ = declare_parameter<double>("action_clip", 1.0);
     joint_names_ = declare_parameter<std::vector<std::string>>(
       "joint_names", {"Revolute_110", "Revolute_111", "Revolute_112", "Revolute_113",
-                      "Revolute_114", "Revolute_115", "Revolute_116", "Revolute_117",
-                      "Revolute_118", "Revolute_119", "Revolute_120", "Revolute_121"});
+        "Revolute_114", "Revolute_115", "Revolute_116", "Revolute_117",
+        "Revolute_118", "Revolute_119", "Revolute_120", "Revolute_121"});
     auto default_pose = declare_parameter<std::vector<double>>(
       "default_joint_pos", {0.0, 0.5, 0.0, 0.0, 0.5, 0.0, 0.0, 0.5, 0.0, 0.0, 0.5, 0.0});
 
