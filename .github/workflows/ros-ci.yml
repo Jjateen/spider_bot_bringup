@@ -48,6 +48,5 @@ jobs:
             big_bertha_description
             big_bertha_policy_controller
             big_bertha_sim_bringup
-            big_bertha_bringup
           colcon-extra-args: >
             --cmake-args -DONNXRUNTIME_ROOT=/opt/onnxruntime
