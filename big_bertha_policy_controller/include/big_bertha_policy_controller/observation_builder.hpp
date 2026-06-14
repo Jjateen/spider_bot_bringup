@@ -43,7 +43,7 @@ struct ObservationBuilder
   // Default per-leg pose [0.0, 0.5, 0.0] repeated for 4 legs (12 joints),
   // ordered Revolute_110 .. Revolute_121.
   std::array<double, kNumJoints> default_joint_pos{0.0, 0.5, 0.0, 0.0, 0.5, 0.0,
-    0.0, 0.5, 0.0, 0.0, 0.5, 0.0};
+                                                   0.0, 0.5, 0.0, 0.0, 0.5, 0.0};
 
   // Cached inputs (updated by subscription callbacks).
   std::array<double, 3> root_lin_vel_b{0.0, 0.0, 0.0};
