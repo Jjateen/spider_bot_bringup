@@ -5,9 +5,18 @@ find_package(ament_cmake REQUIRED)
 
 # Install all bringup assets into the package share directory.
 install(
-  DIRECTORY launch config worlds rviz maps
+  DIRECTORY launch config worlds rviz
   DESTINATION share/${PROJECT_NAME}
 )
+
+# maps/ is added by a later chained PR (mapping/localization); install it
+# only when present so earlier-chain branches still build.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/maps")
+  install(
+    DIRECTORY maps
+    DESTINATION share/${PROJECT_NAME}
+  )
+endif()
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
