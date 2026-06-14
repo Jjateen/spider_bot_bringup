@@ -63,8 +63,12 @@ install(DIRECTORY launch config models
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  # ONNX Runtime headers are third-party; skip uncrustify/cpplint include
-  # ordering noise on them by linting our sources only via default config.
+  # clang-format (.clang-format + the pre-commit hook) is the canonical C++
+  # style for this repo. ament_uncrustify uses a different, conflicting style
+  # (constructor-initializer and continuation alignment), so skip it here and
+  # let clang-format be the single source of truth; cpplint and the remaining
+  # linters still run.
+  set(ament_cmake_uncrustify_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
 
