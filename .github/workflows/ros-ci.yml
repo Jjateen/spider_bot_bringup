@@ -48,13 +48,9 @@ jobs:
             big_bertha_description
             big_bertha_policy_controller
             big_bertha_sim_bringup
-          # cmake-args scoped to the build verb only. action-ros-ci forwards
-          # colcon-extra-args to BOTH `colcon build` and `colcon test`, and
-          # `colcon test` rejects --cmake-args -> CI failed. colcon-defaults
-          # applies -DONNXRUNTIME_ROOT to build alone, leaving test clean.
-          colcon-defaults: |
-            {
-              "build": {
-                "cmake-args": ["-DONNXRUNTIME_ROOT=/opt/onnxruntime"]
-              }
-            }
+          # -DONNXRUNTIME_ROOT is a build-time flag. extra-cmake-args feeds it to
+          # `colcon build --cmake-args` ONLY -- not `colcon test` (which rejects
+          # --cmake-args). The old colcon-extra-args went to both verbs and broke
+          # test; colcon-defaults overwrote action-ros-ci's defaults and broke the
+          # build. extra-cmake-args is the action's purpose-built input for this.
+          extra-cmake-args: -DONNXRUNTIME_ROOT=/opt/onnxruntime
