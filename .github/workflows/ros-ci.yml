@@ -38,6 +38,28 @@ jobs:
           sudo mkdir -p /opt/onnxruntime
           sudo tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1
 
+      - name: Make ament_package importable by the build Python
+        # ros-jazzy-ament-package installs ament_package into the ROS prefix
+        # (/opt/ros/jazzy/.../site-packages), so /usr/bin/python3 can import it
+        # only while PYTHONPATH carries that path. colcon's parallel per-package
+        # cmake configure occasionally spawns the templates_2_cmake.py subprocess
+        # with a PYTHONPATH that has dropped the ROS site-packages, giving an
+        # intermittent "ModuleNotFoundError: No module named 'ament_package'"
+        # (hits a different package each run; CMAKE_PREFIX_PATH still resolves so
+        # the build otherwise looks fine). Mirror the module into the system
+        # dist-packages, which is always on the default sys.path, so the import
+        # is resolvable regardless of PYTHONPATH ordering.
+        run: |
+          set -eux
+          src="$(find /opt/ros/jazzy -type d -name ament_package -path '*/site-packages/*' 2>/dev/null | head -n1)"
+          dst=/usr/lib/python3/dist-packages
+          test -n "$src"
+          sudo mkdir -p "$dst"
+          sudo cp -r "$src" "$dst/"
+          # verify with PYTHONPATH cleared so the import can only resolve from the
+          # default system site (dist-packages) -- i.e. the race is actually fixed.
+          env -u PYTHONPATH /usr/bin/python3 -c "import ament_package; print('ament_package OK:', ament_package.__file__)"
+
       - name: Build & test
         uses: ros-tooling/action-ros-ci@v0.4
         with:
