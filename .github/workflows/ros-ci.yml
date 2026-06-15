@@ -10,6 +10,17 @@ jobs:
   colcon:
     name: colcon build & test (Jazzy · ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
+    # Run inside the official ROS tooling image instead of ros-tooling/setup-ros.
+    # setup-ros resolves the ros-apt-source version via an UNAUTHENTICATED
+    # `curl https://api.github.com/.../releases/latest`; on shared GitHub-hosted
+    # runner IPs that call intermittently hits the 60 req/hr anonymous API rate
+    # limit, returns no tag_name, leaves ROS_APT_SOURCE_VERSION empty, and the
+    # apt-source .deb URL 404s -> the whole "Set up ROS 2" step fails (flaky,
+    # repo-wide). The container ships ROS dev tools + rosdep pre-initialized, so
+    # there is no dependency on that API call. Its single clean Python env also
+    # avoids the intermittent ament_package PYTHONPATH race seen on bare metal.
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-noble-latest
     strategy:
       fail-fast: false
       matrix:
@@ -21,13 +32,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up ROS 2 Jazzy
-        uses: ros-tooling/setup-ros@v0.7
-        with:
-          required-ros-distributions: jazzy
-
       - name: Install ONNX Runtime (C++)
         run: |
+          set -eux
           ORT_VER=1.20.1
           case "${{ matrix.arch }}" in
             amd64) ORT_ARCH=x64 ;;
@@ -35,30 +42,8 @@ jobs:
           esac
           curl -fsSL -o /tmp/ort.tgz \
             "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VER}/onnxruntime-linux-${ORT_ARCH}-${ORT_VER}.tgz"
-          sudo mkdir -p /opt/onnxruntime
-          sudo tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1
-
-      - name: Make ament_package importable by the build Python
-        # ros-jazzy-ament-package installs ament_package into the ROS prefix
-        # (/opt/ros/jazzy/.../site-packages), so /usr/bin/python3 can import it
-        # only while PYTHONPATH carries that path. colcon's parallel per-package
-        # cmake configure occasionally spawns the templates_2_cmake.py subprocess
-        # with a PYTHONPATH that has dropped the ROS site-packages, giving an
-        # intermittent "ModuleNotFoundError: No module named 'ament_package'"
-        # (hits a different package each run; CMAKE_PREFIX_PATH still resolves so
-        # the build otherwise looks fine). Mirror the module into the system
-        # dist-packages, which is always on the default sys.path, so the import
-        # is resolvable regardless of PYTHONPATH ordering.
-        run: |
-          set -eux
-          src="$(find /opt/ros/jazzy -type d -name ament_package -path '*/site-packages/*' 2>/dev/null | head -n1)"
-          dst=/usr/lib/python3/dist-packages
-          test -n "$src"
-          sudo mkdir -p "$dst"
-          sudo cp -r "$src" "$dst/"
-          # verify with PYTHONPATH cleared so the import can only resolve from the
-          # default system site (dist-packages) -- i.e. the race is actually fixed.
-          env -u PYTHONPATH /usr/bin/python3 -c "import ament_package; print('ament_package OK:', ament_package.__file__)"
+          mkdir -p /opt/onnxruntime
+          tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1
 
       - name: Build & test
         uses: ros-tooling/action-ros-ci@v0.4
