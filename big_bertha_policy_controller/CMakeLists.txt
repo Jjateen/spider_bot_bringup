@@ -79,29 +79,6 @@ find_library(ONNXRUNTIME_LIB onnxruntime
   HINTS ${ONNXRUNTIME_ROOT}/lib)
 
 if(NOT ONNXRUNTIME_INCLUDE_DIR OR NOT ONNXRUNTIME_LIB)
-  # Not found locally -> download the official prebuilt for this CPU arch so
-  # the build is self-contained (fixes #39: fresh/local/hardware builds failed
-  # with no ORT and no -DONNXRUNTIME_ROOT).
-  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
-    set(ORT_ARCH "aarch64")
-  else()
-    set(ORT_ARCH "x64")
-  endif()
-  set(ORT_PKG "onnxruntime-linux-${ORT_ARCH}-${ORT_VERSION}")
-  message(STATUS
-    "ONNX Runtime not found under '${ONNXRUNTIME_ROOT}'; auto-fetching ${ORT_PKG} ...")
-  include(FetchContent)
-  fetchcontent_declare(onnxruntime
-    URL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/${ORT_PKG}.tgz")
-  fetchcontent_makeavailable(onnxruntime)
-  set(ONNXRUNTIME_ROOT "${onnxruntime_SOURCE_DIR}")
-  find_path(ONNXRUNTIME_INCLUDE_DIR onnxruntime_cxx_api.h
-    HINTS ${ONNXRUNTIME_ROOT}/include
-    PATH_SUFFIXES onnxruntime onnxruntime/core/session)
-  find_library(ONNXRUNTIME_LIB onnxruntime HINTS ${ONNXRUNTIME_ROOT}/lib)
-endif()
-
-if(NOT ONNXRUNTIME_INCLUDE_DIR OR NOT ONNXRUNTIME_LIB)
   message(FATAL_ERROR
     "ONNX Runtime not found under '${ONNXRUNTIME_ROOT}'. "
     "Download v${ORT_VER} and pass -DONNXRUNTIME_ROOT=<path> "
