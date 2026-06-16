@@ -17,14 +17,16 @@ Also publishes `spider_msgs/PolicyStatus` and offers the
 
 ## Build
 
-ONNX Runtime (C++) is not packaged for Jazzy; download it once and point
-CMake at it:
+The CMake configure step downloads ONNX Runtime (C++) automatically if it is
+not already present at the default location (`<workspace>/.onnxruntime`). No
+manual download is needed for `x86_64` or `aarch64` hosts:
 
-    curl -fsSL -o /tmp/ort.tgz \
-      https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-linux-x64-1.20.1.tgz
-    mkdir -p .onnxruntime && tar -xzf /tmp/ort.tgz -C .onnxruntime --strip-components=1
+    colcon build --packages-select big_bertha_policy_controller
+
+To use a different path or skip the auto-download, set `ONNXRUNTIME_ROOT`:
+
     colcon build --packages-select big_bertha_policy_controller \
-      --cmake-args -DONNXRUNTIME_ROOT=$(pwd)/.onnxruntime
+      --cmake-args -DONNXRUNTIME_ROOT=/opt/onnxruntime
 
 `models/policy.onnx` (the exported Big Bertha PPO weights, ~452 KB) is
 committed directly, **not** via Git LFS.
