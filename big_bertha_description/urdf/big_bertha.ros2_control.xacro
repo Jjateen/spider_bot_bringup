@@ -2,20 +2,21 @@
 <!--
   ros2_control hardware description for Big Bertha under gz_ros2_control.
 
-  All 12 leg joints (Revolute_110 .. Revolute_121) are exposed with a
-  position command interface and position/velocity state interfaces, so the
-  policy controller can stream targets on /position_controller/commands and
-  read /joint_states. The <param>initial_value</param> reproduces the
-  training default pose ([0.0, 0.5, 0.0] per leg).
+  All 12 leg joints (Revolute_110 .. Revolute_121) are exposed with an
+  effort command interface and position/velocity/effort state interfaces, so
+  the policy controller can stream joint torques on
+  /position_controller/commands and read /joint_states. The
+  <param>initial_value</param> reproduces the training default pose
+  ([0.0, 0.5, 0.0] per leg).
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <!-- One leg joint with a position command + position/velocity state. -->
   <xacro:macro name="bb_joint" params="name init:=0.0">
     <joint name="${name}">
-      <command_interface name="position">
-        <param name="min">-3.14159</param>
-        <param name="max">3.14159</param>
+      <command_interface name="effort">
+        <param name="min">-12.0</param>
+        <param name="max">12.0</param>
       </command_interface>
       <state_interface name="position">
         <param name="initial_value">${init}</param>
@@ -49,7 +50,10 @@
   </ros2_control>
 
   <!-- gz_ros2_control system plugin: loads controller_manager inside gz,
-       parameterised by config/ros2_control.yaml. -->
+       parameterised by config/ros2_control.yaml. The leg joints use an EFFORT
+       command interface (the policy node streams torque tau = kp*(q_des-q) +
+       kd*(0-qd)), which gz_ros2_control applies directly as joint torque, so
+       no position_proportional_gain servo is involved. -->
   <gazebo>
     <plugin filename="gz_ros2_control-system"
             name="gz_ros2_control::GazeboSimROS2ControlPlugin">

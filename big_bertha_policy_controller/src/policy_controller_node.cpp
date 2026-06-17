@@ -59,6 +59,33 @@ public:
     cmd_timeout_ = declare_parameter<double>("cmd_vel_timeout", 0.5);
     joint_limit_ = declare_parameter<double>("joint_limit", 3.14159);
     action_clip_ = declare_parameter<double>("action_clip", 1.0);
+    // /cmd_vel clamp to the policy's trained command envelope (yaw-for-nav
+    // fix).
+    max_lin_vel_x_ = declare_parameter<double>("max_lin_vel_x", 0.3);
+    max_lin_vel_y_ = declare_parameter<double>("max_lin_vel_y", 0.05);
+    max_yaw_rate_ = declare_parameter<double>("max_yaw_rate", 0.15);
+    // Effort-PD actuator emulation of Isaac's ImplicitActuatorCfg
+    // (stiffness=20, damping=2): output joint torque
+    //   tau = kp*(q_des - q) + kd*(0 - qd), torque-limited,
+    // so the legs swing with momentum like in training instead of snapping to
+    // a pose. Kp is softened to 10 (from the Isaac 20) and the effort limit
+    // raised to 12 so the torque is not pinned bang-bang at the rail: at
+    // kp=20/limit=8 the PD railed +/-8 on most joints, while kp=10/limit=12
+    // keeps it inside the band (measured |tau| <= ~5.6) for clean damping.
+    use_effort_ = declare_parameter<bool>("use_effort", true);
+    kp_ = declare_parameter<double>("kp", 20.0);
+    kd_ = declare_parameter<double>("kd", 2.0);
+    // Match Isaac's effort_limit_sim = 1 Nm exactly: the implicit PD there
+    // clamps tau to [-1, 1], so the policy is trained against torque bounded
+    // at 1 Nm. Giving the legs more authority (e.g. 12) makes them overshoot.
+    effort_limit_ = declare_parameter<double>("effort_limit", 1.0);
+    // The PD torque is evaluated at pd_rate_ (200 Hz) while the policy only
+    // runs every policy_decimation_ ticks, so its effective rate matches
+    // training (control_rate_ = 50 Hz, decimation 4). Evaluating the PD at the
+    // policy rate (50 Hz) under-damps and oscillates -> the in-place jitter.
+    pd_rate_ = declare_parameter<double>("pd_rate", 200.0);
+    warmup_sec_ = declare_parameter<double>("warmup_sec", 3.0);
+    policy_decimation_ = std::max(1, static_cast<int>(std::round(pd_rate_ / control_rate_)));
     joint_names_ = declare_parameter<std::vector<std::string>>(
       "joint_names", {"Revolute_110", "Revolute_111", "Revolute_112", "Revolute_113",
                       "Revolute_114", "Revolute_115", "Revolute_116", "Revolute_117",
@@ -68,6 +95,7 @@ public:
 
     for (int i = 0; i < bbpc::kNumJoints && i < static_cast<int>(default_pose.size()); ++i) {
       obs_.default_joint_pos[i] = default_pose[i];
+      target_pos_[i] = default_pose[i];
     }
     for (size_t i = 0; i < joint_names_.size(); ++i) {
       joint_index_[joint_names_[i]] = static_cast<int>(i);
@@ -106,7 +134,7 @@ public:
       std::bind(
         &PolicyControllerNode::on_load_policy, this, std::placeholders::_1, std::placeholders::_2));
 
-    const auto period = std::chrono::duration<double>(1.0 / control_rate_);
+    const auto period = std::chrono::duration<double>(1.0 / pd_rate_);
     timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(period),
       std::bind(&PolicyControllerNode::control_loop, this));
@@ -178,7 +206,13 @@ private:
   void on_cmd(const geometry_msgs::msg::Twist::SharedPtr msg)
   {
     std::lock_guard<std::mutex> lk(state_mutex_);
-    obs_.commands = {msg->linear.x, msg->linear.y, msg->angular.z};
+    // Clamp to the trained command envelope (forward-only vx, narrow vy/yaw) so
+    // Nav2's out-of-distribution commands (linear.x ~0.37, yaw ~0.44) don't
+    // make the policy flail. Turns become wider/slower but stay executable.
+    obs_.commands = {
+      std::clamp(msg->linear.x, 0.0, max_lin_vel_x_),
+      std::clamp(msg->linear.y, -max_lin_vel_y_, max_lin_vel_y_),
+      std::clamp(msg->angular.z, -max_yaw_rate_, max_yaw_rate_)};
     last_cmd_time_ = now();
   }
 
@@ -225,84 +259,109 @@ private:
       return;
     }
 
-    // Drop stale velocity commands to a safe stop (commands -> 0).
-    std::vector<float> input;
-    {
+    // ===== Startup warmup: for the first warmup_sec_ after joint state first
+    // arrives (i.e. once the controller is active), just hold the default pose
+    // (action = 0). The robot free-falls during the ~3 s gz_ros2_control load
+    // gap because the gait must run frictionless (any stiction freezes it); the
+    // stiff PD then pulls the splayed legs back to the default stance before
+    // the policy takes over, so the policy starts from a clean upright pose
+    // instead of crawling out of a collapse.
+    if (warmup_start_.nanoseconds() == 0) {
+      warmup_start_ = now();
+    }
+    const bool warming = warmup_sec_ > 0.0 && (now() - warmup_start_).seconds() < warmup_sec_;
+
+    // ===== Policy step (decimated to ~control_rate_): update joint targets.
+    // The timer fires at pd_rate_ (200 Hz); the policy only runs every
+    // policy_decimation_ ticks so its effective rate matches training
+    // (50 Hz, decimation 4). This keeps the gait timing right while letting
+    // the PD below damp at the full physics rate -- without the split, a
+    // 50 Hz torque held for 20 ms overshoots and oscillates (the jitter).
+    if (warming) {
       std::lock_guard<std::mutex> lk(state_mutex_);
-      if (cmd_timeout_ > 0.0 && (now() - last_cmd_time_).seconds() > cmd_timeout_) {
-        obs_.commands = {0.0, 0.0, 0.0};
+      for (int i = 0; i < bbpc::kNumJoints; ++i) {
+        target_pos_[i] = obs_.default_joint_pos[i];
+        obs_.prev_actions[i] = 0.0f;
       }
-      input = obs_.build();
-    }
-
-    // Sanitize the observation: a non-finite value (e.g. a diverged joint
-    // velocity) would propagate NaN through the policy and destabilise the
-    // physics. Replace any non-finite entry with 0 before inference.
-    for (float & v : input) {
-      if (!std::isfinite(v)) {
-        v = 0.0f;
-      }
-    }
-
-    // -------------------------- ONNX inference --------------------------
-    std::array<float, bbpc::kActionDim> action{};
-    double inf_ms = 0.0;
-    {
-      std::lock_guard<std::mutex> lk(model_mutex_);
-      try {
-        const std::array<int64_t, 2> shape{1, bbpc::kObsDim};
-        Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-        Ort::Value in_tensor = Ort::Value::CreateTensor<float>(
-          mem, input.data(), input.size(), shape.data(), shape.size());
-
-        const char * in_names[] = {"obs"};
-        const char * out_names[] = {"actions"};
-        auto t0 = std::chrono::steady_clock::now();
-        auto outputs =
-          session_->Run(Ort::RunOptions{nullptr}, in_names, &in_tensor, 1, out_names, 1);
-        auto t1 = std::chrono::steady_clock::now();
-        inf_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-
-        const float * out = outputs.front().GetTensorData<float>();
-        for (int i = 0; i < bbpc::kActionDim; ++i) {
-          action[i] = out[i];
+      decim_count_ = 0;
+      last_action_norm_ = 0.0;
+    } else if (++decim_count_ >= policy_decimation_) {
+      decim_count_ = 0;
+      std::vector<float> input;
+      {
+        std::lock_guard<std::mutex> lk(state_mutex_);
+        if (cmd_timeout_ > 0.0 && (now() - last_cmd_time_).seconds() > cmd_timeout_) {
+          obs_.commands = {0.0, 0.0, 0.0};
         }
-      } catch (const std::exception & e) {
-        RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000, "inference error: %s", e.what());
-        status_pub_->publish(status);
-        return;
+        input = obs_.build();
       }
+      for (float & v : input) {
+        if (!std::isfinite(v)) {
+          v = 0.0f;
+        }
+      }
+      std::array<float, bbpc::kActionDim> action{};
+      {
+        std::lock_guard<std::mutex> lk(model_mutex_);
+        try {
+          const std::array<int64_t, 2> shape{1, bbpc::kObsDim};
+          Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+          Ort::Value in_tensor = Ort::Value::CreateTensor<float>(
+            mem, input.data(), input.size(), shape.data(), shape.size());
+          const char * in_names[] = {"obs"};
+          const char * out_names[] = {"actions"};
+          auto t0 = std::chrono::steady_clock::now();
+          auto outputs =
+            session_->Run(Ort::RunOptions{nullptr}, in_names, &in_tensor, 1, out_names, 1);
+          auto t1 = std::chrono::steady_clock::now();
+          last_inf_ms_ = std::chrono::duration<double, std::milli>(t1 - t0).count();
+          const float * out = outputs.front().GetTensorData<float>();
+          for (int i = 0; i < bbpc::kActionDim; ++i) {
+            action[i] = out[i];
+          }
+        } catch (const std::exception & e) {
+          RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000, "inference error: %s", e.what());
+          status_pub_->publish(status);
+          return;
+        }
+      }
+      double norm_sq = 0.0;
+      {
+        std::lock_guard<std::mutex> lk(state_mutex_);
+        for (int i = 0; i < bbpc::kNumJoints; ++i) {
+          double a_raw = std::isfinite(action[i]) ? action[i] : 0.0;
+          // Env clamps the raw action to [-1, 1] before scaling.
+          double a = std::clamp(a_raw, -action_clip_, action_clip_);
+          double t = action_scale_ * a + obs_.default_joint_pos[i];
+          target_pos_[i] = std::clamp(t, -joint_limit_, joint_limit_);
+          norm_sq += a * a;
+          obs_.prev_actions[i] = static_cast<float>(a);
+        }
+      }
+      last_action_norm_ = std::sqrt(norm_sq);
     }
 
-    // ----------------------- Action -> joint targets --------------------
+    // ===== PD step every tick (pd_rate_): torque toward the held targets.
+    // tau = Kp*(q_des - q) + Kd*(0 - qd), torque-limited -- Isaac's implicit
+    // PD actuator, now evaluated at the full rate so it actually damps.
     std_msgs::msg::Float64MultiArray cmd;
     cmd.data.resize(bbpc::kNumJoints);
-    double norm_sq = 0.0;
     {
       std::lock_guard<std::mutex> lk(state_mutex_);
       for (int i = 0; i < bbpc::kNumJoints; ++i) {
-        double a_raw = std::isfinite(action[i]) ? action[i] : 0.0;
-        // The training env clamps the raw policy action to [-1, 1] BEFORE
-        // scaling (big_bertha_env.py _pre_physics_step:
-        //   self._actions = torch.clamp(actions, -1.0, 1.0)).
-        // The policy is trained to rely on this saturation, so we must
-        // replicate it here; otherwise large raw outputs slam every joint
-        // to the limit and the gait collapses.
-        double a = std::clamp(a_raw, -action_clip_, action_clip_);
-        double target = action_scale_ * a + obs_.default_joint_pos[i];
-        // Final safety clamp to the joint range.
-        target = std::clamp(target, -joint_limit_, joint_limit_);
-        cmd.data[i] = target;
-        norm_sq += a * a;
-        // Feed back the CLAMPED action, matching the env's
-        // self._previous_actions = self._actions.clone().
-        obs_.prev_actions[i] = static_cast<float>(a);
+        if (use_effort_) {
+          double effort =
+            kp_ * (target_pos_[i] - obs_.joint_pos[i]) + kd_ * (0.0 - obs_.joint_vel[i]);
+          cmd.data[i] = std::clamp(effort, -effort_limit_, effort_limit_);
+        } else {
+          cmd.data[i] = target_pos_[i];
+        }
       }
     }
     cmd_pub_->publish(cmd);
 
-    status.inference_ms = inf_ms;
-    status.action_norm = std::sqrt(norm_sq);
+    status.inference_ms = last_inf_ms_;
+    status.action_norm = last_action_norm_;
     status_pub_->publish(status);
   }
 
@@ -325,7 +384,27 @@ private:
   double control_rate_{50.0};
   double cmd_timeout_{0.5};
   double joint_limit_{3.14159};
+  bool use_effort_{true};
+  double kp_{20.0};
+  double kd_{2.0};
+  double effort_limit_{1.0};
+  double pd_rate_{200.0};
+  double warmup_sec_{3.0};
+  rclcpp::Time warmup_start_{0, 0, RCL_ROS_TIME};
+  int policy_decimation_{4};
+  int decim_count_{0};
+  std::array<double, bbpc::kNumJoints> target_pos_{};
+  double last_inf_ms_{0.0};
+  double last_action_norm_{0.0};
   double action_clip_{1.0};
+  // Trained command ranges (big_bertha env _reset_idx sampling): vx in
+  // [0.1,0.3] forward-only, vy in [+/-0.05], yaw in [+/-0.15]. Nav2 issues
+  // commands well outside these (linear.x ~0.37, yaw ~0.44), which is
+  // out-of-distribution for the policy. Clamp /cmd_vel to the trained envelope
+  // so the policy stays in distribution (the yaw-for-nav blocker).
+  double max_lin_vel_x_{0.3};
+  double max_lin_vel_y_{0.05};
+  double max_yaw_rate_{0.15};
   bool enabled_{true};
 
   // ROS
