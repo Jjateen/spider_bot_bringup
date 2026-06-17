@@ -1,0 +1,13 @@
+<library path="big_bertha_controllers">
+  <class name="big_bertha_controllers/JointEffortPdController"
+         type="big_bertha_controllers::JointEffortPdController"
+         base_class_type="controller_interface::ControllerInterface">
+    <description>
+      Synchronous joint-space effort-PD controller. Reads position/velocity
+      state with zero latency in the controller_manager update and applies
+      tau = Kp*(q_des - q) + Kd*(0 - qd), torque-limited, emulating the Isaac
+      Lab implicit actuator the gait policy was trained against. Position
+      targets arrive on ~/commands (std_msgs/Float64MultiArray).
+    </description>
+  </class>
+</library>
