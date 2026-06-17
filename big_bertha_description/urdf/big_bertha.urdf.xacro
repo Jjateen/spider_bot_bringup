@@ -69,8 +69,10 @@
     <inertial>
       <origin xyz="0.0045 0 0.035" rpy="0 0 0"/>
       <mass value="0.126"/>
-      <inertia ixx="1.35942189e-08" iyy="3.17136623e-08" izz="3.50224283e-08"
-               ixy="-4.05791206e-11" ixz="4.26994723e-09" iyz="8.44411878e-11"/>
+      <!-- Plausible solid-puck inertia; the CAD export gave ~1e-8 (degenerate),
+           which DART uses verbatim (PhysX silently regularizes it) and turns
+           the mass matrix near-singular -> solver jitter. -->
+      <inertia ixx="1.2e-04" iyy="1.2e-04" izz="1.0e-04" ixy="0.0" ixz="0.0" iyz="0.0"/>
     </inertial>
     <visual>
       <origin xyz="-0.05 -0.01 0.015" rpy="0 0 0"/>
@@ -85,8 +87,8 @@
     <inertial>
       <origin xyz="0.04 -0.01 0.02" rpy="0 0 0"/>
       <mass value="0.2244"/>
-      <inertia ixx="0.00000006" iyy="0.00000008" izz="0.00000010"
-               ixy="-0.00000000" ixz="0.00000000" iyz="-0.00000000"/>
+      <!-- Plausible battery-pack inertia; CAD export gave ~6e-8 (degenerate). -->
+      <inertia ixx="1.5e-04" iyy="1.5e-04" izz="1.5e-04" ixy="0.0" ixz="0.0" iyz="0.0"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -102,7 +104,7 @@
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <mass value="0.001"/>
-      <inertia ixx="1e-09" iyy="1e-09" izz="1e-09" ixy="0" ixz="0" iyz="0"/>
+      <inertia ixx="1e-06" iyy="1e-06" izz="1e-06" ixy="0" ixz="0" iyz="0"/>
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -117,7 +119,10 @@
     <inertial>
       <origin xyz="-0.029329716066216552 -0.02813594305937389 -0.02511915559887622" rpy="0 0 0"/>
       <mass value="0.12"/>
-      <inertia ixx="0.00014066085674721668" iyy="0.0001330984450941405" izz="9.579054760563143e-05" ixy="-1.512482330615233e-05" iyz="-5.041607768717444e-07" ixz="5.041607768717444e-06"/>
+      <!-- Symmetrized to match arm_a_1/2/3 (identical leg part); the CAD export
+           gave this one leg ~2.3x the inertia, which an explicit PD turns into
+           a curved walk (Isaac's implicit PD hides the asymmetry). -->
+      <inertia ixx="5.834254143646408e-05" iyy="6.165745856353591e-05" izz="4.198895027624309e-05" ixy="6.629834254143645e-06" iyz="2.2099447513812153e-06" ixz="2.209944751381215e-07"/>
     </inertial>
     <visual>
       <origin xyz="0.0802 0.0649 -0.0278" rpy="0 0 0"/>
@@ -168,10 +173,10 @@
       </geometry>
       <material name="silver"/>
     </visual>
-    <collision>
-      <origin xyz="0.124465 0.14848 -0.082982" rpy="0 0 0"/>
+    <collision name="arm_c_4_1_foot">
+      <origin xyz="-0.0691 -0.0439 -0.1215" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="${mesh_pkg}/arm_c_4_1.stl" scale="0.001 0.001 0.001"/>
+        <sphere radius="0.012"/>
       </geometry>
     </collision>
   </link>
@@ -231,10 +236,15 @@
       </geometry>
       <material name="silver"/>
     </visual>
-    <collision>
-      <origin xyz="-0.16378 0.109165 -0.082982" rpy="0 0 0"/>
+    <!-- Foot contact: a sphere at the toe tip, not the STL mesh. DART does
+         literal mesh-plane contact (points jump between triangles -> noisy,
+         non-deterministic footing -> the gait wanders); a sphere gives one
+         clean, stable contact point. PhysX convex-decomposes so Isaac is fine
+         with the mesh. Visual keeps the mesh. -->
+    <collision name="arm_c_1_1_foot">
+      <origin xyz="0.0439 -0.0691 -0.1215" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="${mesh_pkg}/arm_c_1_1.stl" scale="0.001 0.001 0.001"/>
+        <sphere radius="0.012"/>
       </geometry>
     </collision>
   </link>
@@ -294,10 +304,10 @@
       </geometry>
       <material name="silver"/>
     </visual>
-    <collision>
-      <origin xyz="-0.124465 -0.14848 -0.082982" rpy="0 0 0"/>
+    <collision name="arm_c_2_1_foot">
+      <origin xyz="0.0691 0.0439 -0.1215" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="${mesh_pkg}/arm_c_2_1.stl" scale="0.001 0.001 0.001"/>
+        <sphere radius="0.012"/>
       </geometry>
     </collision>
   </link>
@@ -357,10 +367,10 @@
       </geometry>
       <material name="silver"/>
     </visual>
-    <collision>
-      <origin xyz="0.16378 -0.109165 -0.082982" rpy="0 0 0"/>
+    <collision name="arm_c_3_1_foot">
+      <origin xyz="-0.0439 0.0691 -0.1215" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="${mesh_pkg}/arm_c_3_1.stl" scale="0.001 0.001 0.001"/>
+        <sphere radius="0.012"/>
       </geometry>
     </collision>
   </link>
@@ -372,7 +382,7 @@
     <parent link="base_link"/>
     <child link="arm_a_4_1"/>
     <axis xyz="0.0 -0.0 1.0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
   <joint name="Revolute_111" type="continuous">
@@ -380,7 +390,7 @@
     <parent link="arm_a_4_1"/>
     <child link="arm_b_4_1"/>
     <axis xyz="0.707107 -0.707107 0.0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
   <joint name="Revolute_112" type="continuous">
@@ -388,7 +398,7 @@
     <parent link="arm_b_4_1"/>
     <child link="arm_c_4_1"/>
     <axis xyz="-0.707107 0.707107 -0.0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
   <!-- Leg 1 (front-left): Revolute_113/114/115 -->
@@ -397,7 +407,7 @@
     <parent link="base_link"/>
     <child link="arm_a_1_1"/>
     <axis xyz="0.0 -0.0 1.0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
   <joint name="Revolute_114" type="continuous">
@@ -405,7 +415,7 @@
     <parent link="arm_a_1_1"/>
     <child link="arm_b_1_1"/>
     <axis xyz="0.707107 0.707107 0.0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
   <joint name="Revolute_115" type="continuous">
@@ -413,7 +423,7 @@
     <parent link="arm_b_1_1"/>
     <child link="arm_c_1_1"/>
     <axis xyz="-0.707107 -0.707107 -0.0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
   <!-- Leg 2 (front-right): Revolute_116/117/118 -->
@@ -422,7 +432,7 @@
     <parent link="base_link"/>
     <child link="arm_a_2_1"/>
     <axis xyz="-0.0 0.0 1.0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
   <joint name="Revolute_117" type="continuous">
@@ -430,7 +440,7 @@
     <parent link="arm_a_2_1"/>
     <child link="arm_b_2_1"/>
     <axis xyz="-0.707107 0.707107 -0.0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
   <joint name="Revolute_118" type="continuous">
@@ -438,7 +448,7 @@
     <parent link="arm_b_2_1"/>
     <child link="arm_c_2_1"/>
     <axis xyz="0.707107 -0.707107 -0.0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
   <!-- Leg 3 (back-right): Revolute_119/120/121 -->
@@ -447,7 +457,7 @@
     <parent link="base_link"/>
     <child link="arm_a_3_1"/>
     <axis xyz="-0.0 0.0 1.0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
   <joint name="Revolute_120" type="continuous">
@@ -455,7 +465,7 @@
     <parent link="arm_a_3_1"/>
     <child link="arm_b_3_1"/>
     <axis xyz="-0.707107 -0.707107 0.0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
   <joint name="Revolute_121" type="continuous">
@@ -463,7 +473,7 @@
     <parent link="arm_b_3_1"/>
     <child link="arm_c_3_1"/>
     <axis xyz="0.707107 0.707107 -0.0"/>
-    <dynamics damping="0.1" friction="0.0"/>
+    <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
   <!-- Fixed sensor / payload frames -->

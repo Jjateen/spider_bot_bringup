@@ -3,19 +3,31 @@
 # Loaded by the gz_ros2_control system plugin (declared in
 # urdf/big_bertha.ros2_control.xacro). Spawns:
 #   - joint_state_broadcaster -> /joint_states (position + velocity)
-#   - position_controller     -> /position_controller/commands
-#     (std_msgs/Float64MultiArray, the interface gz_ros2_control expects)
+#   - position_controller     -> JointEffortPdController
+#     (subscribes /position_controller/commands = 12 position targets)
+#
+# The controller runs a synchronous effort-PD at update_rate, emulating the
+# Isaac Lab implicit actuator (stiffness=20, damping=2) the policy trained
+# against. Computing the PD here -- in the controller_manager loop, reading
+# q/qd with zero latency -- is what removes the jitter; the same PD done in
+# the policy node and shipped over a topic damps against stale velocity.
 #
 # Joint order matches the policy contract: Revolute_110 .. Revolute_121.
 controller_manager:
   ros__parameters:
-    update_rate: 200  # Hz
+    # Match the gz physics rate (500 Hz). gz_ros2_control runs the controller
+    # once per physics step, so the explicit effort-PD updates at 500 Hz, where
+    # kp*dt^2/I ~ 1.4 is stable. At Isaac's 200 Hz the explicit PD overshoots
+    # (ratio ~8.6) -> the walk bounces and veers; 500 Hz makes it track like
+    # Isaac's implicit actuator. The policy stays at 50 Hz (decimated in the
+    # node), so gait timing is unchanged. See worlds/obstacle_world.sdf.
+    update_rate: 500  # Hz
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
     position_controller:
-      type: forward_command_controller/ForwardCommandController
+      type: big_bertha_controllers/JointEffortPdController
 
 joint_state_broadcaster:
   ros__parameters:
@@ -23,7 +35,14 @@ joint_state_broadcaster:
 
 position_controller:
   ros__parameters:
-    interface_name: position
+    # These MUST match the deployed policy's Isaac actuator. The deployed
+    # policy is the retrained run big_bertha/2026-06-11_10-00-20, whose env.yaml
+    # actuator is stiffness=20, damping=2, effort_limit_sim=1.0,
+    # velocity_limit_sim=5.55.
+    kp: 20.0            # position stiffness (Isaac stiffness=20)
+    kd: 2.0             # velocity damping  (Isaac damping=2)
+    effort_limit: 1.18   # N*m stall (MG995 @6.6V, 12 kgf-cm)
+    velocity_limit: 6.54  # rad/s no-load cap (MG995 @6.6V, 0.16 s/60deg)
     joints:
       - Revolute_110
       - Revolute_111
@@ -37,3 +56,8 @@ position_controller:
       - Revolute_119
       - Revolute_120
       - Revolute_121
+    default_positions:
+      [0.0, 0.5, 0.0,
+       0.0, 0.5, 0.0,
+       0.0, 0.5, 0.0,
+       0.0, 0.5, 0.0]

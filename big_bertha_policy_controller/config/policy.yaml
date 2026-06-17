@@ -12,7 +12,16 @@
     control_rate: 50.0       # Hz
     start_enabled: true
     cmd_vel_timeout: 0.5     # s; stale /cmd_vel -> command zeroed (safe stop)
-    joint_limit: 3.14159     # rad; clamp joint targets (guards physics solver)
+    joint_limit: 1.5708      # rad; clamp joint targets to MG995 180deg hardware travel
+    # The node publishes 12 joint POSITION TARGETS; the effort-PD that emulates
+    # Isaac's ImplicitActuatorCfg now lives in JointEffortPdController (see
+    # big_bertha_description/config/ros2_control.yaml), where it runs
+    # synchronously in the controller_manager loop and reads q/qd with zero
+    # latency. Doing the PD in this node and shipping torque over a topic damps
+    # against stale velocity -> jitter; hence use_effort=false here.
+    use_effort: false        # publish position targets, controller does the PD
+    pd_rate: 200.0           # Hz; target publish rate (policy decimated to 50)
+    action_clip: 1.0         # raw policy action clamp (matches env)
     joint_names:
       - Revolute_110
       - Revolute_111
