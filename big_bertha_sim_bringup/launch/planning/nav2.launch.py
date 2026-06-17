@@ -96,7 +96,12 @@ def generate_launch_description():
             name=exe,
             output='screen',
             respawn=False,
-            parameters=[configured_params],
+            # use_sim_time is also passed explicitly: RewrittenYaml's
+            # param_rewrites only REPLACES keys that already exist in the yaml,
+            # and nav2_params.yaml carries none, so the rewrite alone left every
+            # server on the wall clock -> "Transform data too old (map->odom)"
+            # and the controller never produced /cmd_vel.
+            parameters=[configured_params, {'use_sim_time': use_sim_time}],
         )
         for exe, pkg_name in nav2_nodes
     ]
