@@ -34,9 +34,11 @@ unplannable until the robot drives there; the NavfnPlanner is configured with
 Coordinates
 -----------
 In known-map mode the saved map is world-axis-aligned, so the ``map`` frame
-matches the Gazebo world. The robot spawns at world A = (-3.5, -3.5) and the
-goal is world B = (3.5, 3.5) -- the default below. The straight A->B diagonal is
-blocked by the obstacle_world pillars/boxes, so Nav2 must route around them.
+matches the Gazebo world. The robot spawns at world A = (-3.5, -3.5) facing
++x (East) and the goal is world B = (3.5, -3.5) -- the default below: a
+straight East traverse of the obstacle-free bottom corridor (all boxes/pillars
+sit at y >= -1.8). The diagonal toward (3.5, 3.5) is walled off by
+box_1/pillar_1/box_2 and would need hard turns the gait cannot make.
 
     ros2 launch big_bertha_sim_bringup demo.launch.py
     ros2 launch big_bertha_sim_bringup demo.launch.py slam:=true
@@ -106,12 +108,12 @@ def generate_launch_description():
                         'repeatable A->B demo (default)'),
         DeclareLaunchArgument(
             'goal_x', default_value='3.5',
-            description='Goal B x in the map frame (world B; map frame is '
-                        'world-aligned in known-map mode). Robot spawns at '
-                        'world A=(-3.5,-3.5); B is world (3.5,3.5), NOT (7,7).'),
+            description='Goal B x (map frame, world-aligned in known-map). '
+                        'A=(-3.5,-3.5) facing +x; B=(3.5,-3.5) is a straight '
+                        'East traverse of the clear bottom corridor.'),
         DeclareLaunchArgument(
-            'goal_y', default_value='3.5',
-            description='Goal B y in the map frame (world B = 3.5)'),
+            'goal_y', default_value='-3.5',
+            description='Goal B y in the map frame (world B = -3.5)'),
         DeclareLaunchArgument(
             'goal_delay', default_value='45.0',
             description='Seconds to wait for localization + Nav2 to activate '

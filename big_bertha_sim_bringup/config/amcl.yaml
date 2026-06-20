@@ -45,11 +45,13 @@ amcl:
     z_short: 0.05
     set_initial_pose: true
     # Demo point A (spawn) so AMCL starts seeded near ground truth.
+    # yaw 0.0 = facing +x (East), matching the spawn yaw in bringup.launch.py
+    # for the straight bottom-corridor A->B demo.
     initial_pose:
       x: -3.5
       y: -3.5
       z: 0.0
-      yaw: 0.785
+      yaw: 0.0
 
 map_server:
   ros__parameters:

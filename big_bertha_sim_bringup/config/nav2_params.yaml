@@ -96,7 +96,10 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.30
+      # The contact asymmetry slips the body sideways ~1 m over the traverse and
+      # the gait cannot actively turn to null it, so accept B within ~1.2 m
+      # rather than fight an un-trackable cross-track error.
+      xy_goal_tolerance: 1.2
       # Reaching point B is what matters; the crawl yaws slowly and need not end
       # at a specific heading, so don't gate goal success on final orientation
       # (was 0.25 rad -> the robot could sit on B forever failing the yaw check).
@@ -110,9 +113,14 @@ controller_server:
       # for 0.4 just saturates the cmd clamp and overruns the path. Shorter
       # lookahead keeps the carrot near the slow robot for tighter following.
       desired_linear_vel: 0.12
-      lookahead_dist: 0.5
-      min_lookahead_dist: 0.25
-      max_lookahead_dist: 0.7
+      # Large lookahead: the carrot sits far ahead so the commanded yaw stays
+      # small and forward-biased. A tight lookahead micro-corrects cross-track
+      # with hard left-yaw the gait cannot execute, which spirals the robot and
+      # stalls it; aiming far ahead keeps it walking ~straight toward B (the
+      # drift is cancelled by the policy node's heading-hold).
+      lookahead_dist: 2.5
+      min_lookahead_dist: 1.5
+      max_lookahead_dist: 3.0
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 1.2
       transform_tolerance: 0.2

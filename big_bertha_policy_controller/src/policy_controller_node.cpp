@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -64,6 +65,46 @@ public:
     max_lin_vel_x_ = declare_parameter<double>("max_lin_vel_x", 0.3);
     max_lin_vel_y_ = declare_parameter<double>("max_lin_vel_y", 0.05);
     max_yaw_rate_ = declare_parameter<double>("max_yaw_rate", 0.15);
+    // --------------------- Heading-hold outer loop ----------------------
+    // The PhysX->DART contact asymmetry gives a systematic yaw drift (the
+    // robot curves right even when commanded straight). It is a steady
+    // disturbance, so a closed-loop heading controller in the deployment node
+    // rejects it WITHOUT retraining or touching the sim: integrate Nav2's
+    // commanded yaw rate into a heading setpoint, then feed the policy a
+    // CORRECTIVE yaw command  yaw = wz_ff + Kp*(desired_yaw - odom_yaw),
+    // clamped to the trained turn envelope. When the heading error is large we
+    // also throttle forward speed so the (weak) in-place turn authority can
+    // realign before pushing on. heading_hold:=false restores raw passthrough.
+    heading_hold_ = declare_parameter<bool>("heading_hold", true);
+    heading_kp_ = declare_parameter<double>("heading_kp", 2.0);
+    // Final yaw command clamp -- the policy was trained on yaw in [-0.6, 0.6],
+    // so 0.5 gives the correction real authority (the old 0.15 clamp throttled
+    // the turn so hard the drift always won).
+    heading_max_ = declare_parameter<double>("heading_max", 0.5);
+    // Anti-windup: never let the setpoint lead/lag the measured heading by more
+    // than this, so a turn the policy cannot keep up with does not wind up and
+    // overshoot when the command relaxes.
+    heading_err_clamp_ = declare_parameter<double>("heading_err_clamp", 0.4);
+    // Forward speed is scaled to fwd_min_scale at |err| = fwd_slow_err (turn in
+    // place) and to 1.0 at zero error (full forward while tracking straight).
+    fwd_slow_err_ = declare_parameter<double>("fwd_slow_err", 0.5);
+    fwd_min_scale_ = declare_parameter<double>("fwd_min_scale", 0.15);
+    // --------------- Differential-stride steering (the real knob) ----------
+    // model_49999 barely responds to the yaw COMMAND in DART, so the heading
+    // loop also drives a hip-bias steering signal: the hips rotate about the
+    // body Z axis, so adding steer_cmd*hip_steer_sign[i] to the hip targets
+    // rotates all stance feet the same way and yaws the body. This is an
+    // output-level correction (no retrain, no sim edit). hip_steer_sign sets
+    // the per-hip polarity (calibrated empirically via /debug_hip_bias).
+    steer_kp_ = declare_parameter<double>("steer_kp", 0.6);
+    steer_ki_ = declare_parameter<double>("steer_ki", 0.5);
+    steer_max_ = declare_parameter<double>("steer_max", 0.25);
+    hip_steer_sign_ =
+      declare_parameter<std::vector<double>>("hip_steer_sign", {1.0, 1.0, 1.0, 1.0});
+    hip_steer_sign_.resize(4, 0.0);
+    // Below this forward command the gait is gated off and the robot holds the
+    // default stance (the policy cannot stand still on its own).
+    stand_vx_thresh_ = declare_parameter<double>("stand_vx_thresh", 0.02);
     // Effort-PD actuator emulation of Isaac's ImplicitActuatorCfg
     // (stiffness=20, damping=2): output joint torque
     //   tau = kp*(q_des - q) + kd*(0 - qd), torque-limited,
@@ -124,6 +165,17 @@ public:
     cmd_sub_ = create_subscription<geometry_msgs::msg::Twist>(
       "/cmd_vel", rclcpp::QoS(1),
       std::bind(&PolicyControllerNode::on_cmd, this, std::placeholders::_1));
+    // Debug-only: inject a constant per-hip bias (rad) added to the policy's
+    // hip targets, to calibrate the differential-stride steering knob. The
+    // closed-loop demo uses the heading-driven steering, not this topic.
+    hip_bias_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
+      "/debug_hip_bias", rclcpp::QoS(1),
+      [this](const std_msgs::msg::Float64MultiArray::SharedPtr m) {
+        std::lock_guard<std::mutex> lk(state_mutex_);
+        for (size_t i = 0; i < 4 && i < m->data.size(); ++i) {
+          debug_hip_bias_[i] = m->data[i];
+        }
+      });
 
     set_enabled_srv_ = create_service<spider_msgs::srv::SetPolicyEnabled>(
       "set_policy_enabled",
@@ -173,6 +225,10 @@ private:
     // OdometryPublisher, matching root_lin_vel_b.
     obs_.root_lin_vel_b = {
       msg->twist.twist.linear.x, msg->twist.twist.linear.y, msg->twist.twist.linear.z};
+    // Absolute heading (map/odom yaw) for the heading-hold outer loop.
+    const auto & q = msg->pose.pose.orientation;
+    current_yaw_ = std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+    have_odom_yaw_ = true;
   }
 
   void on_imu(const sensor_msgs::msg::Imu::SharedPtr msg)
@@ -206,14 +262,74 @@ private:
   void on_cmd(const geometry_msgs::msg::Twist::SharedPtr msg)
   {
     std::lock_guard<std::mutex> lk(state_mutex_);
-    // Clamp to the trained command envelope (forward-only vx, narrow vy/yaw) so
-    // Nav2's out-of-distribution commands (linear.x ~0.37, yaw ~0.44) don't
-    // make the policy flail. Turns become wider/slower but stay executable.
-    obs_.commands = {
-      std::clamp(msg->linear.x, 0.0, max_lin_vel_x_),
-      std::clamp(msg->linear.y, -max_lin_vel_y_, max_lin_vel_y_),
-      std::clamp(msg->angular.z, -max_yaw_rate_, max_yaw_rate_)};
+    // Store the raw Nav2 command; the trained-envelope clamp and the
+    // heading-hold correction are applied in update_commands() at the policy
+    // rate (so the heading integrator advances on a regular dt).
+    cmd_vx_ = msg->linear.x;
+    cmd_vy_ = msg->linear.y;
+    cmd_wz_ = msg->angular.z;
     last_cmd_time_ = now();
+  }
+
+  static double wrap_pi(double a) { return std::atan2(std::sin(a), std::cos(a)); }
+
+  // Build obs_.commands from the latest Nav2 command. Caller must hold
+  // state_mutex_. Applies the safe-stop timeout, clamps to the trained command
+  // envelope, and (when heading_hold_) replaces the yaw command with a
+  // heading-setpoint tracking correction that rejects the systematic contact
+  // drift. Returns nothing; writes obs_.commands.
+  void update_commands()
+  {
+    const double dt = 1.0 / control_rate_;
+    const bool stale = cmd_timeout_ > 0.0 && (now() - last_cmd_time_).seconds() > cmd_timeout_;
+    double vx = stale ? 0.0 : cmd_vx_;
+    double vy = stale ? 0.0 : cmd_vy_;
+    double wz = stale ? 0.0 : cmd_wz_;
+    vx = std::clamp(vx, 0.0, max_lin_vel_x_);
+    vy = std::clamp(vy, -max_lin_vel_y_, max_lin_vel_y_);
+
+    if (!heading_hold_ || !have_odom_yaw_) {
+      obs_.commands = {vx, vy, std::clamp(wz, -max_yaw_rate_, max_yaw_rate_)};
+      steer_cmd_ = 0.0;  // calibration mode: only /debug_hip_bias steers
+      return;
+    }
+
+    // Re-latch the heading setpoint to the current heading whenever the robot
+    // is idle, so it never tries to "correct" toward a stale heading.
+    const bool idle = std::abs(vx) < 0.01 && std::abs(wz) < 0.01;
+    if (idle || !heading_init_) {
+      desired_yaw_ = current_yaw_;
+      steer_i_ = 0.0;  // reset integrator so it never holds a stale heading
+      heading_init_ = true;
+    }
+    // Advance the heading setpoint by the commanded yaw rate, then clamp it to
+    // stay within heading_err_clamp_ of the measured heading (anti-windup).
+    desired_yaw_ = wrap_pi(desired_yaw_ + wz * dt);
+    double err = wrap_pi(desired_yaw_ - current_yaw_);
+    if (std::abs(err) > heading_err_clamp_) {
+      err = std::clamp(err, -heading_err_clamp_, heading_err_clamp_);
+      desired_yaw_ = wrap_pi(current_yaw_ + err);
+    }
+    const double yaw_cmd = std::clamp(wz + heading_kp_ * err, -heading_max_, heading_max_);
+    // The hip-bias steering does the real turning work (the policy yaw command
+    // barely moves model_49999 in DART). PI control: the P term reacts fast, the
+    // I term removes the steady-state heading offset -- a P-only loop settles at
+    // whatever heading lets the saturated steering just cancel the drift (a ~0.3
+    // rad bias off the commanded heading), which walked the robot into the wall.
+    if (steer_ki_ > 1e-6) {
+      steer_i_ += err * dt;
+      // Anti-windup: clamp the integral so its contribution stays within range.
+      const double i_lim = steer_max_ / steer_ki_;
+      steer_i_ = std::clamp(steer_i_, -i_lim, i_lim);
+    }
+    steer_cmd_ = std::clamp(steer_kp_ * err + steer_ki_ * steer_i_, -steer_max_, steer_max_);
+    // Slow forward while a large heading error is being corrected so the
+    // steering has room to realign before pushing forward again.
+    double fwd_scale = 1.0;
+    if (fwd_slow_err_ > 1e-3) {
+      fwd_scale = std::clamp(1.0 - std::abs(err) / fwd_slow_err_, fwd_min_scale_, 1.0);
+    }
+    obs_.commands = {vx * fwd_scale, vy, yaw_cmd};
   }
 
   void on_set_enabled(
@@ -288,57 +404,82 @@ private:
     } else if (++decim_count_ >= policy_decimation_) {
       decim_count_ = 0;
       std::vector<float> input;
+      bool moving;
       {
         std::lock_guard<std::mutex> lk(state_mutex_);
-        if (cmd_timeout_ > 0.0 && (now() - last_cmd_time_).seconds() > cmd_timeout_) {
-          obs_.commands = {0.0, 0.0, 0.0};
-        }
-        input = obs_.build();
-      }
-      for (float & v : input) {
-        if (!std::isfinite(v)) {
-          v = 0.0f;
-        }
-      }
-      std::array<float, bbpc::kActionDim> action{};
-      {
-        std::lock_guard<std::mutex> lk(model_mutex_);
-        try {
-          const std::array<int64_t, 2> shape{1, bbpc::kObsDim};
-          Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-          Ort::Value in_tensor = Ort::Value::CreateTensor<float>(
-            mem, input.data(), input.size(), shape.data(), shape.size());
-          const char * in_names[] = {"obs"};
-          const char * out_names[] = {"actions"};
-          auto t0 = std::chrono::steady_clock::now();
-          auto outputs =
-            session_->Run(Ort::RunOptions{nullptr}, in_names, &in_tensor, 1, out_names, 1);
-          auto t1 = std::chrono::steady_clock::now();
-          last_inf_ms_ = std::chrono::duration<double, std::milli>(t1 - t0).count();
-          const float * out = outputs.front().GetTensorData<float>();
-          for (int i = 0; i < bbpc::kActionDim; ++i) {
-            action[i] = out[i];
+        update_commands();  // safe-stop timeout + envelope clamp + heading hold
+        // The policy walks forward even when commanded vx=0 (vx=0 is out of its
+        // training distribution), so a "stop" command would leave the robot
+        // free-drifting. Gate it: when no forward motion is commanded (idle /
+        // goal reached / cmd timeout), hold the default stance instead of
+        // running the gait. Without this the robot wanders off A during the
+        // pre-goal idle window and never navigates from the right start pose.
+        moving = obs_.commands[0] > stand_vx_thresh_;
+        if (!moving) {
+          for (int i = 0; i < bbpc::kNumJoints; ++i) {
+            target_pos_[i] = obs_.default_joint_pos[i];
+            obs_.prev_actions[i] = 0.0f;
           }
-        } catch (const std::exception & e) {
-          RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000, "inference error: %s", e.what());
-          status_pub_->publish(status);
-          return;
+          steer_cmd_ = 0.0;
+          last_action_norm_ = 0.0;
+        } else {
+          input = obs_.build();
         }
       }
-      double norm_sq = 0.0;
-      {
-        std::lock_guard<std::mutex> lk(state_mutex_);
-        for (int i = 0; i < bbpc::kNumJoints; ++i) {
-          double a_raw = std::isfinite(action[i]) ? action[i] : 0.0;
-          // Env clamps the raw action to [-1, 1] before scaling.
-          double a = std::clamp(a_raw, -action_clip_, action_clip_);
-          double t = action_scale_ * a + obs_.default_joint_pos[i];
-          target_pos_[i] = std::clamp(t, -joint_limit_, joint_limit_);
-          norm_sq += a * a;
-          obs_.prev_actions[i] = static_cast<float>(a);
+      if (!moving) {
+        status.inference_ms = last_inf_ms_;
+        status.action_norm = last_action_norm_;
+        // fall through to the PD step so it holds the stance targets
+      } else {
+        for (float & v : input) {
+          if (!std::isfinite(v)) {
+            v = 0.0f;
+          }
         }
-      }
-      last_action_norm_ = std::sqrt(norm_sq);
+        std::array<float, bbpc::kActionDim> action{};
+        {
+          std::lock_guard<std::mutex> lk(model_mutex_);
+          try {
+            const std::array<int64_t, 2> shape{1, bbpc::kObsDim};
+            Ort::MemoryInfo mem = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+            Ort::Value in_tensor = Ort::Value::CreateTensor<float>(
+              mem, input.data(), input.size(), shape.data(), shape.size());
+            const char * in_names[] = {"obs"};
+            const char * out_names[] = {"actions"};
+            auto t0 = std::chrono::steady_clock::now();
+            auto outputs =
+              session_->Run(Ort::RunOptions{nullptr}, in_names, &in_tensor, 1, out_names, 1);
+            auto t1 = std::chrono::steady_clock::now();
+            last_inf_ms_ = std::chrono::duration<double, std::milli>(t1 - t0).count();
+            const float * out = outputs.front().GetTensorData<float>();
+            for (int i = 0; i < bbpc::kActionDim; ++i) {
+              action[i] = out[i];
+            }
+          } catch (const std::exception & e) {
+            RCLCPP_ERROR_THROTTLE(
+              get_logger(), *get_clock(), 2000, "inference error: %s", e.what());
+            status_pub_->publish(status);
+            return;
+          }
+        }
+        double norm_sq = 0.0;
+        {
+          std::lock_guard<std::mutex> lk(state_mutex_);
+          for (int i = 0; i < bbpc::kNumJoints; ++i) {
+            double a_raw = std::isfinite(action[i]) ? action[i] : 0.0;
+            // Env clamps the raw action to [-1, 1] before scaling.
+            double a = std::clamp(a_raw, -action_clip_, action_clip_);
+            double t = action_scale_ * a + obs_.default_joint_pos[i];
+            if (i < 4) {  // hips: inject differential-stride steering + debug bias
+              t += debug_hip_bias_[i] + steer_cmd_ * hip_steer_sign_[i];
+            }
+            target_pos_[i] = std::clamp(t, -joint_limit_, joint_limit_);
+            norm_sq += a * a;
+            obs_.prev_actions[i] = static_cast<float>(a);
+          }
+        }
+        last_action_norm_ = std::sqrt(norm_sq);
+      }  // end if (moving)
     }
 
     // ===== PD step every tick (pd_rate_): torque toward the held targets.
@@ -407,6 +548,30 @@ private:
   double max_yaw_rate_{0.15};
   bool enabled_{true};
 
+  // Heading-hold outer loop (drift rejection without retraining).
+  bool heading_hold_{true};
+  double heading_kp_{2.0};
+  double heading_max_{0.5};
+  double heading_err_clamp_{0.4};
+  double fwd_slow_err_{0.5};
+  double fwd_min_scale_{0.15};
+  double cmd_vx_{0.0};
+  double cmd_vy_{0.0};
+  double cmd_wz_{0.0};
+  double current_yaw_{0.0};
+  bool have_odom_yaw_{false};
+  double desired_yaw_{0.0};
+  bool heading_init_{false};
+  // Differential-stride steering (PI on heading error).
+  double steer_kp_{0.6};
+  double steer_ki_{0.5};
+  double steer_i_{0.0};
+  double steer_max_{0.25};
+  std::vector<double> hip_steer_sign_{1.0, 1.0, 1.0, 1.0};
+  double steer_cmd_{0.0};
+  std::array<double, 4> debug_hip_bias_{};
+  double stand_vx_thresh_{0.02};
+
   // ROS
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_pub_;
   rclcpp::Publisher<spider_msgs::msg::PolicyStatus>::SharedPtr status_pub_;
@@ -414,6 +579,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hip_bias_sub_;
   rclcpp::Service<spider_msgs::srv::SetPolicyEnabled>::SharedPtr set_enabled_srv_;
   rclcpp::Service<spider_msgs::srv::LoadPolicy>::SharedPtr load_policy_srv_;
   rclcpp::TimerBase::SharedPtr timer_;
