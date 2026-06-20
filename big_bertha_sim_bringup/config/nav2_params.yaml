@@ -84,7 +84,9 @@ controller_server:
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.10
-      movement_time_allowance: 45.0
+      # Big Bertha crawls at ~0.1 m/s and yaws slowly, so it needs a long
+      # allowance to clear the 0.10 m progress bar (was 45 s -> aborted).
+      movement_time_allowance: 90.0
     # Goal checker parameters
     #precise_goal_checker:
     #  plugin: "nav2_controller::SimpleGoalChecker"
@@ -94,17 +96,23 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.25
+      xy_goal_tolerance: 0.30
+      # Reaching point B is what matters; the crawl yaws slowly and need not end
+      # at a specific heading, so don't gate goal success on final orientation
+      # (was 0.25 rad -> the robot could sit on B forever failing the yaw check).
+      yaw_goal_tolerance: 3.15
     # RegulatedPurePursuitController: robust for a small diff-drive base and
     # the gz VelocityControl drive. Tuned for Big Bertha's modest speeds in
     # the obstacle arena.
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.4
-      lookahead_dist: 0.6
-      min_lookahead_dist: 0.3
-      max_lookahead_dist: 0.9
+      # Match the learned crawl envelope: it tracks ~0.12 m/s forward, so asking
+      # for 0.4 just saturates the cmd clamp and overruns the path. Shorter
+      # lookahead keeps the carrot near the slow robot for tighter following.
+      desired_linear_vel: 0.12
+      lookahead_dist: 0.5
+      min_lookahead_dist: 0.25
+      max_lookahead_dist: 0.7
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 1.2
       transform_tolerance: 0.2
@@ -116,7 +124,9 @@ controller_server:
       use_regulated_linear_velocity_scaling: true
       use_cost_regulated_linear_velocity_scaling: false
       regulated_linear_scaling_min_radius: 0.9
-      regulated_linear_scaling_min_speed: 0.25
+      # Floor the regulated speed at the crawl's real pace, not 0.25 (which the
+      # gait cannot reach, so the controller thought it was stalled).
+      regulated_linear_scaling_min_speed: 0.06
       use_rotate_to_heading: false
       rotate_to_heading_min_angle: 0.785
       max_angular_accel: 3.2
