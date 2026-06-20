@@ -107,10 +107,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'goal_x', default_value='3.5',
             description='Goal B x in the map frame (world B; map frame is '
-                        'world-aligned in known-map mode)'),
+                        'world-aligned in known-map mode). Robot spawns at '
+                        'world A=(-3.5,-3.5); B is world (3.5,3.5), NOT (7,7).'),
         DeclareLaunchArgument(
             'goal_y', default_value='3.5',
-            description='Goal B y in the map frame (world B)'),
+            description='Goal B y in the map frame (world B = 3.5)'),
         DeclareLaunchArgument(
             'goal_delay', default_value='45.0',
             description='Seconds to wait for localization + Nav2 to activate '
