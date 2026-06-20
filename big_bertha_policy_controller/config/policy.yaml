@@ -30,6 +30,32 @@
     use_effort: false        # publish position targets, controller does the PD
     pd_rate: 200.0           # Hz; target publish rate (policy decimated to 50)
     action_clip: 1.0         # raw policy action clamp (matches env)
+    # Command envelope sent to the policy (trained ranges). Yaw is widened from
+    # the old 0.15 so the heading-hold loop has real turn authority.
+    max_lin_vel_x: 0.3
+    max_lin_vel_y: 0.05
+    max_yaw_rate: 0.5
+    # ---- Heading-hold outer loop: rejects the systematic PhysX->DART contact
+    # yaw drift in the deployment node (no retrain, no sim edit). It integrates
+    # Nav2's commanded yaw rate into a heading setpoint and feeds the policy a
+    # corrective yaw = wz + heading_kp*(desired_yaw - odom_yaw).
+    heading_hold: true
+    heading_kp: 2.0          # P gain on the (weak) policy yaw command
+    heading_max: 0.5         # final yaw command clamp (trained |yaw| <= 0.6)
+    heading_err_clamp: 0.4   # anti-windup: max setpoint lead/lag vs measured
+    fwd_slow_err: 0.5        # |err| (rad) for forward throttle (off below)
+    fwd_min_scale: 1.0       # 1.0 = no extra throttle; hip-steer does the trade
+    # Hip-bias steering: calibration showed a uniform NEGATIVE hip bias cancels
+    # the systematic right drift (b=-0.25 took yaw -0.086 -> +0.002), so all
+    # four signs are -1 and steer_cmd = steer_kp*heading_err drives it.
+    steer_kp: 1.8            # rad of hip bias per rad of heading error
+    steer_ki: 0.8            # integral: removes steady heading offset vs drift
+    steer_max: 0.26          # max |hip bias| (b=-0.24 ~ fully cancels drift)
+    hip_steer_sign: [-1.0, -1.0, -1.0, -1.0]
+    # Gate the gait off below this forward command so the robot stands still
+    # when idle (the policy walks forward even at vx=0, so without this it
+    # free-drifts off the start before Nav2 sends the goal).
+    stand_vx_thresh: 0.02
     joint_names:
       - Revolute_110   # idx0  hip  leg1
       - Revolute_113   # idx1  hip  leg2
