@@ -3,7 +3,15 @@
 # The trained policy contract (PLAN.md section 2):
 #   obs = 48 floats, action = 12 floats
 #   joint_target = action_scale * action + default_joint_pos
-# Joints Revolute_110 .. Revolute_121, default per-leg pose [0.0, 0.5, 0.0].
+# Joint ORDER MUST match the Isaac articulation order the policy trained on,
+# NOT numeric Revolute_110..121. Isaac/PhysX orders joints by tree depth (all
+# hips, then all knees, then all ankles), so obs[i]/action[i] index this order:
+#   [110,113,116,119, 111,114,117,120, 112,115,118,121]
+#    \---- hips ----/  \--- knees ---/  \--- ankles --/
+# default_joint_pos is therefore [0]x4 (hips) [0.5]x4 (knees) [0]x4 (ankles).
+# Feeding numeric order scrambles the obs and lands actions on wrong joints ->
+# the policy collapses the robot. The /joint_states->obs map is by NAME, so gz
+# publish order does not matter; only this list's order does.
 /**:
   ros__parameters:
     # Absolute path is supplied by the launch file (package share /models).
@@ -23,20 +31,19 @@
     pd_rate: 200.0           # Hz; target publish rate (policy decimated to 50)
     action_clip: 1.0         # raw policy action clamp (matches env)
     joint_names:
-      - Revolute_110
-      - Revolute_111
-      - Revolute_112
-      - Revolute_113
-      - Revolute_114
-      - Revolute_115
-      - Revolute_116
-      - Revolute_117
-      - Revolute_118
-      - Revolute_119
-      - Revolute_120
-      - Revolute_121
+      - Revolute_110   # idx0  hip  leg1
+      - Revolute_113   # idx1  hip  leg2
+      - Revolute_116   # idx2  hip  leg3
+      - Revolute_119   # idx3  hip  leg4
+      - Revolute_111   # idx4  knee leg1
+      - Revolute_114   # idx5  knee leg2
+      - Revolute_117   # idx6  knee leg3
+      - Revolute_120   # idx7  knee leg4
+      - Revolute_112   # idx8  ankle leg1
+      - Revolute_115   # idx9  ankle leg2
+      - Revolute_118   # idx10 ankle leg3
+      - Revolute_121   # idx11 ankle leg4
     default_joint_pos:
-      [0.0, 0.5, 0.0,
-       0.0, 0.5, 0.0,
-       0.0, 0.5, 0.0,
-       0.0, 0.5, 0.0]
+      [0.0, 0.0, 0.0, 0.0,
+       0.5, 0.5, 0.5, 0.5,
+       0.0, 0.0, 0.0, 0.0]
