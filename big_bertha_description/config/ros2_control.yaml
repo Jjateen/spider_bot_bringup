@@ -43,21 +43,25 @@ position_controller:
     kd: 2.0             # velocity damping  (Isaac damping=2)
     effort_limit: 1.18   # N*m stall (MG995 @6.6V, 12 kgf-cm)
     velocity_limit: 6.54  # rad/s no-load cap (MG995 @6.6V, 0.16 s/60deg)
+    # ORDER MUST match the policy controller's joint_names (Isaac articulation
+    # order: all hips, all knees, all ankles) so the incoming 12-element command
+    # array indexes the same joints the policy produced. Numeric Revolute order
+    # scrambles obs/actions and collapses the gait. See
+    # big_bertha_policy_controller/config/policy.yaml.
     joints:
-      - Revolute_110
-      - Revolute_111
-      - Revolute_112
-      - Revolute_113
-      - Revolute_114
-      - Revolute_115
-      - Revolute_116
-      - Revolute_117
-      - Revolute_118
-      - Revolute_119
-      - Revolute_120
-      - Revolute_121
+      - Revolute_110   # hip  leg1
+      - Revolute_113   # hip  leg2
+      - Revolute_116   # hip  leg3
+      - Revolute_119   # hip  leg4
+      - Revolute_111   # knee leg1
+      - Revolute_114   # knee leg2
+      - Revolute_117   # knee leg3
+      - Revolute_120   # knee leg4
+      - Revolute_112   # ankle leg1
+      - Revolute_115   # ankle leg2
+      - Revolute_118   # ankle leg3
+      - Revolute_121   # ankle leg4
     default_positions:
-      [0.0, 0.5, 0.0,
-       0.0, 0.5, 0.0,
-       0.0, 0.5, 0.0,
-       0.0, 0.5, 0.0]
+      [0.0, 0.0, 0.0, 0.0,
+       0.5, 0.5, 0.5, 0.5,
+       0.0, 0.0, 0.0, 0.0]
