@@ -64,6 +64,7 @@ def generate_launch_description():
     pkg = get_package_share_directory('big_bertha_sim_bringup')
 
     slam = LaunchConfiguration('slam')
+    localization = LaunchConfiguration('localization')
     goal_x = LaunchConfiguration('goal_x')
     goal_y = LaunchConfiguration('goal_y')
     goal_delay = LaunchConfiguration('goal_delay')
@@ -72,12 +73,17 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(pkg, 'launch', 'bringup.launch.py')),
         launch_arguments={
-            'slam': slam,              # default false: known-map (AMCL) mode
+            'slam': slam,              # default false: known-map mode
+            # Default 'ground_truth': static identity map->odom so Nav2 gets the
+            # true world pose and can steer the residual DART crab out via yaw.
+            # AMCL (localization:=amcl) is ambiguous in the symmetric 4-wall arena
+            # -- it converges to a wrong pose and falsely reports reaching B while
+            # the robot is metres short. Ground-truth isolates the locomotion demo
+            # from that arena ambiguity (the codebase's intended A->B default).
+            'localization': localization,
             'rviz': 'true',            # open RViz
             'rviz_config': 'integration',  # map + lidar + costmaps + path + robot
             'use_sim_time': 'true',
-            # Spawn at world A=(-3.5,-3.5) yaw 0.785 (matches the AMCL seed in
-            # amcl.yaml so localization starts converged at A).
         }.items(),
     )
 
@@ -104,8 +110,13 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             'slam', default_value='false',
-            description='true: live SLAM; false: known-map (AMCL) for the '
-                        'repeatable A->B demo (default)'),
+            description='true: live SLAM; false: known-map for the repeatable '
+                        'A->B demo (default)'),
+        DeclareLaunchArgument(
+            'localization', default_value='ground_truth',
+            description="known-map map->odom provider: 'ground_truth' (static "
+                        "identity, honest pose, the A->B default) or 'amcl' "
+                        "(scan-match, ambiguous in the symmetric arena)"),
         DeclareLaunchArgument(
             'goal_x', default_value='3.5',
             description='Goal B x (map frame, world-aligned in known-map). '

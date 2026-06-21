@@ -120,6 +120,11 @@ public:
     lateral_kp_ = declare_parameter<double>("lateral_kp", 0.25);
     // |wz| above which we treat the motion as a turn and re-latch the line.
     lateral_turn_thresh_ = declare_parameter<double>("lateral_turn_thresh", 0.05);
+    // Cross-track STEERING gain: lateral offset -> heading-error bias, so the
+    // strong hip-bias steering (not the weak vy) drives the robot back to the
+    // line. rad of heading bias per metre of offset, clamped to lateral_yaw_max.
+    lateral_yaw_kp_ = declare_parameter<double>("lateral_yaw_kp", 0.6);
+    lateral_yaw_max_ = declare_parameter<double>("lateral_yaw_max", 0.4);
     // Effort-PD actuator emulation of Isaac's ImplicitActuatorCfg
     // (stiffness=20, damping=2): output joint torque
     //   tau = kp*(q_des - q) + kd*(0 - qd), torque-limited,
@@ -330,12 +335,35 @@ private:
       err = std::clamp(err, -heading_err_clamp_, heading_err_clamp_);
       desired_yaw_ = wrap_pi(current_yaw_ + err);
     }
+    // Lateral-hold + cross-track steering. Compute the perpendicular offset from
+    // the latched line (through ref_{x,y} along desired_yaw_). Command vy toward
+    // the line AND -- since the policy's vy authority is too weak in DART to null
+    // the systematic lateral crab via sideways motion -- fold a cross-track bias
+    // into the heading error so the (strong) hip-bias steering + policy yaw aim
+    // the gait's forward walk back onto the line. Catching the drift early this
+    // way keeps the robot off the wall it otherwise crabs into. Re-latch the line
+    // while turning (|wz| above threshold) and pass /cmd_vel vy through otherwise.
+    double vy_out = vy;
+    if (lateral_hold_) {
+      if (std::abs(wz) > lateral_turn_thresh_) {
+        ref_x_ = current_x_;
+        ref_y_ = current_y_;
+      } else {
+        const double dx = current_x_ - ref_x_;
+        const double dy = current_y_ - ref_y_;
+        const double lat_err = -dx * std::sin(desired_yaw_) + dy * std::cos(desired_yaw_);
+        vy_out = std::clamp(-lateral_kp_ * lat_err, -max_lin_vel_y_, max_lin_vel_y_);
+        const double cross_bias =
+          std::clamp(-lateral_yaw_kp_ * lat_err, -lateral_yaw_max_, lateral_yaw_max_);
+        err = std::clamp(err + cross_bias, -heading_err_clamp_ - lateral_yaw_max_,
+                         heading_err_clamp_ + lateral_yaw_max_);
+      }
+    }
     const double yaw_cmd = std::clamp(wz + heading_kp_ * err, -heading_max_, heading_max_);
     // The hip-bias steering does the real turning work (the policy yaw command
-    // barely moves model_49999 in DART). PI control: the P term reacts fast, the
-    // I term removes the steady-state heading offset -- a P-only loop settles at
-    // whatever heading lets the saturated steering just cancel the drift (a ~0.3
-    // rad bias off the commanded heading), which walked the robot into the wall.
+    // barely moves the gait in DART). PI control: the P term reacts fast, the I
+    // term removes the steady-state heading offset. With the cross-track bias
+    // folded into err above, this same steering now also nulls the lateral crab.
     if (steer_ki_ > 1e-6) {
       steer_i_ += err * dt;
       // Anti-windup: clamp the integral so its contribution stays within range.
@@ -348,22 +376,6 @@ private:
     double fwd_scale = 1.0;
     if (fwd_slow_err_ > 1e-3) {
       fwd_scale = std::clamp(1.0 - std::abs(err) / fwd_slow_err_, fwd_min_scale_, 1.0);
-    }
-    // Lateral-hold: command vy to drive the perpendicular offset from the
-    // latched line (through ref_{x,y} along desired_yaw_) to zero. While turning
-    // (|wz| above threshold) re-latch the line so it only holds when going
-    // straight, and let the explicit /cmd_vel vy pass through otherwise.
-    double vy_out = vy;
-    if (lateral_hold_) {
-      if (std::abs(wz) > lateral_turn_thresh_) {
-        ref_x_ = current_x_;
-        ref_y_ = current_y_;
-      } else {
-        const double dx = current_x_ - ref_x_;
-        const double dy = current_y_ - ref_y_;
-        const double lat_err = -dx * std::sin(desired_yaw_) + dy * std::cos(desired_yaw_);
-        vy_out = std::clamp(-lateral_kp_ * lat_err, -max_lin_vel_y_, max_lin_vel_y_);
-      }
     }
     obs_.commands = {vx * fwd_scale, vy_out, yaw_cmd};
   }
@@ -602,6 +614,8 @@ private:
   bool lateral_hold_{true};
   double lateral_kp_{0.25};
   double lateral_turn_thresh_{0.05};
+  double lateral_yaw_kp_{0.6};   // cross-track: offset -> heading-error bias
+  double lateral_yaw_max_{0.4};  // max |cross-track heading bias| (rad)
   double current_x_{0.0};
   double current_y_{0.0};
   double ref_x_{0.0};
