@@ -80,6 +80,12 @@
     # when idle (the policy walks forward even at vx=0, so without this it
     # free-drifts off the start before Nav2 sends the goal).
     stand_vx_thresh: 0.02
+    # Station-keeping while gated/idle: the gated stance still slowly PIVOTS on
+    # DART's asymmetric contact (~15 deg before the goal arrives), so nav starts
+    # pointed at a wall. With this on, the heading is latched when the robot
+    # stops and the hip-steering holds it (no walking) instead of letting it
+    # creep. The forward gait stays gated either way.
+    station_keep: true
     joint_names:
       - Revolute_110   # idx0  hip  leg1
       - Revolute_113   # idx1  hip  leg2

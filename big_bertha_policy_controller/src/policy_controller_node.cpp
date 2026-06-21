@@ -111,6 +111,14 @@ public:
     // Below this forward command the gait is gated off and the robot holds the
     // default stance (the policy cannot stand still on its own).
     stand_vx_thresh_ = declare_parameter<double>("stand_vx_thresh", 0.02);
+    // Station-keeping: while gated/idle (e.g. before the Nav2 goal arrives) the
+    // gated default stance slowly PIVOTS on DART's asymmetric contact (~15 deg
+    // before a goal is sent), so nav starts pointed at a wall. With this on, the
+    // heading setpoint is latched the moment the robot stops (not re-latched
+    // every idle frame, which would just track the creep) and the hip-bias
+    // steering is applied even while gated, so the robot actively holds its
+    // heading without walking. Off restores the fully-passive gated stance.
+    station_keep_ = declare_parameter<bool>("station_keep", true);
     // ------------------- Lateral-hold outer loop ------------------------
     // The heading loop holds yaw, but the gait still slides off its LINE in
     // DART (the systematic sideways crab + the residual yaw the weak turn
@@ -323,16 +331,22 @@ private:
       return;
     }
 
-    // Re-latch the heading setpoint to the current heading whenever the robot
-    // is idle, so it never tries to "correct" toward a stale heading.
+    // Latch the heading setpoint + lateral-hold line origin. Without
+    // station_keep this re-latches every idle frame (never corrects toward a
+    // stale heading). With station_keep it latches only at startup and on the
+    // moving->idle transition, then HOLDS the latched heading through the idle
+    // window so the steering corrects the gated stance's contact creep instead
+    // of tracking it (which left the robot pivoting ~15 deg before the goal).
     const bool idle = std::abs(vx) < 0.01 && std::abs(wz) < 0.01;
-    if (idle || !heading_init_) {
+    const bool just_stopped = idle && !prev_idle_;
+    if (!heading_init_ || just_stopped || (idle && !station_keep_)) {
       desired_yaw_ = heading_lock_ ? heading_lock_yaw_ : current_yaw_;
       steer_i_ = 0.0;       // reset integrator so it never holds a stale heading
       ref_x_ = current_x_;  // latch the lateral-hold reference line origin
       ref_y_ = current_y_;
       heading_init_ = true;
     }
+    prev_idle_ = idle;
     // Heading setpoint. Normally integrate the commanded yaw rate, then clamp to
     // stay within heading_err_clamp_ of the measured heading (anti-windup).
     // heading_lock (demo_straight) instead holds a FIXED world heading
@@ -484,11 +498,21 @@ private:
         // pre-goal idle window and never navigates from the right start pose.
         moving = obs_.commands[0] > stand_vx_thresh_;
         if (!moving) {
+          // Gated: hold the default stance (no forward gait). With station_keep,
+          // still apply the hip-bias steering so the robot actively holds its
+          // latched heading against the contact creep (no walking); otherwise go
+          // fully passive (steer off).
+          if (!station_keep_) {
+            steer_cmd_ = 0.0;
+          }
           for (int i = 0; i < bbpc::kNumJoints; ++i) {
-            target_pos_[i] = obs_.default_joint_pos[i];
+            double t = obs_.default_joint_pos[i];
+            if (station_keep_ && i < 4) {  // hips: hold heading via steering bias
+              t += debug_hip_bias_[i] + steer_cmd_ * hip_steer_sign_[i];
+            }
+            target_pos_[i] = std::clamp(t, -joint_limit_, joint_limit_);
             obs_.prev_actions[i] = 0.0f;
           }
-          steer_cmd_ = 0.0;
           last_action_norm_ = 0.0;
         } else {
           input = obs_.build();
@@ -632,6 +656,8 @@ private:
   bool have_odom_yaw_{false};
   double desired_yaw_{0.0};
   bool heading_init_{false};
+  bool station_keep_{true};  // hold heading while gated/idle (anti pre-goal creep)
+  bool prev_idle_{false};    // prev-step idle state, for the stop-transition latch
   // Lateral-hold outer loop (closed-loop line tracking on the odom offset).
   bool lateral_hold_{true};
   double lateral_kp_{0.25};
