@@ -101,7 +101,14 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 os.path.join(
                     policy_pkg, 'launch', 'policy_controller.launch.py')),
-            launch_arguments={'use_sim_time': use_sim_time}.items(),
+            # Lock the heading to the spawn yaw (default 0 = due East) so the gait
+            # holds a true straight line instead of the ~14 deg south-of-East
+            # heading the robot settles into during the DART warmup drop.
+            launch_arguments={
+                'use_sim_time': use_sim_time,
+                'heading_lock': 'true',
+                'heading_lock_yaw': LaunchConfiguration('yaw'),
+            }.items(),
         ),
     ], scoped=True)
 

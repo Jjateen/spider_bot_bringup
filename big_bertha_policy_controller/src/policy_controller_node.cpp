@@ -77,6 +77,12 @@ public:
     // realign before pushing on. heading_hold:=false restores raw passthrough.
     heading_hold_ = declare_parameter<bool>("heading_hold", true);
     heading_kp_ = declare_parameter<double>("heading_kp", 2.0);
+    // Absolute heading lock for the straight-line demo: hold heading_lock_yaw_
+    // (world rad, 0 = +x East) instead of latching the heading the robot settles
+    // into during the DART warmup drop, so the gait walks a true straight line.
+    // Leave false for nav (Nav2 owns the heading via wz).
+    heading_lock_ = declare_parameter<bool>("heading_lock", false);
+    heading_lock_yaw_ = declare_parameter<double>("heading_lock_yaw", 0.0);
     // Final yaw command clamp -- the policy was trained on yaw in [-0.6, 0.6],
     // so 0.5 gives the correction real authority (the old 0.15 clamp throttled
     // the turn so hard the drift always won).
@@ -321,19 +327,32 @@ private:
     // is idle, so it never tries to "correct" toward a stale heading.
     const bool idle = std::abs(vx) < 0.01 && std::abs(wz) < 0.01;
     if (idle || !heading_init_) {
-      desired_yaw_ = current_yaw_;
+      desired_yaw_ = heading_lock_ ? heading_lock_yaw_ : current_yaw_;
       steer_i_ = 0.0;       // reset integrator so it never holds a stale heading
       ref_x_ = current_x_;  // latch the lateral-hold reference line origin
       ref_y_ = current_y_;
       heading_init_ = true;
     }
-    // Advance the heading setpoint by the commanded yaw rate, then clamp it to
+    // Heading setpoint. Normally integrate the commanded yaw rate, then clamp to
     // stay within heading_err_clamp_ of the measured heading (anti-windup).
-    desired_yaw_ = wrap_pi(desired_yaw_ + wz * dt);
-    double err = wrap_pi(desired_yaw_ - current_yaw_);
-    if (std::abs(err) > heading_err_clamp_) {
-      err = std::clamp(err, -heading_err_clamp_, heading_err_clamp_);
-      desired_yaw_ = wrap_pi(current_yaw_ + err);
+    // heading_lock (demo_straight) instead holds a FIXED world heading
+    // (heading_lock_yaw_, e.g. 0 = due East): the robot settles ~14 deg south of
+    // East during the warmup drop in DART, and latching that drifted heading made
+    // "straight" walk south-East. Locking the setpoint lets the hip-bias steering
+    // + cross-track null the settle and crab so the gait holds a true straight
+    // line. (Disabled for nav, where Nav2 owns the heading via wz.)
+    double err;
+    if (heading_lock_) {
+      desired_yaw_ = heading_lock_yaw_;
+      err =
+        std::clamp(wrap_pi(desired_yaw_ - current_yaw_), -heading_err_clamp_, heading_err_clamp_);
+    } else {
+      desired_yaw_ = wrap_pi(desired_yaw_ + wz * dt);
+      err = wrap_pi(desired_yaw_ - current_yaw_);
+      if (std::abs(err) > heading_err_clamp_) {
+        err = std::clamp(err, -heading_err_clamp_, heading_err_clamp_);
+        desired_yaw_ = wrap_pi(current_yaw_ + err);
+      }
     }
     // Lateral-hold + cross-track steering. Compute the perpendicular offset from
     // the latched line (through ref_{x,y} along desired_yaw_). Command vy toward
@@ -355,8 +374,9 @@ private:
         vy_out = std::clamp(-lateral_kp_ * lat_err, -max_lin_vel_y_, max_lin_vel_y_);
         const double cross_bias =
           std::clamp(-lateral_yaw_kp_ * lat_err, -lateral_yaw_max_, lateral_yaw_max_);
-        err = std::clamp(err + cross_bias, -heading_err_clamp_ - lateral_yaw_max_,
-                         heading_err_clamp_ + lateral_yaw_max_);
+        err = std::clamp(
+          err + cross_bias, -heading_err_clamp_ - lateral_yaw_max_,
+          heading_err_clamp_ + lateral_yaw_max_);
       }
     }
     const double yaw_cmd = std::clamp(wz + heading_kp_ * err, -heading_max_, heading_max_);
@@ -599,6 +619,8 @@ private:
   // Heading-hold outer loop (drift rejection without retraining).
   bool heading_hold_{true};
   double heading_kp_{2.0};
+  bool heading_lock_{false};      // demo_straight: hold a fixed world heading
+  double heading_lock_yaw_{0.0};  // the locked heading (rad, 0 = East)
   double heading_max_{0.5};
   double heading_err_clamp_{0.4};
   double fwd_slow_err_{0.5};
