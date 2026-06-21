@@ -101,10 +101,13 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      # The contact asymmetry slips the body sideways ~1 m over the traverse and
-      # the gait cannot actively turn to null it, so accept B within ~1.2 m
-      # rather than fight an un-trackable cross-track error.
-      xy_goal_tolerance: 1.2
+      # With ground-truth localization (demo default) Nav2 sees the true pose and
+      # the cross-track steering climbs the residual DART crab off the wall, so
+      # the robot physically reaches B. 0.6 m latches success as the robot passes
+      # within ~0.56 m (an honest arrival for a ~0.36 m crawler) and stops it
+      # before the under-damped approach can overshoot past B. (1.2 here masked
+      # the old AMCL false-success where the robot sat metres short.)
+      xy_goal_tolerance: 0.6
       # Reaching point B is what matters; the crawl yaws slowly and need not end
       # at a specific heading, so don't gate goal success on final orientation
       # (was 0.25 rad -> the robot could sit on B forever failing the yaw check).
@@ -163,7 +166,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        inflation_radius: 0.28
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -242,7 +245,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        inflation_radius: 0.28
       always_send_full_costmap: True
 
 # The yaml_filename does not need to be specified since it going to be set by defaults in launch.

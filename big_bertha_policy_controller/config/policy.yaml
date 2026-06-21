@@ -33,7 +33,7 @@
     # Command envelope sent to the policy (trained ranges). Yaw is widened from
     # the old 0.15 so the heading-hold loop has real turn authority.
     max_lin_vel_x: 0.3
-    max_lin_vel_y: 0.05
+    max_lin_vel_y: 0.06
     max_yaw_rate: 0.5
     # ---- Heading-hold outer loop: rejects the systematic PhysX->DART contact
     # yaw drift in the deployment node (no retrain, no sim edit). It integrates
@@ -59,8 +59,23 @@
     # heading loop alone leaves. Re-latches while turning (|wz|>turn_thresh) so
     # it only holds on straight segments and lets Nav2's vy pass through in turns.
     lateral_hold: true
-    lateral_kp: 0.25
-    lateral_turn_thresh: 0.05
+    lateral_kp: 0.6
+    # Re-latch the line ONLY on a deliberate turn (raised 0.05->0.25): under Nav2
+    # the RegulatedPurePursuit controller streams small path-following wz, which
+    # at 0.05 kept resetting the lateral-hold reference every cycle so the loop
+    # never accumulated the correction for the systematic DART south-crab. 0.25
+    # ignores those corrections and only re-latches on a real commanded turn.
+    lateral_turn_thresh: 0.25
+    # Cross-track STEERING: convert the lateral line-offset into a heading-error
+    # bias so the strong hip-bias steering (not the weak, vy<=0.06-capped lateral
+    # command) pulls the robot back to the line. This is the real cure for the
+    # systematic DART south-crab -- it steers the gait's forward walk into the
+    # drift ("crab into the wind") and catches it before the robot pins on a wall.
+    lateral_yaw_kp: 0.4     # rad of heading bias per metre of lateral offset.
+                            # Moderate: kp 0.6 over-steered north into obstacles;
+                            # this climbs the robot off the wall and reaches B
+                            # (Nav2 goal success) without the unstable overshoot.
+    lateral_yaw_max: 0.3    # max |cross-track heading bias| (rad, ~17 deg)
     # Gate the gait off below this forward command so the robot stands still
     # when idle (the policy walks forward even at vx=0, so without this it
     # free-drifts off the start before Nav2 sends the goal).
