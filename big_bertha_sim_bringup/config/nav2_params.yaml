@@ -74,7 +74,11 @@ controller_server:
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.3
+    # Long failure tolerance: the crawl is slow and the regulated controller can
+    # briefly produce no valid command on a tight curve; at 0.3 s that tripped
+    # "controller patience exceeded" -> the BT fired Spin/DriveOnHeading
+    # recoveries that wreck the gait. 10 s lets the crawl work through it.
+    failure_tolerance: 10.0
     progress_checker_plugins: ["progress_checker"]
     goal_checker_plugins: ["general_goal_checker"] # "precise_goal_checker"
     controller_plugins: ["FollowPath"]
@@ -83,10 +87,11 @@ controller_server:
     # Progress checker parameters
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.10
+      required_movement_radius: 0.05
       # Big Bertha crawls at ~0.1 m/s and yaws slowly, so it needs a long
-      # allowance to clear the 0.10 m progress bar (was 45 s -> aborted).
-      movement_time_allowance: 90.0
+      # allowance to clear the progress bar (was 45 s -> aborted). The crawl can
+      # spend many seconds turning in place, so keep this generous.
+      movement_time_allowance: 150.0
     # Goal checker parameters
     #precise_goal_checker:
     #  plugin: "nav2_controller::SimpleGoalChecker"
