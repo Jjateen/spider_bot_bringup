@@ -126,9 +126,12 @@ def generate_launch_description():
             'goal_y', default_value='-3.5',
             description='Goal B y in the map frame (world B = -3.5)'),
         DeclareLaunchArgument(
-            'goal_delay', default_value='45.0',
+            'goal_delay', default_value='20.0',
             description='Seconds to wait for localization + Nav2 to activate '
-                        'before sending the goal'),
+                        'before sending the goal. 20 (was 45): Nav2 is ready by '
+                        '~10 s, and the extra 25 s of idle let the gait slide ~0.8 '
+                        'm into the SW corner before nav even started -- so it '
+                        'began navigating already jammed against the walls.'),
         bringup,
         send_goal,
     ])
