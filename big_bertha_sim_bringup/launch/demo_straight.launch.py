@@ -216,12 +216,18 @@ def generate_launch_description():
             'speed', default_value='0.12',
             description='Constant forward vx (m/s, trained range 0-0.12)'),
         DeclareLaunchArgument(
-            'vy', default_value='0.04',
-            description='Constant lateral vy (m/s, +left) to trim the crab'),
+            'vy', default_value='0.0',
+            description='Constant lateral vy (m/s, +left). 0 with the bias-DR '
+                        'policy: its residual crab is non-directional, so a '
+                        'constant feed-forward would bias one way; the '
+                        'closed-loop lateral_hold handles it instead'),
         DeclareLaunchArgument(
-            'hip_bias', default_value='-0.22',
+            'hip_bias', default_value='0.0',
             description='Drift-cancel hip bias (rad) on /debug_hip_bias; '
-                        '0.0 disables. Interim trim for the current policy'),
+                        '0.0 with the bias-DR policy (model_58998), which '
+                        'holds heading on its own (yaw drift <1 deg/min) so '
+                        'no constant yaw trim is needed -- the old -0.22 was '
+                        'calibrated for the drifting policy and would curve it'),
         DeclareLaunchArgument(
             'cmd_delay', default_value='12.0',
             description='Seconds to wait for controllers before driving'),
