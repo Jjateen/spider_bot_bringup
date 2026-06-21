@@ -17,8 +17,12 @@ find_package(geometry_msgs REQUIRED)
 find_package(spider_msgs REQUIRED)
 
 # ----------------------------- ONNX Runtime -------------------------------
-# Prebuilt ONNX Runtime (C++), located via -DONNXRUNTIME_ROOT (defaults to the
-# repo-local .onnxruntime download). Not provided by rosdep/apt on Jazzy.
+# Prebuilt ONNX Runtime (C++). It is NOT on rosdep/apt for Jazzy, so it cannot
+# be a package.xml dependency (#39). Resolution order: (1) -DONNXRUNTIME_ROOT or
+# the repo-local .onnxruntime; (2) otherwise AUTO-FETCH the official prebuilt for
+# this CPU arch so a plain `colcon build` works out-of-the-box -- including on
+# aarch64 targets like the Arduino Uno Q (no manual download step).
+set(ORT_VERSION "1.20.1" CACHE STRING "ONNX Runtime version")
 if(NOT DEFINED ONNXRUNTIME_ROOT)
   set(ONNXRUNTIME_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.onnxruntime"
       CACHE PATH "ONNX Runtime install prefix")
@@ -31,10 +35,33 @@ find_library(ONNXRUNTIME_LIB onnxruntime
   HINTS ${ONNXRUNTIME_ROOT}/lib)
 
 if(NOT ONNXRUNTIME_INCLUDE_DIR OR NOT ONNXRUNTIME_LIB)
+  # Not found locally -> download the official prebuilt for this CPU arch so
+  # the build is self-contained (fixes #39: fresh/local/hardware builds failed
+  # with no ORT and no -DONNXRUNTIME_ROOT).
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+    set(ORT_ARCH "aarch64")
+  else()
+    set(ORT_ARCH "x64")
+  endif()
+  set(ORT_PKG "onnxruntime-linux-${ORT_ARCH}-${ORT_VERSION}")
+  message(STATUS
+    "ONNX Runtime not found under '${ONNXRUNTIME_ROOT}'; auto-fetching ${ORT_PKG} ...")
+  include(FetchContent)
+  FetchContent_Declare(onnxruntime
+    URL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/${ORT_PKG}.tgz")
+  FetchContent_MakeAvailable(onnxruntime)
+  set(ONNXRUNTIME_ROOT "${onnxruntime_SOURCE_DIR}")
+  find_path(ONNXRUNTIME_INCLUDE_DIR onnxruntime_cxx_api.h
+    HINTS ${ONNXRUNTIME_ROOT}/include
+    PATH_SUFFIXES onnxruntime onnxruntime/core/session)
+  find_library(ONNXRUNTIME_LIB onnxruntime HINTS ${ONNXRUNTIME_ROOT}/lib)
+endif()
+
+if(NOT ONNXRUNTIME_INCLUDE_DIR OR NOT ONNXRUNTIME_LIB)
   message(FATAL_ERROR
-    "ONNX Runtime not found under '${ONNXRUNTIME_ROOT}'. "
-    "Download v1.20.1 and pass -DONNXRUNTIME_ROOT=<path> "
-    "(see PLAN.md / repo README).")
+    "ONNX Runtime unavailable: not found under '${ONNXRUNTIME_ROOT}' and the "
+    "auto-fetch of v${ORT_VERSION} failed (network is needed on the first build). "
+    "Pass -DONNXRUNTIME_ROOT=<path> to a prebuilt install instead.")
 endif()
 message(STATUS "ONNX Runtime: ${ONNXRUNTIME_LIB}")
 
