@@ -52,6 +52,15 @@
     steer_ki: 0.8            # integral: removes steady heading offset vs drift
     steer_max: 0.26          # max |hip bias| (b=-0.24 ~ fully cancels drift)
     hip_steer_sign: [-1.0, -1.0, -1.0, -1.0]
+    # Lateral-hold outer loop: closed-loop on the perpendicular offset from the
+    # line through the latched start pose along the heading setpoint. Commands
+    # the policy's lateral velocity vy = clamp(-lateral_kp*offset, +/-max_vy) to
+    # hold the LINE (not just the heading), bounding the residual DART crab the
+    # heading loop alone leaves. Re-latches while turning (|wz|>turn_thresh) so
+    # it only holds on straight segments and lets Nav2's vy pass through in turns.
+    lateral_hold: true
+    lateral_kp: 0.25
+    lateral_turn_thresh: 0.05
     # Gate the gait off below this forward command so the robot stands still
     # when idle (the policy walks forward even at vx=0, so without this it
     # free-drifts off the start before Nav2 sends the goal).

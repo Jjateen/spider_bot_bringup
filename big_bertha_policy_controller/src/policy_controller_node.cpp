@@ -105,6 +105,21 @@ public:
     // Below this forward command the gait is gated off and the robot holds the
     // default stance (the policy cannot stand still on its own).
     stand_vx_thresh_ = declare_parameter<double>("stand_vx_thresh", 0.02);
+    // ------------------- Lateral-hold outer loop ------------------------
+    // The heading loop holds yaw, but the gait still slides off its LINE in
+    // DART (the systematic sideways crab + the residual yaw the weak turn
+    // authority cannot fully undo). Training an Isaac velocity penalty did not
+    // close this -- Isaac never reproduces DART's sustained sideways push -- so
+    // reject it the same way as the yaw: a closed-loop controller on the
+    // PERPENDICULAR offset from the line through the latched start pose along
+    // the heading setpoint, commanding the policy's lateral velocity
+    //   vy = clamp(-Kp * lateral_error, +/- max_lin_vel_y).
+    // Feedback makes it robust to the drift's source/magnitude. The reference
+    // line re-latches while turning so it only holds during straight segments.
+    lateral_hold_ = declare_parameter<bool>("lateral_hold", true);
+    lateral_kp_ = declare_parameter<double>("lateral_kp", 0.25);
+    // |wz| above which we treat the motion as a turn and re-latch the line.
+    lateral_turn_thresh_ = declare_parameter<double>("lateral_turn_thresh", 0.05);
     // Effort-PD actuator emulation of Isaac's ImplicitActuatorCfg
     // (stiffness=20, damping=2): output joint torque
     //   tau = kp*(q_des - q) + kd*(0 - qd), torque-limited,
@@ -228,6 +243,9 @@ private:
     // Absolute heading (map/odom yaw) for the heading-hold outer loop.
     const auto & q = msg->pose.pose.orientation;
     current_yaw_ = std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+    // Absolute planar position for the lateral-hold outer loop.
+    current_x_ = msg->pose.pose.position.x;
+    current_y_ = msg->pose.pose.position.y;
     have_odom_yaw_ = true;
   }
 
@@ -299,7 +317,9 @@ private:
     const bool idle = std::abs(vx) < 0.01 && std::abs(wz) < 0.01;
     if (idle || !heading_init_) {
       desired_yaw_ = current_yaw_;
-      steer_i_ = 0.0;  // reset integrator so it never holds a stale heading
+      steer_i_ = 0.0;       // reset integrator so it never holds a stale heading
+      ref_x_ = current_x_;  // latch the lateral-hold reference line origin
+      ref_y_ = current_y_;
       heading_init_ = true;
     }
     // Advance the heading setpoint by the commanded yaw rate, then clamp it to
@@ -329,7 +349,23 @@ private:
     if (fwd_slow_err_ > 1e-3) {
       fwd_scale = std::clamp(1.0 - std::abs(err) / fwd_slow_err_, fwd_min_scale_, 1.0);
     }
-    obs_.commands = {vx * fwd_scale, vy, yaw_cmd};
+    // Lateral-hold: command vy to drive the perpendicular offset from the
+    // latched line (through ref_{x,y} along desired_yaw_) to zero. While turning
+    // (|wz| above threshold) re-latch the line so it only holds when going
+    // straight, and let the explicit /cmd_vel vy pass through otherwise.
+    double vy_out = vy;
+    if (lateral_hold_) {
+      if (std::abs(wz) > lateral_turn_thresh_) {
+        ref_x_ = current_x_;
+        ref_y_ = current_y_;
+      } else {
+        const double dx = current_x_ - ref_x_;
+        const double dy = current_y_ - ref_y_;
+        const double lat_err = -dx * std::sin(desired_yaw_) + dy * std::cos(desired_yaw_);
+        vy_out = std::clamp(-lateral_kp_ * lat_err, -max_lin_vel_y_, max_lin_vel_y_);
+      }
+    }
+    obs_.commands = {vx * fwd_scale, vy_out, yaw_cmd};
   }
 
   void on_set_enabled(
@@ -562,6 +598,14 @@ private:
   bool have_odom_yaw_{false};
   double desired_yaw_{0.0};
   bool heading_init_{false};
+  // Lateral-hold outer loop (closed-loop line tracking on the odom offset).
+  bool lateral_hold_{true};
+  double lateral_kp_{0.25};
+  double lateral_turn_thresh_{0.05};
+  double current_x_{0.0};
+  double current_y_{0.0};
+  double ref_x_{0.0};
+  double ref_y_{0.0};
   // Differential-stride steering (PI on heading error).
   double steer_kp_{0.6};
   double steer_ki_{0.5};
