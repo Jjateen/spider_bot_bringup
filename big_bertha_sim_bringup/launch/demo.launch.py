@@ -114,9 +114,9 @@ def generate_launch_description():
                         'A->B demo (default)'),
         DeclareLaunchArgument(
             'localization', default_value='ground_truth',
-            description="known-map map->odom provider: 'ground_truth' (static "
-                        "identity, honest pose, the A->B default) or 'amcl' "
-                        "(scan-match, ambiguous in the symmetric arena)"),
+            description='known-map map->odom provider: ground_truth (static '
+                        'identity, honest pose, the A->B default) or amcl '
+                        '(scan-match, ambiguous in the symmetric arena)'),
         DeclareLaunchArgument(
             'goal_x', default_value='3.5',
             description='Goal B x (map frame, world-aligned in known-map). '
