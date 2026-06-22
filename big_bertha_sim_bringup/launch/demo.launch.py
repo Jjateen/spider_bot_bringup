@@ -81,7 +81,7 @@ def generate_launch_description():
             # the robot is metres short. Ground-truth isolates the locomotion demo
             # from that arena ambiguity (the codebase's intended A->B default).
             'localization': localization,
-            'rviz': 'true',            # open RViz
+            'rviz': LaunchConfiguration('rviz'),  # open RViz (off for GIF capture)
             'rviz_config': 'integration',  # map + lidar + costmaps + path + robot
             'use_sim_time': 'true',
         }.items(),
@@ -118,12 +118,16 @@ def generate_launch_description():
                         'identity, honest pose, the A->B default) or amcl '
                         '(scan-match, ambiguous in the symmetric arena)'),
         DeclareLaunchArgument(
+            'rviz', default_value='true',
+            description='Open RViz. Set false for headless GIF capture '
+                        '(a clean-env RViz is recorded separately).'),
+        DeclareLaunchArgument(
             'goal_x', default_value='3.5',
             description='Goal B x (map frame, world-aligned in known-map). '
                         'A=(-3.5,-3.5) facing +x; B=(3.5,-3.5) is a straight '
                         'East traverse of the clear bottom corridor.'),
         DeclareLaunchArgument(
-            'goal_y', default_value='-3.5',
+            'goal_y', default_value='3.5',
             description='Goal B y in the map frame (world B = -3.5)'),
         DeclareLaunchArgument(
             'goal_delay', default_value='20.0',

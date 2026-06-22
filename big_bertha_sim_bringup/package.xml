@@ -14,6 +14,10 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <!-- scan_ground_filter C++ node (IMU-gated ghost-wall removal). -->
+  <depend>rclcpp</depend>
+  <depend>sensor_msgs</depend>
+
   <exec_depend>big_bertha_description</exec_depend>
   <exec_depend>big_bertha_policy_controller</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>
