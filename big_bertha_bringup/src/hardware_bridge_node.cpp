@@ -295,6 +295,10 @@ private:
     auto cal_end = std::chrono::steady_clock::now();
     cal_duration_ms_ =
       std::chrono::duration_cast<std::chrono::milliseconds>(cal_end - cal_start).count();
+<<<<<<< HEAD
+=======
+    cal_finish_time_ = cal_end;
+>>>>>>> afa788c (feat: calibartion of sensor added at runtime)
 
     RCLCPP_INFO(
       get_logger(), "calibration took %ld ms (%d samples, ~%.1f Hz)", cal_duration_ms_, collected,
@@ -342,19 +346,44 @@ private:
     msg.header.stamp = now();
     msg.header.frame_id = "imu_link";
 
-    msg.linear_acceleration.x = ax - accel_bias_x_;
-    msg.linear_acceleration.y = ay - accel_bias_y_;
-    msg.linear_acceleration.z = az - accel_bias_z_;
+    double ax_corr = ax - accel_bias_x_;
+    double ay_corr = ay - accel_bias_y_;
+    double az_corr = az - accel_bias_z_;
 
-    msg.angular_velocity.x = gx - gyro_bias_x_;
-    msg.angular_velocity.y = gy - gyro_bias_y_;
-    msg.angular_velocity.z = gz - gyro_bias_z_;
+    double gx_corr = gx - gyro_bias_x_;
+    double gy_corr = gy - gyro_bias_y_;
+    double gz_corr = gz - gyro_bias_z_;
+
+    msg.linear_acceleration.x = ax_corr;
+    msg.linear_acceleration.y = ay_corr;
+    msg.linear_acceleration.z = az_corr;
+
+    msg.angular_velocity.x = gx_corr;
+    msg.angular_velocity.y = gy_corr;
+    msg.angular_velocity.z = gz_corr;
 
     std::copy(orient_cov_.begin(), orient_cov_.end(), msg.orientation_covariance.begin());
     std::copy(accel_cov_.begin(), accel_cov_.end(), msg.linear_acceleration_covariance.begin());
     std::copy(gyro_cov_.begin(), gyro_cov_.end(), msg.angular_velocity_covariance.begin());
 
     imu_pub_->publish(msg);
+
+    if (!calibrated_) return;
+
+    auto now_steady = std::chrono::steady_clock::now();
+    double elapsed = std::chrono::duration<double>(now_steady - cal_finish_time_).count();
+    drift_angle_x_ = gyro_bias_x_ * elapsed;
+    drift_angle_y_ = gyro_bias_y_ * elapsed;
+    drift_angle_z_ = gyro_bias_z_ * elapsed;
+
+    static auto last_drift_log = std::chrono::steady_clock::now();
+    double since_last_log = std::chrono::duration<double>(now_steady - last_drift_log).count();
+    if (since_last_log > 10.0) {
+      last_drift_log = now_steady;
+      RCLCPP_INFO(
+        get_logger(), "gyro accumulated drift:  %.3e  %.3e  %.3e rad  (elapsed %.0f s)",
+        drift_angle_x_, drift_angle_y_, drift_angle_z_, elapsed);
+    }
   }
 
   // ── TCP ─────────────────────────────────────────────────────────────
@@ -384,6 +413,11 @@ private:
   int accel_calibration_samples_;
   bool calibrated_{false};
   int64_t cal_duration_ms_{0};
+<<<<<<< HEAD
+=======
+  std::chrono::steady_clock::time_point cal_finish_time_;
+  double drift_angle_x_{0.0}, drift_angle_y_{0.0}, drift_angle_z_{0.0};
+>>>>>>> afa788c (feat: calibartion of sensor added at runtime)
 
   // ── Threading ───────────────────────────────────────────────────────
   std::thread reader_thread_;
