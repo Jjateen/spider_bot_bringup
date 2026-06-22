@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -214,6 +215,8 @@ private:
 
     RCLCPP_INFO(get_logger(), "calibrating sensors (%d samples)...", samples);
 
+    auto cal_start = std::chrono::steady_clock::now();
+
     double gx_sum = 0, gy_sum = 0, gz_sum = 0;
     double gx_sq_sum = 0, gy_sq_sum = 0, gz_sq_sum = 0;
     double ax_sum = 0, ay_sum = 0, az_sum = 0;
@@ -287,6 +290,23 @@ private:
         accel_bias_z_);
       RCLCPP_INFO(
         get_logger(), "accel var:  ax=%.6e ay=%.6e az=%.6e (m/s²)²", ax_var, ay_var, az_var);
+    }
+
+    auto cal_end = std::chrono::steady_clock::now();
+    cal_duration_ms_ =
+      std::chrono::duration_cast<std::chrono::milliseconds>(cal_end - cal_start).count();
+
+    RCLCPP_INFO(
+      get_logger(), "calibration took %ld ms (%d samples, ~%.1f Hz)", cal_duration_ms_, collected,
+      collected / (cal_duration_ms_ / 1000.0));
+
+    if (gyro_calibration_enabled_) {
+      double drift_x = gyro_bias_x_ * (cal_duration_ms_ / 1000.0);
+      double drift_y = gyro_bias_y_ * (cal_duration_ms_ / 1000.0);
+      double drift_z = gyro_bias_z_ * (cal_duration_ms_ / 1000.0);
+      RCLCPP_INFO(
+        get_logger(), "gyro drift over cal period:  %.3e  %.3e  %.3e rad", drift_x, drift_y,
+        drift_z);
     }
   }
 
@@ -363,6 +383,7 @@ private:
   bool accel_calibration_enabled_;
   int accel_calibration_samples_;
   bool calibrated_{false};
+  int64_t cal_duration_ms_{0};
 
   // ── Threading ───────────────────────────────────────────────────────
   std::thread reader_thread_;
