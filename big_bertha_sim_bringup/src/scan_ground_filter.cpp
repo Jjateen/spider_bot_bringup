@@ -44,8 +44,7 @@ namespace big_bertha_sim_bringup
 class ScanGroundFilter : public rclcpp::Node
 {
 public:
-  ScanGroundFilter()
-  : rclcpp::Node("scan_ground_filter")
+  ScanGroundFilter() : rclcpp::Node("scan_ground_filter")
   {
     // Lidar height above ground in nominal stance (body ~0.12 m + the mount).
     // The gait's heave varies it by ~+/-0.03 m, absorbed by floor_margin.
@@ -60,16 +59,13 @@ public:
     // never reach a reliable subscriber).
     const auto sensor_qos = rclcpp::SensorDataQoS();
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-      "imu", sensor_qos,
-      std::bind(&ScanGroundFilter::onImu, this, std::placeholders::_1));
+      "imu", sensor_qos, std::bind(&ScanGroundFilter::onImu, this, std::placeholders::_1));
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
-      "scan", sensor_qos,
-      std::bind(&ScanGroundFilter::onScan, this, std::placeholders::_1));
+      "scan", sensor_qos, std::bind(&ScanGroundFilter::onScan, this, std::placeholders::_1));
     pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan_filtered", 10);
 
     RCLCPP_INFO(
-      this->get_logger(),
-      "scan_ground_filter up (lidar_height=%.3f m, floor_margin=%.3f m)",
+      this->get_logger(), "scan_ground_filter up (lidar_height=%.3f m, floor_margin=%.3f m)",
       lidar_height_, floor_margin_);
   }
 
