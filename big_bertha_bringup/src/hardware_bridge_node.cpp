@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cmath>
 #include <cstring>
 #include <memory>
@@ -214,8 +215,11 @@ private:
 
     RCLCPP_INFO(get_logger(), "calibrating sensors (%d samples)...", samples);
 
+    auto cal_start = std::chrono::steady_clock::now();
+
     double gx_sum = 0, gy_sum = 0, gz_sum = 0;
     double ax_sum = 0, ay_sum = 0, az_sum = 0;
+    double ax_sq_sum = 0, ay_sq_sum = 0, az_sq_sum = 0;
     int collected = 0;
 
     while (running_ && collected < samples) {
@@ -229,6 +233,7 @@ private:
         parse_imu_json(line, ax, ay, az, gx, gy, gz);
         gx_sum += gx; gy_sum += gy; gz_sum += gz;
         ax_sum += ax; ay_sum += ay; az_sum += az;
+        ax_sq_sum += ax * ax; ay_sq_sum += ay * ay; az_sq_sum += az * az;
         ++collected;
       }
 
@@ -252,7 +257,6 @@ private:
       accel_bias_x_ = ax_mean;
       accel_bias_y_ = ay_mean;
       accel_bias_z_ = az_mean - 9.81;
-<<<<<<< HEAD
 
       double ax_var = ax_sq_sum / collected - ax_mean * ax_mean;
       double ay_var = ay_sq_sum / collected - ay_mean * ay_mean;
@@ -282,22 +286,12 @@ private:
       RCLCPP_INFO(
         get_logger(), "gyro drift over cal period:  %.3e  %.3e  %.3e rad", drift_x, drift_y,
         drift_z);
-=======
-      RCLCPP_INFO(get_logger(), "accel bias: ax=%.6f ay=%.6f az=%.6f m/s²",
-                  accel_bias_x_, accel_bias_y_, accel_bias_z_);
->>>>>>> a28c4ef (feat: improved sensor nodes)
     }
   }
 
   void parse_imu_json(
-<<<<<<< HEAD
     const std::string & line, double & ax, double & ay, double & az, double & gx, double & gy,
     double & gz)
-=======
-    const std::string & line,
-    double & ax, double & ay, double & az,
-    double & gx, double & gy, double & gz)
->>>>>>> a28c4ef (feat: improved sensor nodes)
   {
     auto find_val = [&](const std::string & key) -> double {
       auto pos = line.find("\"" + key + "\"");
@@ -327,7 +321,6 @@ private:
     msg.header.stamp = now();
     msg.header.frame_id = "imu_link";
 
-<<<<<<< HEAD
     double ax_corr = ax - accel_bias_x_;
     double ay_corr = ay - accel_bias_y_;
     double az_corr = az - accel_bias_z_;
@@ -343,22 +336,12 @@ private:
     msg.angular_velocity.x = gx_corr;
     msg.angular_velocity.y = gy_corr;
     msg.angular_velocity.z = gz_corr;
-=======
-    msg.linear_acceleration.x = ax - accel_bias_x_;
-    msg.linear_acceleration.y = ay - accel_bias_y_;
-    msg.linear_acceleration.z = az - accel_bias_z_;
-
-    msg.angular_velocity.x = gx - gyro_bias_x_;
-    msg.angular_velocity.y = gy - gyro_bias_y_;
-    msg.angular_velocity.z = gz - gyro_bias_z_;
->>>>>>> a28c4ef (feat: improved sensor nodes)
 
     std::copy(orient_cov_.begin(), orient_cov_.end(), msg.orientation_covariance.begin());
     std::copy(accel_cov_.begin(), accel_cov_.end(), msg.linear_acceleration_covariance.begin());
     std::copy(gyro_cov_.begin(), gyro_cov_.end(), msg.angular_velocity_covariance.begin());
 
     imu_pub_->publish(msg);
-<<<<<<< HEAD
 
     if (!calibrated_) return;
 
@@ -376,8 +359,6 @@ private:
         get_logger(), "gyro accumulated drift:  %.3e  %.3e  %.3e rad  (elapsed %.0f s)",
         drift_angle_x_, drift_angle_y_, drift_angle_z_, elapsed);
     }
-=======
->>>>>>> a28c4ef (feat: improved sensor nodes)
   }
 
   // ── TCP ─────────────────────────────────────────────────────────────
@@ -406,12 +387,9 @@ private:
   bool accel_calibration_enabled_;
   int accel_calibration_samples_;
   bool calibrated_{false};
-<<<<<<< HEAD
   int64_t cal_duration_ms_{0};
   std::chrono::steady_clock::time_point cal_finish_time_;
   double drift_angle_x_{0.0}, drift_angle_y_{0.0}, drift_angle_z_{0.0};
-=======
->>>>>>> a28c4ef (feat: improved sensor nodes)
 
   // ── Threading ───────────────────────────────────────────────────────
   std::thread reader_thread_;
