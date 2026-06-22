@@ -7,7 +7,7 @@ three-layer bridge between ROS 2 and the Arduino UNO Q hardware:
 |---|---|---|
 | **C++ ROS 2 node** | `src/hardware_bridge_node.cpp` | Subscribes to `/position_controller/commands` (12 joint targets), converts radians → PWM, sends JSON over TCP; background thread polls IMU, publishes `sensor_msgs/Imu` on `/imu` |
 | **Python TCP relay** | `firmware/hardware_bridge_app/python/main.py` | Runs on the UNO Q Linux side, bridges TCP ↔ Bridge RPC to the STM32U585 |
-| **STM32U585 firmware** | `firmware/hardware_bridge_app/sketch/sketch.ino` | I2C driver for PCA9685 (12-ch PWM, 50 Hz) and MPU9250 (6-axis IMU, SI units) |
+| **STM32U585 firmware** | `firmware/hardware_bridge_app/sketch/sketch.ino` | I2C driver for PCA9685 (12-ch PWM, 50 Hz) and MPU6050 (6-axis IMU, SI units) |
 
 The autonomy stack is hardware-agnostic: `state_estimation`, `mapping`,
 `localization`, and `planning` reuse the **same** configs as the sim, just with
@@ -19,12 +19,14 @@ servo bridge replace the Gazebo + `ros_gz_bridge` simulation layer.
 From [PLAN.md §11](../PLAN.md). All runtime nodes are C++.
 
 | Subsystem | Part | Qty | ROS interface |
+| Subsystem | Part | Qty | ROS interface |
 |---|---|---|---|
 | Compute | **Arduino UNO Q (4 GB)** running **ROS 2 Jazzy** | 1 | hosts the whole stack — **arm64**, hence the arm64 CI leg |
 | Structure | **3D-printed** frame + leg linkages | — | — |
 | Actuators | **MG995 servos** (4 legs × 3 joints) | 12 | `hardware_bridge_node` → TCP → Bridge RPC → PCA9685 → servos |
+| Actuators | **MG995 servos** (4 legs × 3 joints) | 12 | `hardware_bridge_node` → TCP → Bridge RPC → PCA9685 → servos |
 | Lidar | **YDLidar X2** (2D) | 1 | `ydlidar_ros2_driver` → `/scan` |
-| IMU | **MPU9250** | 1 | STM32U585 firmware (I2C) → Bridge RPC → TCP → `hardware_bridge_node` → `/imu` |
+| IMU | **MPU6050** | 1 | STM32U585 firmware (I2C) → Bridge RPC → TCP → `hardware_bridge_node` → `/imu` |
 
 ## Sim → hardware mapping (per module)
 
