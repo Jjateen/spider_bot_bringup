@@ -130,12 +130,16 @@ controller_server:
       min_lookahead_dist: 1.5
       max_lookahead_dist: 3.0
       lookahead_time: 1.5
-      rotate_to_heading_angular_vel: 1.2
+      rotate_to_heading_angular_vel: 0.8  # match the gait's trained yaw cap (+/-0.8 rad/s)
       transform_tolerance: 0.2
       use_velocity_scaled_lookahead_dist: false
       min_approach_linear_velocity: 0.05
       approach_velocity_scaling_dist: 0.6
       use_collision_detection: true
+      # Kept at 1.0 s (a 0.4 s trial let the robot clip obstacles). The real cause
+      # of the old "freeze near obstacles" was ghost walls from the tilted body
+      # lidar, now removed by scan_ground_filter -- so 1.0 s no longer over-freezes
+      # yet still halts safely before a genuine collision.
       max_allowed_time_to_collision_up_to_carrot: 1.0
       use_regulated_linear_velocity_scaling: true
       use_cost_regulated_linear_velocity_scaling: false
@@ -143,8 +147,13 @@ controller_server:
       # Floor the regulated speed at the crawl's real pace, not 0.25 (which the
       # gait cannot reach, so the controller thought it was stalled).
       regulated_linear_scaling_min_speed: 0.06
-      use_rotate_to_heading: false
-      rotate_to_heading_min_angle: 0.785
+      # Enable hard in-place turns: when the path heading error exceeds
+      # rotate_to_heading_min_angle, RPP stops and rotates on the spot instead of
+      # arcing forward. This is the "hard left/right" the robot needs to peel away
+      # from an obstacle it is about to hit -- without it the slow forward-only
+      # arc could not change heading fast enough and the robot stuck on contact.
+      use_rotate_to_heading: true
+      rotate_to_heading_min_angle: 0.6
       max_angular_accel: 3.2
       max_robot_pose_search_dist: 10.0
       allow_reversing: false
@@ -178,7 +187,7 @@ local_costmap:
         mark_threshold: 0
         observation_sources: scan
         scan:
-          topic: /scan
+          topic: /scan_filtered
           max_obstacle_height: 2.0
           clearing: True
           marking: True
@@ -227,7 +236,7 @@ global_costmap:
         enabled: True
         observation_sources: scan
         scan:
-          topic: /scan
+          topic: /scan_filtered
           max_obstacle_height: 2.0
           clearing: True
           marking: True
@@ -384,7 +393,7 @@ collision_monitor:
     observation_sources: ["scan"]
     scan:
       type: "scan"
-      topic: "scan"
+      topic: "scan_filtered"
       min_height: 0.15
       max_height: 2.0
       enabled: True

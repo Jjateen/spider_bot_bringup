@@ -478,7 +478,11 @@
 
   <!-- Fixed sensor / payload frames -->
   <joint name="lidar_joint" type="fixed">
-    <origin xyz="0.01 0.01 0.081" rpy="0 0 0"/>
+    <!-- z 0.081 to 0.121 (+4 cm): a higher body lidar needs more body pitch
+         before its beam reaches the floor, so the gait's tilt produces fewer,
+         farther ground hits (the geometric half of the ghost-wall fix; the
+         scan_ground_filter node is the perception half). -->
+    <origin xyz="0.01 0.01 0.121" rpy="0 0 0"/>
     <parent link="base_link"/>
     <child link="lidar_link"/>
   </joint>

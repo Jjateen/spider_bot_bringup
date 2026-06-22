@@ -59,6 +59,7 @@ from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -139,6 +140,17 @@ def generate_launch_description():
         condition=UnlessCondition(slam),
     )
 
+    # perception: IMU-gated ghost-wall filter. The body lidar tilts with the
+    # gait; this drops floor hits so the costmap stops seeing flickering walls.
+    # Costmaps + collision monitor consume /scan_filtered (see nav2_params.yaml).
+    scan_filter = Node(
+        package='big_bertha_sim_bringup',
+        executable='scan_ground_filter',
+        name='scan_ground_filter',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
+    )
+
     # planning: Nav2 servers (planner/controller/costmaps/BT).
     planning = include(
         os.path.join('planning', 'nav2.launch.py'),
@@ -200,6 +212,7 @@ def generate_launch_description():
         simulation,
         locomotion,
         state_estimation,
+        scan_filter,
         mapping,
         localization,
         planning,
