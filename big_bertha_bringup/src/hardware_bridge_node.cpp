@@ -295,10 +295,7 @@ private:
     auto cal_end = std::chrono::steady_clock::now();
     cal_duration_ms_ =
       std::chrono::duration_cast<std::chrono::milliseconds>(cal_end - cal_start).count();
-<<<<<<< HEAD
-=======
     cal_finish_time_ = cal_end;
->>>>>>> afa788c (feat: calibartion of sensor added at runtime)
 
     RCLCPP_INFO(
       get_logger(), "calibration took %ld ms (%d samples, ~%.1f Hz)", cal_duration_ms_, collected,
@@ -413,11 +410,8 @@ private:
   int accel_calibration_samples_;
   bool calibrated_{false};
   int64_t cal_duration_ms_{0};
-<<<<<<< HEAD
-=======
   std::chrono::steady_clock::time_point cal_finish_time_;
   double drift_angle_x_{0.0}, drift_angle_y_{0.0}, drift_angle_z_{0.0};
->>>>>>> afa788c (feat: calibartion of sensor added at runtime)
 
   // ── Threading ───────────────────────────────────────────────────────
   std::thread reader_thread_;
