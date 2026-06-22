@@ -23,7 +23,6 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <cstdint>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -354,8 +353,6 @@ private:
 
     imu_pub_->publish(msg);
 
-    if (!calibrated_) return;
-
     auto now_steady = std::chrono::steady_clock::now();
     double elapsed = std::chrono::duration<double>(now_steady - cal_finish_time_).count();
     drift_angle_x_ = gyro_bias_x_ * elapsed;
@@ -397,10 +394,7 @@ private:
   int gyro_calibration_samples_;
   bool accel_calibration_enabled_;
   int accel_calibration_samples_;
-<<<<<<< HEAD
-=======
   bool calibrated_{false};
->>>>>>> a66aaf7 (feat: calibartion of sensor added at runtime)
   int64_t cal_duration_ms_{0};
   std::chrono::steady_clock::time_point cal_finish_time_;
   double drift_angle_x_{0.0}, drift_angle_y_{0.0}, drift_angle_z_{0.0};
