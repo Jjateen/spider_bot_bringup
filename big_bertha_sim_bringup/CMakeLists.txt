@@ -34,6 +34,11 @@ if(BUILD_TESTING)
   # The world SDF and saved maps are generated/3rd-party formatting; skip
   # copyright/lint on data dirs, lint only launch + config python/yaml.
   set(ament_cmake_copyright_FOUND TRUE)
+  # clang-format (.clang-format + the pre-commit hook) is the canonical C++ style
+  # for this repo; ament_uncrustify uses a different, conflicting style (e.g. it
+  # wraps constructor initializer lists clang-format keeps inline). Disable it so
+  # clang-format stays the single source of truth (same as big_bertha_policy_controller).
+  set(ament_cmake_uncrustify_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
 
