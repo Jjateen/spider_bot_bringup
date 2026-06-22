@@ -20,6 +20,11 @@
 // A background thread polls IMU data via the same TCP socket and publishes
 // sensor_msgs/Imu on /imu.
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -29,11 +34,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
@@ -50,12 +50,12 @@ public:
     pwm_min_ = declare_parameter<int>("pwm_min", 102);
     pwm_max_ = declare_parameter<int>("pwm_max", 512);
     joint_limit_ = declare_parameter<double>("joint_limit", 3.14159);
-    orient_cov_ = declare_parameter<std::vector<double>>("orientation_covariance",
-      {-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
-    accel_cov_ = declare_parameter<std::vector<double>>("linear_acceleration_covariance",
-      {0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001});
-    gyro_cov_ = declare_parameter<std::vector<double>>("angular_velocity_covariance",
-      {0.00001, 0.0, 0.0, 0.0, 0.00001, 0.0, 0.0, 0.0, 0.00001});
+    orient_cov_ = declare_parameter<std::vector<double>>(
+      "orientation_covariance", {-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+    accel_cov_ = declare_parameter<std::vector<double>>(
+      "linear_acceleration_covariance", {0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001});
+    gyro_cov_ = declare_parameter<std::vector<double>>(
+      "angular_velocity_covariance", {0.00001, 0.0, 0.0, 0.0, 0.00001, 0.0, 0.0, 0.0, 0.00001});
     gyro_calibration_enabled_ = declare_parameter<bool>("gyro_calibration_enabled", true);
     gyro_calibration_samples_ = declare_parameter<int>("gyro_calibration_samples", 200);
     accel_calibration_enabled_ = declare_parameter<bool>("accel_calibration_enabled", true);
@@ -90,7 +90,9 @@ public:
 private:
   void connect()
   {
-    struct sockaddr_in addr{};
+    struct sockaddr_in addr
+    {
+    };
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port_);
     inet_pton(AF_INET, host_.c_str(), &addr.sin_addr);
@@ -102,13 +104,11 @@ private:
     }
 
     if (::connect(sock_fd_, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-      RCLCPP_WARN(get_logger(), "failed to connect to %s:%d — will retry",
-                  host_.c_str(), port_);
+      RCLCPP_WARN(get_logger(), "failed to connect to %s:%d — will retry", host_.c_str(), port_);
       ::close(sock_fd_);
       sock_fd_ = -1;
     } else {
-      RCLCPP_INFO(get_logger(), "connected to Python relay at %s:%d",
-                  host_.c_str(), port_);
+      RCLCPP_INFO(get_logger(), "connected to Python relay at %s:%d", host_.c_str(), port_);
     }
   }
 
@@ -118,8 +118,7 @@ private:
     if (sock_fd_ < 0) return;
     if (msg->data.size() != 12) {
       RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "expected 12 joints, got %zu", msg->data.size());
+        get_logger(), *get_clock(), 5000, "expected 12 joints, got %zu", msg->data.size());
       return;
     }
 
@@ -180,7 +179,8 @@ private:
   bool send_imu_request()
   {
     std::lock_guard<std::mutex> lk(sock_mutex_);
-    const char req[] = R"({"cmd":"imu"})" "\n";
+    const char req[] = R"({"cmd":"imu"})"
+                       "\n";
     ssize_t n = ::write(sock_fd_, req, sizeof(req) - 1);
     if (n <= 0) {
       ::close(sock_fd_);
@@ -215,7 +215,9 @@ private:
     RCLCPP_INFO(get_logger(), "calibrating sensors (%d samples)...", samples);
 
     double gx_sum = 0, gy_sum = 0, gz_sum = 0;
+    double gx_sq_sum = 0, gy_sq_sum = 0, gz_sq_sum = 0;
     double ax_sum = 0, ay_sum = 0, az_sum = 0;
+    double ax_sq_sum = 0, ay_sq_sum = 0, az_sq_sum = 0;
     int collected = 0;
 
     while (running_ && collected < samples) {
@@ -227,8 +229,18 @@ private:
       if (!line.empty()) {
         double ax, ay, az, gx, gy, gz;
         parse_imu_json(line, ax, ay, az, gx, gy, gz);
-        gx_sum += gx; gy_sum += gy; gz_sum += gz;
-        ax_sum += ax; ay_sum += ay; az_sum += az;
+        gx_sum += gx;
+        gy_sum += gy;
+        gz_sum += gz;
+        gx_sq_sum += gx * gx;
+        gy_sq_sum += gy * gy;
+        gz_sq_sum += gz * gz;
+        ax_sum += ax;
+        ay_sum += ay;
+        az_sum += az;
+        ax_sq_sum += ax * ax;
+        ay_sq_sum += ay * ay;
+        az_sq_sum += az * az;
         ++collected;
       }
 
@@ -238,11 +250,23 @@ private:
     if (collected == 0) return;
 
     if (gyro_calibration_enabled_) {
-      gyro_bias_x_ = gx_sum / collected;
-      gyro_bias_y_ = gy_sum / collected;
-      gyro_bias_z_ = gz_sum / collected;
-      RCLCPP_INFO(get_logger(), "gyro bias: gx=%.6f gy=%.6f gz=%.6f rad/s",
-                  gyro_bias_x_, gyro_bias_y_, gyro_bias_z_);
+      double gx_mean = gx_sum / collected;
+      double gy_mean = gy_sum / collected;
+      double gz_mean = gz_sum / collected;
+      gyro_bias_x_ = gx_mean;
+      gyro_bias_y_ = gy_mean;
+      gyro_bias_z_ = gz_mean;
+
+      double gx_var = gx_sq_sum / collected - gx_mean * gx_mean;
+      double gy_var = gy_sq_sum / collected - gy_mean * gy_mean;
+      double gz_var = gz_sq_sum / collected - gz_mean * gz_mean;
+      gyro_cov_ = {gx_var, 0.0, 0.0, 0.0, gy_var, 0.0, 0.0, 0.0, gz_var};
+
+      RCLCPP_INFO(
+        get_logger(), "gyro bias: gx=%.6f gy=%.6f gz=%.6f rad/s", gyro_bias_x_, gyro_bias_y_,
+        gyro_bias_z_);
+      RCLCPP_INFO(
+        get_logger(), "gyro var:  gx=%.6e gy=%.6e gz=%.6e (rad/s)²", gx_var, gy_var, gz_var);
     }
 
     if (accel_calibration_enabled_) {
@@ -252,15 +276,23 @@ private:
       accel_bias_x_ = ax_mean;
       accel_bias_y_ = ay_mean;
       accel_bias_z_ = az_mean - 9.81;
-      RCLCPP_INFO(get_logger(), "accel bias: ax=%.6f ay=%.6f az=%.6f m/s²",
-                  accel_bias_x_, accel_bias_y_, accel_bias_z_);
+
+      double ax_var = ax_sq_sum / collected - ax_mean * ax_mean;
+      double ay_var = ay_sq_sum / collected - ay_mean * ay_mean;
+      double az_var = az_sq_sum / collected - az_mean * az_mean;
+      accel_cov_ = {ax_var, 0.0, 0.0, 0.0, ay_var, 0.0, 0.0, 0.0, az_var};
+
+      RCLCPP_INFO(
+        get_logger(), "accel bias: ax=%.6f ay=%.6f az=%.6f m/s²", accel_bias_x_, accel_bias_y_,
+        accel_bias_z_);
+      RCLCPP_INFO(
+        get_logger(), "accel var:  ax=%.6e ay=%.6e az=%.6e (m/s²)²", ax_var, ay_var, az_var);
     }
   }
 
   void parse_imu_json(
-    const std::string & line,
-    double & ax, double & ay, double & az,
-    double & gx, double & gy, double & gz)
+    const std::string & line, double & ax, double & ay, double & az, double & gx, double & gy,
+    double & gz)
   {
     auto find_val = [&](const std::string & key) -> double {
       auto pos = line.find("\"" + key + "\"");
