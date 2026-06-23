@@ -119,6 +119,13 @@ public:
     // steering is applied even while gated, so the robot actively holds its
     // heading without walking. Off restores the fully-passive gated stance.
     station_keep_ = declare_parameter<bool>("station_keep", true);
+    // Position-hold: when idle, actively return to the latched stop point so the
+    // gated stance's DART contact creep cannot wander the robot into a wall after
+    // the goal. deadband: only correct drifts beyond this (m); speed: cap the
+    // return crawl (m/s). Off restores the plain gated stance.
+    position_hold_ = declare_parameter<bool>("position_hold", true);
+    pos_hold_deadband_ = declare_parameter<double>("pos_hold_deadband", 0.30);
+    pos_hold_speed_ = declare_parameter<double>("pos_hold_speed", 0.08);
     // ------------------- Lateral-hold outer loop ------------------------
     // The heading loop holds yaw, but the gait still slides off its LINE in
     // DART (the systematic sideways crab + the residual yaw the weak turn
@@ -324,6 +331,35 @@ private:
     double wz = stale ? 0.0 : cmd_wz_;
     vx = std::clamp(vx, 0.0, max_lin_vel_x_);
     vy = std::clamp(vy, -max_lin_vel_y_, max_lin_vel_y_);
+
+    // Position-hold: when the robot is idle (Nav2 command gone stale, e.g. after
+    // reaching the goal) it must HOLD where it stopped, not let the gated stance's
+    // DART contact creep wander it across the arena into a wall. Latch the stop
+    // point on the moving->idle transition; beyond a deadband, steer back to it
+    // (face it, then walk -- the gait has no reverse). Within the deadband, fall
+    // through to vx=0 so the gait gates and holds the stance.
+    if (position_hold_ && have_odom_yaw_) {
+      if (stale && !prev_stale_) {
+        hold_x_ = current_x_;
+        hold_y_ = current_y_;
+      }
+      if (stale) {
+        const double dx = hold_x_ - current_x_;
+        const double dy = hold_y_ - current_y_;
+        const double dist = std::hypot(dx, dy);
+        if (dist > pos_hold_deadband_) {
+          const double yaw_to_ref = wrap_pi(std::atan2(dy, dx) - current_yaw_);
+          if (std::abs(yaw_to_ref) > 0.6) {
+            vx = 0.0;  // turn in place to face the stop point first
+            wz = std::clamp(2.0 * yaw_to_ref, -max_yaw_rate_, max_yaw_rate_);
+          } else {
+            vx = std::clamp(0.6 * dist, stand_vx_thresh_ + 0.02, pos_hold_speed_);
+            wz = std::clamp(1.5 * yaw_to_ref, -max_yaw_rate_, max_yaw_rate_);
+          }
+        }
+      }
+    }
+    prev_stale_ = stale;
 
     if (!heading_hold_ || !have_odom_yaw_) {
       obs_.commands = {vx, vy, std::clamp(wz, -max_yaw_rate_, max_yaw_rate_)};
@@ -656,8 +692,14 @@ private:
   bool have_odom_yaw_{false};
   double desired_yaw_{0.0};
   bool heading_init_{false};
-  bool station_keep_{true};  // hold heading while gated/idle (anti pre-goal creep)
-  bool prev_idle_{false};    // prev-step idle state, for the stop-transition latch
+  bool station_keep_{true};   // hold heading while gated/idle (anti pre-goal creep)
+  bool prev_idle_{false};     // prev-step idle state, for the stop-transition latch
+  bool position_hold_{true};  // return to the stop point when idle (anti post-goal wander)
+  bool prev_stale_{false};    // prev-step stale state, for the hold-point latch
+  double hold_x_{0.0};        // latched stop point for position-hold
+  double hold_y_{0.0};
+  double pos_hold_deadband_{0.30};
+  double pos_hold_speed_{0.08};
   // Lateral-hold outer loop (closed-loop line tracking on the odom offset).
   bool lateral_hold_{true};
   double lateral_kp_{0.25};
