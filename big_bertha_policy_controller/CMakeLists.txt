@@ -47,9 +47,9 @@ if(NOT ONNXRUNTIME_INCLUDE_DIR OR NOT ONNXRUNTIME_LIB)
   message(STATUS
     "ONNX Runtime not found under '${ONNXRUNTIME_ROOT}'; auto-fetching ${ORT_PKG} ...")
   include(FetchContent)
-  FetchContent_Declare(onnxruntime
+  fetchcontent_declare(onnxruntime
     URL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/${ORT_PKG}.tgz")
-  FetchContent_MakeAvailable(onnxruntime)
+  fetchcontent_makeavailable(onnxruntime)
   set(ONNXRUNTIME_ROOT "${onnxruntime_SOURCE_DIR}")
   find_path(ONNXRUNTIME_INCLUDE_DIR onnxruntime_cxx_api.h
     HINTS ${ONNXRUNTIME_ROOT}/include
