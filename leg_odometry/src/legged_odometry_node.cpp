@@ -17,6 +17,7 @@
 
 using namespace std::chrono_literals;
 
+
 class LeggedOdometryNode : public rclcpp::Node
 {
 public:
@@ -54,6 +55,7 @@ public:
 
     tf_broadcaster_ =
       std::make_shared<tf2_ros::TransformBroadcaster>(this);
+
 
     // Publish initial joint states after a short delay so subscriptions
     // (e.g. policy_controller) have time to connect via DDS discovery.
@@ -201,6 +203,7 @@ private:
     joint_state_pub_->publish(js);
     RCLCPP_INFO(get_logger(), "published initial joint states (default pose)");
   }
+
 
   void compute_imu_dead_reckon(
     const sensor_msgs::msg::Imu::SharedPtr & msg,
