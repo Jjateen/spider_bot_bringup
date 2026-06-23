@@ -1,0 +1,22 @@
+/**:
+  ros__parameters:
+    joint_names:
+      - "Revolute_110"
+      - "Revolute_111"
+      - "Revolute_112"
+      - "Revolute_113"
+      - "Revolute_114"
+      - "Revolute_115"
+      - "Revolute_116"
+      - "Revolute_117"
+      - "Revolute_118"
+      - "Revolute_119"
+      - "Revolute_120"
+      - "Revolute_121"
+    default_joint_pos:
+      [0.0, 0.5, 0.0, 0.0, 0.5, 0.0, 0.0, 0.5, 0.0, 0.0, 0.5, 0.0]
+    odom_frame: "odom"
+    base_frame: "base_link"
+    publish_tf: true
+    velocity_source: "imu_dead_reckon"
+    drift_damping: 0.98
