@@ -8,7 +8,7 @@ find_package(sensor_msgs REQUIRED)
 # Install all bringup assets into the package share directory. RViz +
 # PlotJuggler configs live under config/ (config/rviz, config/plotjuggler).
 install(
-  DIRECTORY launch config worlds
+  DIRECTORY launch config worlds scripts
   DESTINATION share/${PROJECT_NAME}
 )
 
