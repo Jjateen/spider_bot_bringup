@@ -15,6 +15,8 @@
 #include "tf2/LinearMath/Vector3.h"
 #include "tf2_ros/transform_broadcaster.h"
 
+using namespace std::chrono_literals;
+
 class LeggedOdometryNode : public rclcpp::Node
 {
 public:
@@ -52,6 +54,11 @@ public:
 
     tf_broadcaster_ =
       std::make_shared<tf2_ros::TransformBroadcaster>(this);
+
+    // Publish initial joint states after a short delay so subscriptions
+    // (e.g. policy_controller) have time to connect via DDS discovery.
+    init_timer_ = create_wall_timer(
+      100ms, std::bind(&LeggedOdometryNode::publish_initial_joint_states, this));
   }
 
 private:
@@ -180,6 +187,21 @@ private:
     last_position_ = position;
   }
 
+  void publish_initial_joint_states()
+  {
+    init_timer_->cancel();
+
+    auto js = sensor_msgs::msg::JointState();
+    js.header.stamp = now();
+    js.name = joint_names_;
+    for (size_t i = 0; i < 12; ++i) {
+      js.position.push_back(default_joint_pos_[i]);
+      js.velocity.push_back(0.0);
+    }
+    joint_state_pub_->publish(js);
+    RCLCPP_INFO(get_logger(), "published initial joint states (default pose)");
+  }
+
   void compute_imu_dead_reckon(
     const sensor_msgs::msg::Imu::SharedPtr & msg,
     const tf2::Quaternion & orientation, double dt,
@@ -259,6 +281,7 @@ private:
     joint_state_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+  rclcpp::TimerBase::SharedPtr init_timer_;
 
   std::vector<std::string> joint_names_;
   std::vector<double> default_joint_pos_;
