@@ -16,7 +16,6 @@
 #include "tf2_ros/transform_broadcaster.h"
 
 using namespace std::chrono_literals;
-
 class LeggedOdometryNode : public rclcpp::Node
 {
 public:
