@@ -147,6 +147,19 @@ private:
   // ── Inbound reader thread: poll IMU over TCP ────────────────────────
   void reader_loop()
   {
+    // ── Startup: calibrate sensors once ──────────────────────────
+    while (running_) {
+      if (sock_fd_ < 0) {
+        std::lock_guard<std::mutex> lk(sock_mutex_);
+        connect();
+      }
+      if (sock_fd_ >= 0 && calibrate_sensors()) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+
+    // ── Main IMU polling loop ────────────────────────────────────
     while (running_) {
       if (sock_fd_ < 0) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -155,11 +168,6 @@ private:
           connect();
         }
         continue;
-      }
-
-      if (!calibrated_) {
-        calibrate_sensors();
-        calibrated_ = true;
       }
 
       if (!send_imu_request()) continue;
@@ -208,10 +216,10 @@ private:
     return true;
   }
 
-  void calibrate_sensors()
+  bool calibrate_sensors()
   {
     int samples = std::max(gyro_calibration_samples_, accel_calibration_samples_);
-    if (samples == 0) return;
+    if (samples == 0) return true;
 
     RCLCPP_INFO(get_logger(), "calibrating sensors (%d samples)...", samples);
 
@@ -224,10 +232,10 @@ private:
     int collected = 0;
 
     while (running_ && collected < samples) {
-      if (!send_imu_request()) return;
+      if (!send_imu_request()) return false;
 
       std::string line;
-      if (!read_imu_line(line)) return;
+      if (!read_imu_line(line)) return false;
 
       if (!line.empty()) {
         double ax, ay, az, gx, gy, gz;
@@ -250,7 +258,7 @@ private:
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    if (collected == 0) return;
+    if (collected == 0) return true;
 
     if (gyro_calibration_enabled_) {
       double gx_mean = gx_sum / collected;
@@ -309,6 +317,8 @@ private:
         get_logger(), "gyro drift over cal period:  %.3e  %.3e  %.3e rad", drift_x, drift_y,
         drift_z);
     }
+
+    return true;
   }
 
   void parse_imu_json(
@@ -365,8 +375,6 @@ private:
 
     imu_pub_->publish(msg);
 
-    if (!calibrated_) return;
-
     auto now_steady = std::chrono::steady_clock::now();
     double elapsed = std::chrono::duration<double>(now_steady - cal_finish_time_).count();
     drift_angle_x_ = gyro_bias_x_ * elapsed;
@@ -408,7 +416,6 @@ private:
   int gyro_calibration_samples_;
   bool accel_calibration_enabled_;
   int accel_calibration_samples_;
-  bool calibrated_{false};
   int64_t cal_duration_ms_{0};
   std::chrono::steady_clock::time_point cal_finish_time_;
   double drift_angle_x_{0.0}, drift_angle_y_{0.0}, drift_angle_z_{0.0};

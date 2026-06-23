@@ -4,12 +4,4 @@ icon: 🕷️
 version: "0.1.0"
 ports:
   - 50007
-bricks:
-  - id: python-relay
-    type: python
-    path: python/
-    file: app.py
-  - id: mcu-firmware
-    type: sketch
-    path: sketch/
-    file: sketch.ino
+bricks: []
