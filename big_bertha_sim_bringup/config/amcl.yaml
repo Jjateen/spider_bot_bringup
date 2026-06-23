@@ -14,7 +14,12 @@ amcl:
     base_frame_id: base_link
     odom_frame_id: odom
     global_frame_id: map
-    scan_topic: /scan
+    # /scan_filtered, not /scan: the body-mounted lidar tilts with the gait and
+    # paints floor returns ('ghost walls') into the raw /scan; matching those
+    # against the static map drifts AMCL. scan_ground_filter removes them, so
+    # AMCL matches only real walls/obstacles -- the realistic fix for hardware
+    # too, where the lidar tilts the same way.
+    scan_topic: /scan_filtered
     beam_skip_distance: 0.5
     beam_skip_error_threshold: 0.9
     beam_skip_threshold: 0.3
