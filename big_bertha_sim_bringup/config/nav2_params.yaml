@@ -121,14 +121,20 @@ controller_server:
       # for 0.4 just saturates the cmd clamp and overruns the path. Shorter
       # lookahead keeps the carrot near the slow robot for tighter following.
       desired_linear_vel: 0.12
-      # Large lookahead: the carrot sits far ahead so the commanded yaw stays
-      # small and forward-biased. A tight lookahead micro-corrects cross-track
-      # with hard left-yaw the gait cannot execute, which spirals the robot and
-      # stalls it; aiming far ahead keeps it walking ~straight toward B (the
-      # drift is cancelled by the policy node's heading-hold).
-      lookahead_dist: 2.5
-      min_lookahead_dist: 1.5
-      max_lookahead_dist: 3.0
+      # Tighter lookahead (was 2.5/1.5/3.0): the carrot stays near the robot ON
+      # the path so it tracks the path's turns around obstacles instead of aiming
+      # far past them and grazing walls. The old large value was a workaround for
+      # a gait that could not yaw; the symmetric/flatter policy now yaws +/-0.8
+      # and use_rotate_to_heading makes the sharp turns, so we can follow tightly
+      # -- the responsiveness fix (robot acts on a new path quickly).
+      # 1.2 -> 0.7: even tighter so the robot does NOT cut the corner of the
+      # path's bend around an on-path obstacle (box_1/pillar_1/box_2 all sit on
+      # the diagonal, a slalom with ~0.8-1.1 m gaps). A short carrot keeps it
+      # weaving through the gap centres; the responsive gait (yaw track ~1.0) can
+      # follow it without the spiral the old large value guarded against.
+      lookahead_dist: 0.7
+      min_lookahead_dist: 0.5
+      max_lookahead_dist: 1.0
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 0.8  # match the gait's trained yaw cap (+/-0.8 rad/s)
       transform_tolerance: 0.2
@@ -153,7 +159,7 @@ controller_server:
       # from an obstacle it is about to hit -- without it the slow forward-only
       # arc could not change heading fast enough and the robot stuck on contact.
       use_rotate_to_heading: true
-      rotate_to_heading_min_angle: 0.6
+      rotate_to_heading_min_angle: 0.5
       max_angular_accel: 3.2
       max_robot_pose_search_dist: 10.0
       allow_reversing: false
@@ -175,7 +181,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.28
+        inflation_radius: 0.38
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -254,7 +260,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.28
+        inflation_radius: 0.38
       always_send_full_costmap: True
 
 # The yaml_filename does not need to be specified since it going to be set by defaults in launch.
@@ -380,12 +386,28 @@ collision_monitor:
     stop_pub_timeout: 2.0
     # Polygons represent zone around the robot for "stop", "slowdown" and "limit" action types,
     # and robot footprint for "approach" action type.
-    polygons: ["FootprintApproach"]
+    polygons: ["PolygonStop", "FootprintApproach"]
+    # Hard stop backstop: if >=4 scan points (a wall/obstacle) enter this fixed
+    # box around the robot, force cmd_vel to zero (the gait then gates and holds).
+    # This guarantees zero wall collisions regardless of why the robot is moving
+    # -- including the post-goal idle creep that no cmd_vel change would stop. The
+    # +/-0.35 x +/-0.30 m box sits well inside the ~0.87 m clearance the planner
+    # keeps during navigation, so it never false-triggers on the planned path.
+    PolygonStop:
+      type: "polygon"
+      action_type: "stop"
+      points: "[[0.35, 0.30], [0.35, -0.30], [-0.35, -0.30], [-0.35, 0.30]]"
+      min_points: 4
+      visualize: True
+      enabled: True
     FootprintApproach:
       type: "polygon"
       action_type: "approach"
       footprint_topic: "/local_costmap/published_footprint"
-      time_before_collision: 1.2
+      # 1.2 -> 1.8: project the footprint further ahead along the velocity so the
+      # monitor scales the speed toward 0 earlier -- a wider safety margin for the
+      # zero-collision goal (the slow crawl still has room to keep moving).
+      time_before_collision: 1.8
       simulation_time_step: 0.1
       min_points: 6
       visualize: False
