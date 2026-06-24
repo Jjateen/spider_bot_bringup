@@ -117,9 +117,10 @@ controller_server:
     # the obstacle arena.
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      # Match the learned crawl envelope: it tracks ~0.12 m/s forward, so asking
-      # for 0.4 just saturates the cmd clamp and overruns the path. Shorter
-      # lookahead keeps the carrot near the slow robot for tighter following.
+      # Match the learned crawl envelope: the gait tracks ~0.08-0.12 m/s forward
+      # (MG995-actuator-limited -- a higher command just saturates the gait and
+      # overruns the path). The short lookahead keeps the carrot near the robot
+      # for tight following.
       desired_linear_vel: 0.12
       # Tighter lookahead (was 2.5/1.5/3.0): the carrot stays near the robot ON
       # the path so it tracks the path's turns around obstacles instead of aiming
