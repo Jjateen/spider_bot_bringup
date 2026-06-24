@@ -23,44 +23,37 @@ class LeggedOdometryNode : public rclcpp::Node
 public:
   LeggedOdometryNode() : Node("legged_odometry")
   {
-    joint_names_ = declare_parameter<std::vector<std::string>>(
-      "joint_names", kDefaultJointNames);
-    default_joint_pos_ = declare_parameter<std::vector<double>>(
-      "default_joint_pos", kDefaultJointPos);
+    joint_names_ = declare_parameter<std::vector<std::string>>("joint_names", kDefaultJointNames);
+    default_joint_pos_ =
+      declare_parameter<std::vector<double>>("default_joint_pos", kDefaultJointPos);
     odom_frame_ = declare_parameter<std::string>("odom_frame", "odom");
     base_frame_ = declare_parameter<std::string>("base_frame", "base_link");
     publish_tf_ = declare_parameter<bool>("publish_tf", true);
-    velocity_source_ =
-      declare_parameter<std::string>("velocity_source", "imu_dead_reckon");
+    velocity_source_ = declare_parameter<std::string>("velocity_source", "imu_dead_reckon");
     drift_damping_ = declare_parameter<double>("drift_damping", 0.98);
 
-    RCLCPP_INFO(
-      get_logger(), "velocity source: %s", velocity_source_.c_str());
+    RCLCPP_INFO(get_logger(), "velocity source: %s", velocity_source_.c_str());
 
     last_cmd_positions_.resize(12, 0.0);
 
     cmd_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       "/position_controller/commands", rclcpp::QoS(1),
-      std::bind(
-        &LeggedOdometryNode::on_cmd, this, std::placeholders::_1));
+      std::bind(&LeggedOdometryNode::on_cmd, this, std::placeholders::_1));
 
     imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
       "/imu", rclcpp::SensorDataQoS(),
-      std::bind(
-        &LeggedOdometryNode::on_imu, this, std::placeholders::_1));
+      std::bind(&LeggedOdometryNode::on_imu, this, std::placeholders::_1));
 
-    joint_state_pub_ =
-      create_publisher<sensor_msgs::msg::JointState>("/joint_states", 1);
+    joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>("/joint_states", 1);
     odom_pub_ = create_publisher<nav_msgs::msg::Odometry>("/odom", 1);
 
-    tf_broadcaster_ =
-      std::make_shared<tf2_ros::TransformBroadcaster>(this);
+    tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
 
     // Publish joint states periodically at 50 Hz so the policy controller
     // (and any other late-joining subscriber) receives joint data.
-    joint_state_timer_ = create_wall_timer(
-      20ms, std::bind(&LeggedOdometryNode::publish_joint_states, this));
+    joint_state_timer_ =
+      create_wall_timer(20ms, std::bind(&LeggedOdometryNode::publish_joint_states, this));
   }
 
 private:
@@ -107,33 +100,28 @@ private:
     if (last_imu_time_.time_since_epoch().count() == 0) {
       last_imu_time_ = now_steady;
       last_orientation_.setValue(
-        msg->orientation.x, msg->orientation.y, msg->orientation.z,
-        msg->orientation.w);
+        msg->orientation.x, msg->orientation.y, msg->orientation.z, msg->orientation.w);
       last_orientation_.normalize();
       return;
     }
 
-    double dt =
-      std::chrono::duration<double>(now_steady - last_imu_time_).count();
+    double dt = std::chrono::duration<double>(now_steady - last_imu_time_).count();
     if (dt <= 0.0 || dt > 0.1) {
       last_imu_time_ = now_steady;
       return;
     }
 
     tf2::Quaternion orientation(
-      msg->orientation.x, msg->orientation.y, msg->orientation.z,
-      msg->orientation.w);
+      msg->orientation.x, msg->orientation.y, msg->orientation.z, msg->orientation.w);
     orientation.normalize();
 
     tf2::Vector3 velocity;
     tf2::Vector3 position;
 
     if (velocity_source_ == "leg_kinematics") {
-      compute_leg_kinematics_velocity(
-        orientation, orientation, dt, velocity, position);
+      compute_leg_kinematics_velocity(orientation, orientation, dt, velocity, position);
     } else {
-      compute_imu_dead_reckon(
-        msg, orientation, dt, velocity, position);
+      compute_imu_dead_reckon(msg, orientation, dt, velocity, position);
     }
 
     auto odom = nav_msgs::msg::Odometry();
@@ -203,13 +191,11 @@ private:
 
 
   void compute_imu_dead_reckon(
-    const sensor_msgs::msg::Imu::SharedPtr & msg,
-    const tf2::Quaternion & orientation, double dt,
+    const sensor_msgs::msg::Imu::SharedPtr & msg, const tf2::Quaternion & orientation, double dt,
     tf2::Vector3 & velocity, tf2::Vector3 & position)
   {
     tf2::Vector3 accel_body(
-      msg->linear_acceleration.x, msg->linear_acceleration.y,
-      msg->linear_acceleration.z);
+      msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z);
 
     tf2::Matrix3x3 rot(orientation);
     tf2::Vector3 accel_world = rot * accel_body;
@@ -223,11 +209,8 @@ private:
   }
 
   void compute_leg_kinematics_velocity(
-    const tf2::Quaternion & orient_prev,
-    const tf2::Quaternion & orient_curr,
-    double dt,
-    tf2::Vector3 & velocity,
-    tf2::Vector3 & position)
+    const tf2::Quaternion & orient_prev, const tf2::Quaternion & orient_curr, double dt,
+    tf2::Vector3 & velocity, tf2::Vector3 & position)
   {
     (void)orient_prev;
     (void)orient_curr;
@@ -260,25 +243,16 @@ private:
   }
 
   inline static const std::vector<std::string> kDefaultJointNames{
-    "Revolute_110", "Revolute_111", "Revolute_112",
-    "Revolute_113", "Revolute_114", "Revolute_115",
-    "Revolute_116", "Revolute_117", "Revolute_118",
-    "Revolute_119", "Revolute_120", "Revolute_121"
-  };
+    "Revolute_110", "Revolute_111", "Revolute_112", "Revolute_113", "Revolute_114", "Revolute_115",
+    "Revolute_116", "Revolute_117", "Revolute_118", "Revolute_119", "Revolute_120", "Revolute_121"};
 
-  inline static const std::vector<double> kDefaultJointPos{
-    0.0, -0.32, 1.82,
-    0.0, -0.32, 1.82,
-    0.0, -0.32, 1.82,
-    0.0, -0.32, 1.82
-  };
+  inline static const std::vector<double> kDefaultJointPos{0.0, -0.32, 1.82, 0.0, -0.32, 1.82,
+                                                           0.0, -0.32, 1.82, 0.0, -0.32, 1.82};
 
-  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr
-    cmd_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
 
-  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr
-    joint_state_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   rclcpp::TimerBase::SharedPtr joint_state_timer_;
