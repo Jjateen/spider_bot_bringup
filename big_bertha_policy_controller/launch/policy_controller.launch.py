@@ -46,7 +46,7 @@ def generate_launch_description():
     heading_lock_yaw = LaunchConfiguration('heading_lock_yaw')
 
     return LaunchDescription([
-        DeclareLaunchArgument('use_sim_time', default_value='true'),
+        DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('model_path', default_value=default_model),
         DeclareLaunchArgument('params_file', default_value=default_params),
         DeclareLaunchArgument('start_enabled', default_value='true'),
