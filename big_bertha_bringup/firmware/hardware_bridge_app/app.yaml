@@ -4,6 +4,7 @@ icon: 🕷️
 version: "0.1.0"
 ports:
   - 50007
+<<<<<<< HEAD
 bricks:
   - id: python-relay
     type: python
@@ -13,3 +14,6 @@ bricks:
     type: sketch
     path: sketch/
     file: sketch.ino
+=======
+bricks: []
+>>>>>>> a28c4ef (feat: improved sensor nodes)
