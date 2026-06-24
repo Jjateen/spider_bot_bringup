@@ -16,16 +16,60 @@ find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(spider_msgs REQUIRED)
 
-# ----------------------------- ONNX Runtime -------------------------------
-# Prebuilt ONNX Runtime (C++). It is NOT on rosdep/apt for Jazzy, so it cannot
-# be a package.xml dependency (#39). Resolution order: (1) -DONNXRUNTIME_ROOT or
-# the repo-local .onnxruntime; (2) otherwise AUTO-FETCH the official prebuilt for
-# this CPU arch so a plain `colcon build` works out-of-the-box -- including on
-# aarch64 targets like the Arduino Uno Q (no manual download step).
-set(ORT_VERSION "1.20.1" CACHE STRING "ONNX Runtime version")
+# ----------------------------- ONNX Runtime auto-download -------------------
+# ONNX Runtime (C++) is not packaged via apt/rosdep on Jazzy. If the prebuilt
+# release is not already present under ONNXRUNTIME_ROOT, CMake downloads it
+# automatically during configure, matching the host CPU architecture.
+set(ORT_VER "1.20.1")
+
+# Map CMake system processor to the arch label used in ONNX Runtime release
+# tarballs (https://github.com/microsoft/onnxruntime/releases).
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")
+  set(ORT_ARCH "x64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+  set(ORT_ARCH "aarch64")
+else()
+  message(FATAL_ERROR
+    "Unsupported CPU architecture: ${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+
 if(NOT DEFINED ONNXRUNTIME_ROOT)
   set(ONNXRUNTIME_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.onnxruntime"
       CACHE PATH "ONNX Runtime install prefix")
+endif()
+
+# Skip download if headers + library already exist
+set(ORT_REQUIRED_HEADER "${ONNXRUNTIME_ROOT}/include/onnxruntime_cxx_api.h")
+set(ORT_REQUIRED_LIB "${ONNXRUNTIME_ROOT}/lib/libonnxruntime.so")
+
+if(NOT EXISTS "${ORT_REQUIRED_HEADER}" OR NOT EXISTS "${ORT_REQUIRED_LIB}")
+  message(STATUS
+    "ONNX Runtime not found at ${ONNXRUNTIME_ROOT} — "
+    "downloading v${ORT_VER} for ${ORT_ARCH}")
+
+  set(ORT_URL
+    "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VER}/onnxruntime-linux-${ORT_ARCH}-${ORT_VER}.tgz")
+  set(ORT_TGZ "${CMAKE_BINARY_DIR}/onnxruntime-linux-${ORT_ARCH}-${ORT_VER}.tgz")
+
+  file(DOWNLOAD "${ORT_URL}" "${ORT_TGZ}"
+       SHOW_PROGRESS STATUS ORT_DL_STATUS)
+  list(GET ORT_DL_STATUS 0 ORT_DL_RET)
+  if(ORT_DL_RET)
+    message(FATAL_ERROR
+      "Failed to download ONNX Runtime from ${ORT_URL}: ${ORT_DL_STATUS}")
+  endif()
+
+  file(MAKE_DIRECTORY "${ONNXRUNTIME_ROOT}")
+  execute_process(
+    COMMAND tar xzf "${ORT_TGZ}" --strip-components=1 -C "${ONNXRUNTIME_ROOT}"
+    RESULT_VARIABLE ORT_TAR_RESULT)
+  if(NOT ORT_TAR_RESULT EQUAL 0)
+    message(FATAL_ERROR
+      "Failed to extract ${ORT_TGZ}: tar returned ${ORT_TAR_RESULT}")
+  endif()
+
+  file(REMOVE "${ORT_TGZ}")
+  message(STATUS "ONNX Runtime extracted to ${ONNXRUNTIME_ROOT}")
 endif()
 
 find_path(ONNXRUNTIME_INCLUDE_DIR onnxruntime_cxx_api.h
@@ -59,9 +103,9 @@ endif()
 
 if(NOT ONNXRUNTIME_INCLUDE_DIR OR NOT ONNXRUNTIME_LIB)
   message(FATAL_ERROR
-    "ONNX Runtime unavailable: not found under '${ONNXRUNTIME_ROOT}' and the "
-    "auto-fetch of v${ORT_VERSION} failed (network is needed on the first build). "
-    "Pass -DONNXRUNTIME_ROOT=<path> to a prebuilt install instead.")
+    "ONNX Runtime not found under '${ONNXRUNTIME_ROOT}'. "
+    "Download v${ORT_VER} and pass -DONNXRUNTIME_ROOT=<path> "
+    "(see PLAN.md / repo README).")
 endif()
 message(STATUS "ONNX Runtime: ${ONNXRUNTIME_LIB}")
 
