@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -193,7 +194,7 @@ public:
       std::bind(
         &PolicyControllerNode::on_load_policy, this, std::placeholders::_1, std::placeholders::_2));
 
-    const auto period = std::chrono::duration<double>(1.0 / control_rate_);
+    const auto period = std::chrono::duration<double>(1.0 / pd_rate_);
     timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(period),
       std::bind(&PolicyControllerNode::control_loop, this));
@@ -232,6 +233,13 @@ private:
     // OdometryPublisher, matching root_lin_vel_b.
     obs_.root_lin_vel_b = {
       msg->twist.twist.linear.x, msg->twist.twist.linear.y, msg->twist.twist.linear.z};
+    // Absolute heading (map/odom yaw) for the heading-hold outer loop.
+    const auto & q = msg->pose.pose.orientation;
+    current_yaw_ = std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+    // Absolute planar position for the lateral-hold outer loop.
+    current_x_ = msg->pose.pose.position.x;
+    current_y_ = msg->pose.pose.position.y;
+    have_odom_yaw_ = true;
   }
 
   void on_imu(const sensor_msgs::msg::Imu::SharedPtr msg)
@@ -442,8 +450,9 @@ private:
     // the PD below damps at the full pd_rate_.
     if (warming) {
       std::lock_guard<std::mutex> lk(state_mutex_);
-      if (cmd_timeout_ > 0.0 && (now() - last_cmd_time_).seconds() > cmd_timeout_) {
-        obs_.commands = {0.0, 0.0, 0.0};
+      for (int i = 0; i < bbpc::kNumJoints; ++i) {
+        target_pos_[i] = obs_.default_joint_pos[i];
+        obs_.prev_actions[i] = 0.0f;
       }
       decim_count_ = 0;
       last_action_norm_ = 0.0;
@@ -540,32 +549,22 @@ private:
     // PD step every tick: tau = Kp*(q_des - q) - Kd*qd, torque-limited.
     std_msgs::msg::Float64MultiArray cmd;
     cmd.data.resize(bbpc::kNumJoints);
-    double norm_sq = 0.0;
     {
       std::lock_guard<std::mutex> lk(state_mutex_);
       for (int i = 0; i < bbpc::kNumJoints; ++i) {
-        double a_raw = std::isfinite(action[i]) ? action[i] : 0.0;
-        // The training env clamps the raw policy action to [-1, 1] BEFORE
-        // scaling (big_bertha_env.py _pre_physics_step:
-        //   self._actions = torch.clamp(actions, -1.0, 1.0)).
-        // The policy is trained to rely on this saturation, so we must
-        // replicate it here; otherwise large raw outputs slam every joint
-        // to the limit and the gait collapses.
-        double a = std::clamp(a_raw, -action_clip_, action_clip_);
-        double target = action_scale_ * a + obs_.default_joint_pos[i];
-        // Final safety clamp to the joint range.
-        target = std::clamp(target, -joint_limit_, joint_limit_);
-        cmd.data[i] = target;
-        norm_sq += a * a;
-        // Feed back the CLAMPED action, matching the env's
-        // self._previous_actions = self._actions.clone().
-        obs_.prev_actions[i] = static_cast<float>(a);
+        if (use_effort_) {
+          double effort =
+            kp_ * (target_pos_[i] - obs_.joint_pos[i]) + kd_ * (0.0 - obs_.joint_vel[i]);
+          cmd.data[i] = std::clamp(effort, -effort_limit_, effort_limit_);
+        } else {
+          cmd.data[i] = target_pos_[i];
+        }
       }
     }
     cmd_pub_->publish(cmd);
 
-    status.inference_ms = inf_ms;
-    status.action_norm = std::sqrt(norm_sq);
+    status.inference_ms = last_inf_ms_;
+    status.action_norm = last_action_norm_;
     status_pub_->publish(status);
   }
 
@@ -588,6 +587,18 @@ private:
   double control_rate_{50.0};
   double cmd_timeout_{0.5};
   double joint_limit_{3.14159};
+  bool use_effort_{true};
+  double kp_{20.0};
+  double kd_{2.0};
+  double effort_limit_{1.0};
+  double pd_rate_{200.0};
+  double warmup_sec_{3.0};
+  rclcpp::Time warmup_start_{0, 0, RCL_ROS_TIME};
+  int policy_decimation_{4};
+  int decim_count_{0};
+  std::array<double, bbpc::kNumJoints> target_pos_{};
+  double last_inf_ms_{0.0};
+  double last_action_norm_{0.0};
   double action_clip_{1.0};
   // Trained envelope (big_bertha_env.py::_reset_idx): vx [0, 0.40],
   // vy +/-0.05, yaw +/-0.5. Fallback defaults; policy.yaml sets runtime values.
@@ -651,6 +662,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hip_bias_sub_;
   rclcpp::Service<spider_msgs::srv::SetPolicyEnabled>::SharedPtr set_enabled_srv_;
   rclcpp::Service<spider_msgs::srv::LoadPolicy>::SharedPtr load_policy_srv_;
   rclcpp::TimerBase::SharedPtr timer_;
