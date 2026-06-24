@@ -177,11 +177,7 @@ public:
 
     for (int i = 0; i < bbpc::kNumJoints && i < static_cast<int>(default_pose.size()); ++i) {
       obs_.default_joint_pos[i] = default_pose[i];
-<<<<<<< HEAD
       obs_.joint_pos[i] = default_pose[i];
-=======
-      target_pos_[i] = default_pose[i];
->>>>>>> main
     }
     for (size_t i = 0; i < joint_names_.size(); ++i) {
       joint_index_[joint_names_[i]] = static_cast<int>(i);
