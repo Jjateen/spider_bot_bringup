@@ -29,7 +29,6 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -50,7 +49,7 @@ def generate_launch_description():
     lateral_hold = LaunchConfiguration('lateral_hold')
 
     return LaunchDescription([
-        DeclareLaunchArgument('use_sim_time', default_value='true'),
+        DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('model_path', default_value=default_model),
         DeclareLaunchArgument('params_file', default_value=default_params),
         DeclareLaunchArgument('start_enabled', default_value='true'),
