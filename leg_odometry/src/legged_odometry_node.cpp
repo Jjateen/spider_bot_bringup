@@ -55,10 +55,10 @@ public:
     tf_broadcaster_ =
       std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
-    // Publish initial joint states after a short delay so subscriptions
-    // (e.g. policy_controller) have time to connect via DDS discovery.
-    init_timer_ = create_wall_timer(
-      100ms, std::bind(&LeggedOdometryNode::publish_initial_joint_states, this));
+    // Publish joint states periodically at 50 Hz so the policy controller
+    // (and any other late-joining subscriber) receives joint data.
+    joint_state_timer_ = create_wall_timer(
+      20ms, std::bind(&LeggedOdometryNode::publish_joint_states, this));
   }
 
 private:
@@ -187,19 +187,16 @@ private:
     last_position_ = position;
   }
 
-  void publish_initial_joint_states()
+  void publish_joint_states()
   {
-    init_timer_->cancel();
-
     auto js = sensor_msgs::msg::JointState();
     js.header.stamp = now();
     js.name = joint_names_;
     for (size_t i = 0; i < 12; ++i) {
-      js.position.push_back(default_joint_pos_[i]);
-      js.velocity.push_back(0.0);
+      js.position.push_back(default_joint_pos_[i] + last_joint_positions_[i]);
+      js.velocity.push_back(last_joint_velocities_[i]);
     }
     joint_state_pub_->publish(js);
-    RCLCPP_INFO(get_logger(), "published initial joint states (default pose)");
   }
 
   void compute_imu_dead_reckon(
@@ -267,10 +264,10 @@ private:
   };
 
   inline static const std::vector<double> kDefaultJointPos{
-    0.0, 0.5, 0.0,
-    0.0, 0.5, 0.0,
-    0.0, 0.5, 0.0,
-    0.0, 0.5, 0.0
+    0.0, -0.32, 1.82,
+    0.0, -0.32, 1.82,
+    0.0, -0.32, 1.82,
+    0.0, -0.32, 1.82
   };
 
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr
@@ -281,7 +278,7 @@ private:
     joint_state_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-  rclcpp::TimerBase::SharedPtr init_timer_;
+  rclcpp::TimerBase::SharedPtr joint_state_timer_;
 
   std::vector<std::string> joint_names_;
   std::vector<double> default_joint_pos_;
