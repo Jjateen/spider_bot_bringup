@@ -1,91 +1,186 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 730" width="1000" height="730">
-  <defs>
-    <style>text{font-family:'Helvetica Neue',Arial,sans-serif;}</style>
-    <marker id="ag" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#5f6368"/></marker>
-    <marker id="ab" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#1a73e8"/></marker>
-  </defs>
-
-  <rect x="0" y="0" width="1000" height="730" fill="#ffffff"/>
-  <text x="500" y="36" text-anchor="middle" font-size="23" font-weight="700" fill="#202124">Big Bertha sensor core architecture</text>
-  <text x="500" y="60" text-anchor="middle" font-size="13" fill="#5f6368">one C++ node, the stock router, streaming both ways, no python and no raw uart</text>
-
-  <!-- QUALCOMM -->
-  <rect x="40" y="80" width="920" height="255" rx="12" fill="#E8F0FE" stroke="#4285F4" stroke-width="2"/>
-  <text x="58" y="106" font-size="14" font-weight="700" fill="#1967D2">Qualcomm   /   Debian Linux   /   ROS 2 native   (all C++)</text>
-
-  <rect x="60" y="122" width="420" height="128" rx="8" fill="#ffffff" stroke="#4285F4" stroke-width="1.5"/>
-  <text x="76" y="146" font-size="13" font-weight="700" fill="#202124">ROS 2 stack</text>
-  <text x="76" y="169" font-size="12" fill="#3c4043">Nav2   /   AMCL   /   EKF   /   scan filter</text>
-  <text x="76" y="191" font-size="12" fill="#3c4043">policy_controller   (ONNX policy on CPU)</text>
-  <text x="76" y="213" font-size="11" fill="#5f6368">outputs 12 joint targets, consumes /imu</text>
-  <text x="76" y="233" font-size="11" fill="#5f6368">lidar and camera feed perception here, over USB</text>
-
-  <rect x="60" y="272" width="195" height="48" rx="8" fill="#FCE8E6" stroke="#EA4335" stroke-width="1.5"/>
-  <text x="157" y="301" text-anchor="middle" font-size="12.5" fill="#202124">LIDAR  (USB)</text>
-  <rect x="275" y="272" width="205" height="48" rx="8" fill="#FCE8E6" stroke="#EA4335" stroke-width="1.5"/>
-  <text x="377" y="301" text-anchor="middle" font-size="12.5" fill="#202124">Camera  (USB / CSI)</text>
-  <line x1="157" y1="272" x2="157" y2="250" stroke="#5f6368" stroke-width="1.5" marker-end="url(#ag)"/>
-  <line x1="377" y1="272" x2="377" y2="250" stroke="#5f6368" stroke-width="1.5" marker-end="url(#ag)"/>
-
-  <rect x="560" y="122" width="400" height="196" rx="10" fill="#FEF7E0" stroke="#F9AB00" stroke-width="2"/>
-  <text x="580" y="148" font-size="14" font-weight="700" fill="#202124">hw_bridge_node   (rclcpp, C++)</text>
-  <text x="580" y="172" font-size="12" fill="#3c4043">MessagePack-RPC client connected straight to</text>
-  <text x="580" y="190" font-size="12" fill="#3c4043">/run/arduino-router/rpc.sock</text>
-  <text x="580" y="214" font-size="12" fill="#1e8e3e">no python    no tcp    no json relay</text>
-  <text x="580" y="240" font-size="11.5" fill="#3c4043">sub joint targets    to    notify(set_servo_pwms)</text>
-  <text x="580" y="260" font-size="11.5" fill="#3c4043">provide(imu)    to    publish /imu   (mcu stamped)</text>
-  <text x="580" y="286" font-size="11" fill="#5f6368">one process replaces the old four hops</text>
-
-  <line x1="480" y1="150" x2="560" y2="150" stroke="#5f6368" stroke-width="1.5" marker-end="url(#ag)"/>
-  <text x="520" y="143" text-anchor="middle" font-size="10.5" fill="#5f6368">targets</text>
-  <line x1="560" y1="182" x2="480" y2="182" stroke="#5f6368" stroke-width="1.5" marker-end="url(#ag)"/>
-  <text x="520" y="197" text-anchor="middle" font-size="10.5" fill="#5f6368">/imu</text>
-
-  <!-- ROUTER LINK -->
-  <rect x="600" y="358" width="320" height="56" rx="10" fill="#F1F3F4" stroke="#9AA0A6" stroke-width="1.5" stroke-dasharray="6 4"/>
-  <text x="760" y="382" text-anchor="middle" font-size="13" font-weight="700" fill="#3c4043">arduino-router</text>
-  <text x="760" y="402" text-anchor="middle" font-size="11.5" fill="#5f6368">MsgPack-RPC over internal UART  @ 460800</text>
-
-  <line x1="700" y1="318" x2="700" y2="500" stroke="#1a73e8" stroke-width="2" marker-end="url(#ab)"/>
-  <line x1="830" y1="500" x2="830" y2="318" stroke="#1a73e8" stroke-width="2" marker-end="url(#ab)"/>
-
-  <text x="70" y="372" font-size="12" fill="#1a73e8">down:  notify(set_servo_pwms)</text>
-  <text x="70" y="389" font-size="11" fill="#5f6368">12 servo targets @ 50 Hz, fire and forget</text>
-  <text x="70" y="413" font-size="12" fill="#1a73e8">up:  notify(imu)</text>
-  <text x="70" y="430" font-size="11" fill="#5f6368">quat + gyro + accel + mcu timestamp @ 200 Hz</text>
-
-  <!-- STM32 -->
-  <rect x="40" y="455" width="920" height="238" rx="12" fill="#E6F4EA" stroke="#34A853" stroke-width="2"/>
-  <text x="58" y="481" font-size="14" font-weight="700" fill="#1e8e3e">STM32 MCU   /   Zephyr sketch (C++)   /   stays in App Lab</text>
-
-  <rect x="60" y="500" width="250" height="60" rx="8" fill="#FEF7E0" stroke="#F9AB00" stroke-width="1.5"/>
-  <text x="185" y="525" text-anchor="middle" font-size="12.5" font-weight="700" fill="#202124">watchdog</text>
-  <text x="185" y="545" text-anchor="middle" font-size="11" fill="#3c4043">no command 150 ms  to  safe crouch</text>
-
-  <rect x="560" y="500" width="230" height="60" rx="8" fill="#ffffff" stroke="#34A853" stroke-width="1.5"/>
-  <text x="675" y="523" text-anchor="middle" font-size="12.5" font-weight="700" fill="#202124">servo command handler</text>
-  <text x="675" y="543" text-anchor="middle" font-size="11" fill="#3c4043">rad to pwm, per-joint calibration</text>
-
-  <rect x="810" y="500" width="150" height="60" rx="8" fill="#ffffff" stroke="#34A853" stroke-width="1.5"/>
-  <text x="885" y="523" text-anchor="middle" font-size="12.5" font-weight="700" fill="#202124">IMU sampler</text>
-  <text x="885" y="543" text-anchor="middle" font-size="10.5" fill="#3c4043">200 Hz, mcu stamp</text>
-
-  <line x1="310" y1="530" x2="560" y2="530" stroke="#9AA0A6" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ag)"/>
-  <text x="435" y="522" text-anchor="middle" font-size="10" fill="#5f6368">drives safe pose</text>
-
-  <rect x="560" y="600" width="120" height="48" rx="8" fill="#E6F4EA" stroke="#34A853" stroke-width="1.5"/>
-  <text x="620" y="629" text-anchor="middle" font-size="12" fill="#202124">PCA9685</text>
-  <rect x="700" y="600" width="130" height="48" rx="8" fill="#E6F4EA" stroke="#34A853" stroke-width="1.5"/>
-  <text x="765" y="629" text-anchor="middle" font-size="12" fill="#202124">12x MG995</text>
-  <rect x="850" y="600" width="110" height="48" rx="8" fill="#E6F4EA" stroke="#34A853" stroke-width="1.5"/>
-  <text x="905" y="629" text-anchor="middle" font-size="11.5" fill="#202124">MPU6050</text>
-
-  <line x1="620" y1="560" x2="620" y2="600" stroke="#5f6368" stroke-width="1.5" marker-end="url(#ag)"/>
-  <text x="632" y="583" font-size="10" fill="#5f6368">I2C</text>
-  <line x1="680" y1="624" x2="700" y2="624" stroke="#5f6368" stroke-width="1.5" marker-end="url(#ag)"/>
-  <text x="690" y="616" text-anchor="middle" font-size="9.5" fill="#5f6368">PWM</text>
-  <line x1="905" y1="600" x2="905" y2="560" stroke="#5f6368" stroke-width="1.5" marker-end="url(#ag)"/>
-  <text x="917" y="583" font-size="10" fill="#5f6368">I2C</text>
-
-  <text x="500" y="715" text-anchor="middle" font-size="11" fill="#9aa0a6">fallback only if the benchmark fails: bare Zephyr firmware with our own packed-binary protocol at 1 to 2 Mbaud (gives up App Lab)</text>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Generated by graphviz version 2.43.0 (0)
+ -->
+<!-- Title: G Pages: 1 -->
+<svg width="1063pt" height="586pt"
+ viewBox="0.00 0.00 1063.00 586.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 582)">
+<title>G</title>
+<polygon fill="white" stroke="transparent" points="-4,4 -4,-582 1059,-582 1059,4 -4,4"/>
+<text text-anchor="start" x="357.5" y="-561.4" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="17.00">Big Bertha sensor core architecture</text>
+<text text-anchor="start" x="300" y="-549.2" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#5f6368">one C++ node, the stock router, streaming both ways, no python and no raw uart</text>
+<text text-anchor="start" x="525" y="-535.8" font-family="Helvetica,sans-Serif" font-size="14.00"> </text>
+<g id="clust1" class="cluster">
+<title>cluster_q</title>
+<path fill="#e8f0fe" stroke="#4285f4" stroke-width="2" d="M421,-324C421,-324 1035,-324 1035,-324 1041,-324 1047,-330 1047,-336 1047,-336 1047,-508 1047,-508 1047,-514 1041,-520 1035,-520 1035,-520 421,-520 421,-520 415,-520 409,-514 409,-508 409,-508 409,-336 409,-336 409,-330 415,-324 421,-324"/>
+<text text-anchor="start" x="417" y="-507.4" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="12.00" fill="#1967d2">Qualcomm &#160;&#160;/ &#160;&#160;Debian Linux &#160;&#160;/ &#160;&#160;ROS 2 native &#160;&#160;(all C++)</text>
+</g>
+<g id="clust3" class="cluster">
+<title>cluster_m</title>
+<path fill="#e6f4ea" stroke="#34a853" stroke-width="2" d="M20,-8C20,-8 634,-8 634,-8 640,-8 646,-14 646,-20 646,-20 646,-165 646,-165 646,-171 640,-177 634,-177 634,-177 20,-177 20,-177 14,-177 8,-171 8,-165 8,-165 8,-20 8,-20 8,-14 14,-8 20,-8"/>
+<text text-anchor="start" x="16" y="-164.4" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="12.00" fill="#1e8e3e">STM32 MCU &#160;&#160;/ &#160;&#160;Zephyr sketch (C++) &#160;&#160;/ &#160;&#160;stays in App Lab</text>
+</g>
+<!-- lidar -->
+<g id="node1" class="node">
+<title>lidar</title>
+<path fill="#fce8e6" stroke="#ea4335" d="M984.5,-491C984.5,-491 951.5,-491 951.5,-491 945.5,-491 939.5,-485 939.5,-479 939.5,-479 939.5,-467 939.5,-467 939.5,-461 945.5,-455 951.5,-455 951.5,-455 984.5,-455 984.5,-455 990.5,-455 996.5,-461 996.5,-467 996.5,-467 996.5,-479 996.5,-479 996.5,-485 990.5,-491 984.5,-491"/>
+<text text-anchor="middle" x="968" y="-476.2" font-family="Helvetica,sans-Serif" font-size="11.00">LIDAR</text>
+<text text-anchor="middle" x="968" y="-464.2" font-family="Helvetica,sans-Serif" font-size="11.00">(USB)</text>
+</g>
+<!-- ros_stack -->
+<g id="node3" class="node">
+<title>ros_stack</title>
+<path fill="white" stroke="#4285f4" d="M1027,-390.5C1027,-390.5 825,-390.5 825,-390.5 819,-390.5 813,-384.5 813,-378.5 813,-378.5 813,-348.5 813,-348.5 813,-342.5 819,-336.5 825,-336.5 825,-336.5 1027,-336.5 1027,-336.5 1033,-336.5 1039,-342.5 1039,-348.5 1039,-348.5 1039,-378.5 1039,-378.5 1039,-384.5 1033,-390.5 1027,-390.5"/>
+<text text-anchor="start" x="888.5" y="-376.7" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">ROS 2 stack</text>
+<text text-anchor="start" x="841.5" y="-365.7" font-family="Helvetica,sans-Serif" font-size="11.00">Nav2 / AMCL / EKF / scan filter</text>
+<text text-anchor="start" x="825" y="-354.7" font-family="Helvetica,sans-Serif" font-size="11.00">policy_controller (ONNX policy, CPU)</text>
+<text text-anchor="start" x="844.5" y="-345.3" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#5f6368">outputs 12 joint targets, reads /imu</text>
+</g>
+<!-- lidar&#45;&gt;ros_stack -->
+<g id="edge1" class="edge">
+<title>lidar&#45;&gt;ros_stack</title>
+<path fill="none" stroke="#5f6368" d="M968,-454.92C968,-454.92 968,-397.64 968,-397.64"/>
+<polygon fill="#5f6368" stroke="#5f6368" points="970.45,-397.64 968,-390.64 965.55,-397.64 970.45,-397.64"/>
+<text text-anchor="middle" x="975.5" y="-422.8" font-family="Helvetica,sans-Serif" font-size="9.00">perception</text>
+</g>
+<!-- camera -->
+<g id="node2" class="node">
+<title>camera</title>
+<path fill="#fce8e6" stroke="#ea4335" d="M895.5,-491C895.5,-491 834.5,-491 834.5,-491 828.5,-491 822.5,-485 822.5,-479 822.5,-479 822.5,-467 822.5,-467 822.5,-461 828.5,-455 834.5,-455 834.5,-455 895.5,-455 895.5,-455 901.5,-455 907.5,-461 907.5,-467 907.5,-467 907.5,-479 907.5,-479 907.5,-485 901.5,-491 895.5,-491"/>
+<text text-anchor="middle" x="865" y="-476.2" font-family="Helvetica,sans-Serif" font-size="11.00">Camera</text>
+<text text-anchor="middle" x="865" y="-464.2" font-family="Helvetica,sans-Serif" font-size="11.00">(USB / CSI)</text>
+</g>
+<!-- camera&#45;&gt;ros_stack -->
+<g id="edge2" class="edge">
+<title>camera&#45;&gt;ros_stack</title>
+<path fill="none" stroke="#5f6368" d="M865,-454.92C865,-454.92 865,-397.64 865,-397.64"/>
+<polygon fill="#5f6368" stroke="#5f6368" points="867.45,-397.64 865,-390.64 862.55,-397.64 867.45,-397.64"/>
+</g>
+<!-- hw_bridge -->
+<g id="node4" class="node">
+<title>hw_bridge</title>
+<path fill="#fef7e0" stroke="#f9ab00" stroke-width="2" d="M675,-395C675,-395 429,-395 429,-395 423,-395 417,-389 417,-383 417,-383 417,-344 417,-344 417,-338 423,-332 429,-332 429,-332 675,-332 675,-332 681,-332 687,-338 687,-344 687,-344 687,-383 687,-383 687,-389 681,-395 675,-395"/>
+<text text-anchor="start" x="460" y="-381.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">hw_bridge_node (rclcpp, C++)</text>
+<text text-anchor="start" x="429" y="-370.2" font-family="Helvetica,sans-Serif" font-size="11.00">MsgPack&#45;RPC to /run/arduino&#45;router/rpc.sock</text>
+<text text-anchor="start" x="463.5" y="-359.2" font-family="Helvetica,sans-Serif" font-size="11.00" fill="#1e8e3e">no python, no tcp, no json relay</text>
+<text text-anchor="start" x="439" y="-349.8" font-family="Helvetica,sans-Serif" font-size="9.00">subscribes targets, sends notify(set_servo_pwms)</text>
+<text text-anchor="start" x="465.5" y="-340.8" font-family="Helvetica,sans-Serif" font-size="9.00">registers provide(imu), publishes /imu</text>
+</g>
+<!-- ros_stack&#45;&gt;hw_bridge -->
+<g id="edge3" class="edge">
+<title>ros_stack&#45;&gt;hw_bridge</title>
+<path fill="none" stroke="#5f6368" d="M812.77,-372C812.77,-372 694.24,-372 694.24,-372"/>
+<polygon fill="#5f6368" stroke="#5f6368" points="694.24,-369.55 687.24,-372 694.24,-374.45 694.24,-369.55"/>
+</g>
+<!-- hw_bridge&#45;&gt;ros_stack -->
+<g id="edge4" class="edge">
+<title>hw_bridge&#45;&gt;ros_stack</title>
+<path fill="none" stroke="#5f6368" d="M687.02,-354C687.02,-354 805.74,-354 805.74,-354"/>
+<polygon fill="#5f6368" stroke="#5f6368" points="805.74,-356.45 812.74,-354 805.74,-351.55 805.74,-356.45"/>
+</g>
+<!-- router -->
+<g id="node5" class="node">
+<title>router</title>
+<path fill="#f1f3f4" stroke="#9aa0a6" stroke-dasharray="5,2" d="M650.5,-264C650.5,-264 453.5,-264 453.5,-264 447.5,-264 441.5,-258 441.5,-252 441.5,-252 441.5,-240 441.5,-240 441.5,-234 447.5,-228 453.5,-228 453.5,-228 650.5,-228 650.5,-228 656.5,-228 662.5,-234 662.5,-240 662.5,-240 662.5,-252 662.5,-252 662.5,-258 656.5,-264 650.5,-264"/>
+<text text-anchor="start" x="507" y="-248.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">arduino&#45;router</text>
+<text text-anchor="start" x="453.5" y="-238.8" font-family="Helvetica,sans-Serif" font-size="9.00">MsgPack&#45;RPC over internal UART @ 460800</text>
+</g>
+<!-- hw_bridge&#45;&gt;router -->
+<g id="edge9" class="edge">
+<title>hw_bridge&#45;&gt;router</title>
+<path fill="none" stroke="#1a73e8" stroke-width="1.6" d="M515.17,-331.7C515.17,-331.7 515.17,-271.28 515.17,-271.28"/>
+<polygon fill="#1a73e8" stroke="#1a73e8" stroke-width="1.6" points="517.62,-271.28 515.17,-264.28 512.72,-271.28 517.62,-271.28"/>
+<text text-anchor="start" x="575" y="-300.8" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="9.00" fill="#1a73e8">down</text>
+<text text-anchor="start" x="603" y="-300.8" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#1a73e8"> &#160;notify(set_servo_pwms)</text>
+<text text-anchor="start" x="552" y="-291.8" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#1a73e8">12 servo targets @ 50 Hz, fire and forget</text>
+</g>
+<!-- router&#45;&gt;hw_bridge -->
+<g id="edge12" class="edge">
+<title>router&#45;&gt;hw_bridge</title>
+<path fill="none" stroke="#1a73e8" stroke-width="1.6" d="M588.83,-264.1C588.83,-264.1 588.83,-324.87 588.83,-324.87"/>
+<polygon fill="#1a73e8" stroke="#1a73e8" stroke-width="1.6" points="586.38,-324.87 588.83,-331.87 591.28,-324.87 586.38,-324.87"/>
+</g>
+<!-- servo_h -->
+<g id="node7" class="node">
+<title>servo_h</title>
+<path fill="white" stroke="#34a853" d="M626,-148C626,-148 478,-148 478,-148 472,-148 466,-142 466,-136 466,-136 466,-124 466,-124 466,-118 472,-112 478,-112 478,-112 626,-112 626,-112 632,-112 638,-118 638,-124 638,-124 638,-136 638,-136 638,-142 632,-148 626,-148"/>
+<text text-anchor="start" x="478" y="-132.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">servo command handler</text>
+<text text-anchor="start" x="479" y="-122.8" font-family="Helvetica,sans-Serif" font-size="9.00">rad to pwm, per&#45;joint calibration</text>
+</g>
+<!-- router&#45;&gt;servo_h -->
+<g id="edge10" class="edge">
+<title>router&#45;&gt;servo_h</title>
+<path fill="none" stroke="#1a73e8" stroke-width="1.6" d="M552,-227.88C552,-227.88 552,-155.38 552,-155.38"/>
+<polygon fill="#1a73e8" stroke="#1a73e8" stroke-width="1.6" points="554.45,-155.38 552,-148.38 549.55,-155.38 554.45,-155.38"/>
+</g>
+<!-- watchdog -->
+<g id="node6" class="node">
+<title>watchdog</title>
+<path fill="#fef7e0" stroke="#f9ab00" d="M379.5,-148C379.5,-148 222.5,-148 222.5,-148 216.5,-148 210.5,-142 210.5,-136 210.5,-136 210.5,-124 210.5,-124 210.5,-118 216.5,-112 222.5,-112 222.5,-112 379.5,-112 379.5,-112 385.5,-112 391.5,-118 391.5,-124 391.5,-124 391.5,-136 391.5,-136 391.5,-142 385.5,-148 379.5,-148"/>
+<text text-anchor="start" x="270.5" y="-132.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">watchdog</text>
+<text text-anchor="start" x="222.5" y="-122.8" font-family="Helvetica,sans-Serif" font-size="9.00">no command 150 ms, safe crouch</text>
+</g>
+<!-- watchdog&#45;&gt;servo_h -->
+<g id="edge5" class="edge">
+<title>watchdog&#45;&gt;servo_h</title>
+<path fill="none" stroke="#5f6368" stroke-dasharray="5,2" d="M391.62,-130C391.62,-130 458.71,-130 458.71,-130"/>
+<polygon fill="#5f6368" stroke="#5f6368" points="458.71,-132.45 465.71,-130 458.71,-127.55 458.71,-132.45"/>
+</g>
+<!-- pca -->
+<g id="node9" class="node">
+<title>pca</title>
+<path fill="#e6f4ea" stroke="#34a853" d="M474.5,-52C474.5,-52 425.5,-52 425.5,-52 419.5,-52 413.5,-46 413.5,-40 413.5,-40 413.5,-28 413.5,-28 413.5,-22 419.5,-16 425.5,-16 425.5,-16 474.5,-16 474.5,-16 480.5,-16 486.5,-22 486.5,-28 486.5,-28 486.5,-40 486.5,-40 486.5,-46 480.5,-52 474.5,-52"/>
+<text text-anchor="middle" x="450" y="-31.2" font-family="Helvetica,sans-Serif" font-size="11.00">PCA9685</text>
+</g>
+<!-- servo_h&#45;&gt;pca -->
+<g id="edge6" class="edge">
+<title>servo_h&#45;&gt;pca</title>
+<path fill="none" stroke="#5f6368" d="M476.25,-111.94C476.25,-111.94 476.25,-59.3 476.25,-59.3"/>
+<polygon fill="#5f6368" stroke="#5f6368" points="478.7,-59.3 476.25,-52.3 473.8,-59.3 478.7,-59.3"/>
+<text text-anchor="middle" x="509" y="-79.8" font-family="Helvetica,sans-Serif" font-size="9.00">I2C</text>
+</g>
+<!-- imu_s -->
+<g id="node8" class="node">
+<title>imu_s</title>
+<path fill="white" stroke="#34a853" d="M166,-148C166,-148 28,-148 28,-148 22,-148 16,-142 16,-136 16,-136 16,-124 16,-124 16,-118 22,-112 28,-112 28,-112 166,-112 166,-112 172,-112 178,-118 178,-124 178,-124 178,-136 178,-136 178,-142 172,-148 166,-148"/>
+<text text-anchor="start" x="58" y="-132.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">IMU sampler</text>
+<text text-anchor="start" x="28" y="-122.8" font-family="Helvetica,sans-Serif" font-size="9.00">200 Hz timer, mcu timestamp</text>
+</g>
+<!-- imu_s&#45;&gt;router -->
+<g id="edge11" class="edge">
+<title>imu_s&#45;&gt;router</title>
+<path fill="none" stroke="#1a73e8" stroke-width="1.6" d="M97,-148.12C97,-180.75 97,-246 97,-246 97,-246 434.28,-246 434.28,-246"/>
+<polygon fill="#1a73e8" stroke="#1a73e8" stroke-width="1.6" points="434.28,-248.45 441.28,-246 434.28,-243.55 434.28,-248.45"/>
+<text text-anchor="start" x="640" y="-196.8" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="9.00" fill="#1a73e8">up</text>
+<text text-anchor="start" x="654" y="-196.8" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#1a73e8"> &#160;notify(imu)</text>
+<text text-anchor="start" x="606" y="-187.8" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#1a73e8">quat + gyro + accel @ 200 Hz</text>
+</g>
+<!-- mg -->
+<g id="node10" class="node">
+<title>mg</title>
+<path fill="#e6f4ea" stroke="#34a853" d="M625.5,-52C625.5,-52 562.5,-52 562.5,-52 556.5,-52 550.5,-46 550.5,-40 550.5,-40 550.5,-28 550.5,-28 550.5,-22 556.5,-16 562.5,-16 562.5,-16 625.5,-16 625.5,-16 631.5,-16 637.5,-22 637.5,-28 637.5,-28 637.5,-40 637.5,-40 637.5,-46 631.5,-52 625.5,-52"/>
+<text text-anchor="middle" x="594" y="-31.2" font-family="Helvetica,sans-Serif" font-size="11.00">12x MG995</text>
+</g>
+<!-- pca&#45;&gt;mg -->
+<g id="edge7" class="edge">
+<title>pca&#45;&gt;mg</title>
+<path fill="none" stroke="#5f6368" d="M486.71,-34C486.71,-34 543.44,-34 543.44,-34"/>
+<polygon fill="#5f6368" stroke="#5f6368" points="543.44,-36.45 550.44,-34 543.44,-31.55 543.44,-36.45"/>
+</g>
+<!-- mpu -->
+<g id="node11" class="node">
+<title>mpu</title>
+<path fill="#e6f4ea" stroke="#34a853" d="M234,-52C234,-52 182,-52 182,-52 176,-52 170,-46 170,-40 170,-40 170,-28 170,-28 170,-22 176,-16 182,-16 182,-16 234,-16 234,-16 240,-16 246,-22 246,-28 246,-28 246,-40 246,-40 246,-46 240,-52 234,-52"/>
+<text text-anchor="middle" x="208" y="-31.2" font-family="Helvetica,sans-Serif" font-size="11.00">MPU6050</text>
+</g>
+<!-- mpu&#45;&gt;imu_s -->
+<g id="edge8" class="edge">
+<title>mpu&#45;&gt;imu_s</title>
+<path fill="none" stroke="#5f6368" d="M174,-52.06C174,-52.06 174,-104.7 174,-104.7"/>
+<polygon fill="#5f6368" stroke="#5f6368" points="171.55,-104.7 174,-111.7 176.45,-104.7 171.55,-104.7"/>
+<text text-anchor="middle" x="148" y="-79.8" font-family="Helvetica,sans-Serif" font-size="9.00">I2C</text>
+</g>
+</g>
 </svg>
