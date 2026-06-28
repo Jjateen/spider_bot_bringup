@@ -23,6 +23,8 @@ verification_artifacts/
 # ONNX Runtime (downloaded at build time)
 .onnxruntime/
 
+*.pdf
+
 # Local-only planning doc (not tracked)
 PLAN.md
 Big_Bertha_Hardware_Bridge_Guide.pdf'
