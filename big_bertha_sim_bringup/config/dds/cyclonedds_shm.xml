@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<CycloneDDS xmlns="https://cdds.io/config"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+  <Domain id="any">
+    <General>
+      <Interfaces>
+        <NetworkInterface name="lo" priority="default" multicast="false" />
+      </Interfaces>
+      <AllowMulticast>false</AllowMulticast>
+    </General>
+    <SharedMemory>
+      <!-- REQUIRES RouDi running first (scripts/roudi.sh) -- Enable=true with no
+           RouDi aborts every node at domain creation (iox::errorHandler SIGABRT),
+           it does not fall back to normal transport. -->
+      <Enable>true</Enable>
+      <LogLevel>error</LogLevel>
+    </SharedMemory>
+  </Domain>
+</CycloneDDS>

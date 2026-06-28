@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<CycloneDDS xmlns="https://cdds.io/config"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
+  <Domain id="any">
+    <!-- Cyclone defaults for General/Interfaces: an earlier attempt to restrict
+         discovery to loopback-only + AllowMulticast=false broke SPDP discovery
+         for robot_state_publisher/ros_gz_bridge/policy_controller_node (processes
+         stayed alive but never appeared in `ros2 node list`/`ros2 topic list`) --
+         those nodes start later/separately from the gz_ros2_control process tree,
+         which happened to still discover fine, so this isn't safe to ship without
+         a real interface-tuning pass. Deferred; this profile isolates the RMW
+         swap alone for a clean before/after vs default Fast DDS. -->
+    <SharedMemory>
+      <!-- Off by default: confirmed by crash (iox::errorHandler -> std::terminate
+           in PoshRuntime init, SIGABRT) that Cyclone does NOT fall back gracefully
+           when Enable=true and RouDi isn't running -- it aborts the process at
+           domain creation. Use cyclonedds_shm.xml (+ start RouDi first) instead. -->
+      <Enable>false</Enable>
+      <LogLevel>error</LogLevel>
+    </SharedMemory>
+  </Domain>
+</CycloneDDS>
