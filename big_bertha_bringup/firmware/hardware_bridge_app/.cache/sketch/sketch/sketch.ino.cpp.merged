@@ -1,3 +1,5 @@
+#include <Arduino.h>
+#line 1 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
 // sketch.ino  —  Big Bertha hardware bridge (STM32U585)
 //
 // Notification-based architecture (no Bridge.call from Python).
@@ -206,3 +208,4 @@ void loop()
     delay(10);
   }
 }
+

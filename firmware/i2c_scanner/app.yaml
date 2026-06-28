@@ -1,0 +1,6 @@
+name: i2c_scanner
+description: "Scans I2C bus for PCA9685 (0x40) and MPU6050 (0x68), blinks LED status"
+icon: "🔍"
+version: "0.1.0"
+ports: []
+bricks: []

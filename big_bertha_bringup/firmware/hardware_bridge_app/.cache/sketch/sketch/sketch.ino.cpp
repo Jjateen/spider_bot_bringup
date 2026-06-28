@@ -1,3 +1,5 @@
+#include <Arduino.h>
+#line 1 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
 // sketch.ino  —  Big Bertha hardware bridge (STM32U585)
 //
 // Notification-based architecture (no Bridge.call from Python).
@@ -27,6 +29,33 @@ static unsigned long g_last_status_push = 0;
 static const unsigned long IMU_INTERVAL    = 50;    // ~20 Hz
 static const unsigned long STATUS_INTERVAL = 1000;  // 1 Hz
 
+#line 30 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+static void i2c_write_byte(uint8_t dev, uint8_t reg, uint8_t val);
+#line 38 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+static void i2c_read_bytes(uint8_t dev, uint8_t reg, uint8_t * buf, size_t len);
+#line 49 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+static void pca9685_init();
+#line 58 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+static void pca9685_set_pwm(uint8_t ch, uint16_t off);
+#line 72 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+static void mpu6050_init();
+#line 78 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+static void mpu6050_read( float & ax, float & ay, float & az, float & gx, float & gy, float & gz);
+#line 100 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+static int i2c_scan_devices();
+#line 110 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+static bool pca9685_verify_init();
+#line 117 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+static void blink_error(int count, int flash_ms, int pause_ms);
+#line 130 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+void set_servo_pwms(std::vector<uint16_t> pwms);
+#line 139 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+void on_scan_i2c();
+#line 153 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+void setup();
+#line 174 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
+void loop();
+#line 30 "/home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino"
 static void i2c_write_byte(uint8_t dev, uint8_t reg, uint8_t val)
 {
   Wire.beginTransmission(dev);
@@ -206,3 +235,4 @@ void loop()
     delay(10);
   }
 }
+

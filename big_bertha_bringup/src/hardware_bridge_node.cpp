@@ -29,10 +29,13 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <signal.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -51,6 +54,22 @@ public:
     pwm_min_ = declare_parameter<int>("pwm_min", 102);
     pwm_max_ = declare_parameter<int>("pwm_max", 512);
     joint_limit_ = declare_parameter<double>("joint_limit", 3.14159);
+    servo_lower_ = declare_parameter<std::vector<double>>("servo_lower_limit",
+      {140, 50, 0, 180, 50, 150, 30, 140, 180, 45, 135, 40});
+    servo_upper_ = declare_parameter<std::vector<double>>("servo_upper_limit",
+      {0, 180, 150, 50, 180, 0, 150, 0, 40, 180, 0, 180});
+    servo_offset_ = declare_parameter<std::vector<double>>("servo_offset",
+      {0, 10, 5, 0, 10, 2, 0, 0, 8, 0, 0, 0});
+    {
+      std::vector<int64_t> def_ch = {6, 5, 4, 2, 1, 0, 10, 9, 8, 14, 13, 12};
+      auto ch = declare_parameter<std::vector<int64_t>>("servo_channel", def_ch);
+      servo_channel_.assign(ch.begin(), ch.end());
+    }
+    {
+      std::vector<int64_t> def_dir = {-1, -1, -1, -1, -1, -1, 1, -1, -1, 1, -1, -1};
+      auto dir = declare_parameter<std::vector<int64_t>>("servo_direction", def_dir);
+      servo_direction_.assign(dir.begin(), dir.end());
+    }
     orient_cov_ = declare_parameter<std::vector<double>>("orientation_covariance",
       {-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
     accel_cov_ = declare_parameter<std::vector<double>>("linear_acceleration_covariance",
@@ -61,6 +80,8 @@ public:
     gyro_calibration_samples_ = declare_parameter<int>("gyro_calibration_samples", 200);
     accel_calibration_enabled_ = declare_parameter<bool>("accel_calibration_enabled", true);
     accel_calibration_samples_ = declare_parameter<int>("accel_calibration_samples", 200);
+    single_joint_mode_ = declare_parameter<bool>("single_joint_mode", false);
+    single_joint_index_ = declare_parameter<int>("single_joint_index", 10);
 
     // ── TCP connect ───────────────────────────────────────────────────
     connect();
@@ -116,7 +137,6 @@ private:
   // ── Outbound: joint targets → servo PWM via TCP + Bridge RPC ────────
   void on_cmd(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
   {
-    if (sock_fd_ < 0) return;
     if (msg->data.size() != 12) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
@@ -124,23 +144,52 @@ private:
       return;
     }
 
+    // Compute per-joint PWMs with direction, offset, and 90° servo center.
+    std::vector<int> pwms(12);
+    for (size_t i = 0; i < 12; ++i) {
+      double rad = std::clamp(msg->data[i], -joint_limit_, joint_limit_);
+      double deg = rad * 180.0 / M_PI;
+      deg = deg * servo_direction_[i];
+      deg = deg + servo_offset_[i];
+      deg = deg + 90.0;  // servo center at 90°
+      double lo = std::min(servo_lower_[i], servo_upper_[i]);
+      double hi = std::max(servo_lower_[i], servo_upper_[i]);
+      deg = std::clamp(deg, lo, hi);
+      double t = deg / 180.0;
+      double pwm = std::round(t * (pwm_max_ - pwm_min_) + pwm_min_);
+      pwms[i] = static_cast<int>(std::clamp(pwm, 0.0, 4095.0));
+    }
+
+    if (single_joint_mode_) {
+      int active = pwms[single_joint_index_];
+      int neutral = (pwm_min_ + pwm_max_) / 2;
+      for (auto & p : pwms) { p = neutral; }
+      pwms[single_joint_index_] = active;
+    }
+
+    // Reorder by PCA9685 channel so the firmware maps index → physical ch.
+    std::vector<std::pair<int, int>> ch_pwm(12);
+    for (size_t i = 0; i < 12; ++i) {
+      ch_pwm[i] = {servo_channel_[i], pwms[i]};
+    }
+    std::sort(ch_pwm.begin(), ch_pwm.end());
+
     // Build JSON: {"cmd":"servo","pwms":[12 ints]}
     std::string json = R"({"cmd":"servo","pwms":[)";
     for (size_t i = 0; i < 12; ++i) {
-      double angle = std::clamp(msg->data[i], -joint_limit_, joint_limit_);
-      double t = (angle + M_PI) / (2.0 * M_PI);
-      double pwm = std::round(t * (pwm_max_ - pwm_min_) + pwm_min_);
-      pwm = std::clamp(pwm, 0.0, 4095.0);
       if (i > 0) json += ',';
-      json += std::to_string(static_cast<int>(pwm));
+      json += std::to_string(ch_pwm[i].second);
     }
     json += "]}\n";
 
     {
       std::lock_guard<std::mutex> lk(sock_mutex_);
-      ssize_t n = ::write(sock_fd_, json.data(), json.size());
-      if (n < 0) {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "socket write error");
+      if (sock_fd_ < 0) return;
+      ssize_t n = ::send(sock_fd_, json.data(), json.size(), MSG_NOSIGNAL);
+      if (n <= 0) {
+        ::close(sock_fd_);
+        sock_fd_ = -1;
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "socket write error — reconnecting");
       }
     }
   }
@@ -173,14 +222,20 @@ private:
 
       if (!send_imu_request()) continue;
 
-      std::string line;
-      if (!read_imu_line(line)) continue;
+      {
+        std::string line;
+        if (!read_imu_line(line)) continue;
 
-      if (!line.empty()) {
-        double ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
-        parse_imu_json(line, ax, ay, az, gx, gy, gz);
-        publish_imu(ax, ay, az, gx, gy, gz);
+        if (!line.empty()) {
+          double ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
+          parse_imu_json(line, ax, ay, az, gx, gy, gz);
+          publish_imu(ax, ay, az, gx, gy, gz);
+        }
       }
+
+      // Drain any additional buffered lines so the receive buffer
+      // never accumulates — prevents TCP backpressure deadlock.
+      drain_imu_buf();
 
       std::this_thread::sleep_for(std::chrono::milliseconds(10));  // ~100 Hz
     }
@@ -190,7 +245,7 @@ private:
   {
     std::lock_guard<std::mutex> lk(sock_mutex_);
     const char req[] = R"({"cmd":"imu"})" "\n";
-    ssize_t n = ::write(sock_fd_, req, sizeof(req) - 1);
+    ssize_t n = ::send(sock_fd_, req, sizeof(req) - 1, MSG_NOSIGNAL);
     if (n <= 0) {
       ::close(sock_fd_);
       sock_fd_ = -1;
@@ -199,21 +254,63 @@ private:
     return true;
   }
 
+  // Read one line (up to '\n') from the socket using a buffered read
+  // of up to 4096 bytes per syscall instead of one byte at a time.
   bool read_imu_line(std::string & line)
   {
     line.clear();
-    char c;
-    while (running_) {
-      ssize_t n = ::read(sock_fd_, &c, 1);
-      if (n <= 0) {
+    // First consume anything already in the line buffer.
+    auto pos = read_buf_.find('\n');
+    while (pos == std::string::npos) {
+      if (!refill_read_buf()) return false;
+      pos = read_buf_.find('\n');
+    }
+    line = read_buf_.substr(0, pos);
+    read_buf_.erase(0, pos + 1);
+    return true;
+  }
+
+  // Refill read_buf_ from the socket (up to 4096 bytes).
+  bool refill_read_buf()
+  {
+    char buf[4096];
+    ssize_t n = ::read(sock_fd_, buf, sizeof(buf));
+    if (n <= 0) {
+      ::close(sock_fd_);
+      sock_fd_ = -1;
+      return false;
+    }
+    read_buf_.append(buf, n);
+    return true;
+  }
+
+  // Drain any pending lines from the receive buffer without
+  // processing them — prevents TCP backpressure.
+  void drain_imu_buf()
+  {
+    if (sock_fd_ < 0) return;
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(sock_fd_, &rfds);
+    struct timeval tv = {0, 0};
+    if (select(sock_fd_ + 1, &rfds, nullptr, nullptr, &tv) > 0) {
+      char buf[4096];
+      ssize_t n;
+      do {
+        n = ::read(sock_fd_, buf, sizeof(buf));
+        if (n > 0) {
+          read_buf_.append(buf, n);
+          auto pos = read_buf_.rfind('\n');
+          if (pos != std::string::npos) {
+            read_buf_.erase(0, pos + 1);
+          }
+        }
+      } while (n > 0);
+      if (n < 0) {
         ::close(sock_fd_);
         sock_fd_ = -1;
-        return false;
       }
-      if (c == '\n') break;
-      line += c;
     }
-    return true;
   }
 
   bool calibrate_sensors()
@@ -374,11 +471,17 @@ private:
   std::mutex sock_mutex_;
   std::string host_;
   int port_;
+  std::string read_buf_;  // buffered reads — avoids byte-by-byte syscalls
 
   // ── Servo calibration ───────────────────────────────────────────────
   int pwm_min_;
   int pwm_max_;
   double joint_limit_;
+  std::vector<double> servo_lower_;
+  std::vector<double> servo_upper_;
+  std::vector<double> servo_offset_;
+  std::vector<int> servo_channel_;
+  std::vector<int> servo_direction_;
 
   // ── ROS ─────────────────────────────────────────────────────────────
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
@@ -394,6 +497,8 @@ private:
   int gyro_calibration_samples_;
   bool accel_calibration_enabled_;
   int accel_calibration_samples_;
+  bool single_joint_mode_{false};
+  int single_joint_index_{10};
   int64_t cal_duration_ms_{0};
   std::chrono::steady_clock::time_point cal_finish_time_;
   double drift_angle_x_{0.0}, drift_angle_y_{0.0}, drift_angle_z_{0.0};
@@ -405,6 +510,7 @@ private:
 
 int main(int argc, char ** argv)
 {
+  signal(SIGPIPE, SIG_IGN);
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<HardwareBridgeNode>());
   rclcpp::shutdown();
