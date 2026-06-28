@@ -1,0 +1,26 @@
+// hw_bridge PoC v4 (STM32U585) - pure Bridge benchmark, no I2C
+#include <Arduino_RouterBridge.h>
+#include <vector>
+
+static volatile uint32_t last_servo_ms = 0;
+static uint32_t imu_sample = 0;
+static uint32_t last_imu_ms = 0;
+
+void set_servo_pwms(std::vector<uint16_t> pwms) {
+  last_servo_ms = millis();
+}
+
+void setup() {
+  Bridge.begin(460800);
+  Bridge.provide("set_servo_pwms", set_servo_pwms);
+  last_servo_ms = millis();
+}
+
+void loop() {
+  uint32_t now = millis();
+  if (now - last_imu_ms >= 8) {
+    last_imu_ms = now;
+    Bridge.call("imu_poc", 0.0f, 0.0f, 9.8f, 0.0f, 0.0f, 0.0f,
+                (float)imu_sample++, (float)now);
+  }
+}

@@ -1,0 +1,246 @@
+// sketch.ino  —  Big Bertha hardware bridge (STM32U585)
+//
+// Uses Arduino RouterBridge RPC so the MPU can call set_servo_pwms and
+// get_imu_data over the internal UART without conflicting with the bridge.
+//
+// Providers (callable from Python via Bridge.call/notify):
+//   set_servo_pwms(vector<uint16_t> pwms)  — 12 PWM values
+//   get_imu_data() → vector<float>         — [ax, ay, az, gx, gy, gz]
+
+#include <Arduino_RouterBridge.h>
+#include <Wire.h>
+#include <vector>
+
+// ── I2C addresses ──────────────────────────────────────────────────────
+static const uint8_t MPU6050_ADDR = 0x68;
+static const uint8_t PCA9685_ADDR = 0x40;
+
+// PCA9685 registers
+static const uint8_t PCA9685_MODE1     = 0x00;
+static const uint8_t PCA9685_PRE_SCALE = 0xFE;
+static const uint8_t PCA9685_LED0_ON_L = 0x06;
+
+// PCA9685 channel mapping for the 12 servos (sorted ascending by channel).
+// The hardware bridge sends pwms in this order; index i → channel_map[i].
+static const uint8_t PWM_CHANNEL_MAP[12] = {0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14};
+
+// ── Diagnostics state ────────────────────────────────────────────────────
+static int g_i2c_scan = 0;       // bit 0 = PCA9685 missing, bit 1 = MPU6050 missing
+static bool g_ai_ok = false;     // true if PCA9685 MODE1 has AI bit set
+static bool g_providers_ok = false;  // true once all 4 Bridge providers are registered
+
+// MPU6050 registers
+static const uint8_t MPU6050_PWR_MGMT_1   = 0x6B;
+static const uint8_t MPU6050_ACCEL_XOUT_H = 0x3B;
+
+// ── I2C helpers ────────────────────────────────────────────────────────
+static void i2c_write_byte(uint8_t dev, uint8_t reg, uint8_t val)
+{
+  Wire.beginTransmission(dev);
+  Wire.write(reg);
+  Wire.write(val);
+  Wire.endTransmission();
+}
+
+static void i2c_read_bytes(uint8_t dev, uint8_t reg, uint8_t * buf, size_t len)
+{
+  Wire.beginTransmission(dev);
+  Wire.write(reg);
+  Wire.endTransmission(false);
+  Wire.requestFrom(dev, (uint8_t)len);
+  for (size_t i = 0; i < len && Wire.available(); ++i) {
+    buf[i] = Wire.read();
+  }
+}
+
+// ── PCA9685 driver ─────────────────────────────────────────────────────
+static void pca9685_init()
+{
+  i2c_write_byte(PCA9685_ADDR, PCA9685_MODE1, 0x10);  // sleep
+  delay(1);
+  i2c_write_byte(PCA9685_ADDR, PCA9685_PRE_SCALE, 121);  // 50 Hz
+  i2c_write_byte(PCA9685_ADDR, PCA9685_MODE1, 0xA0);     // RESTART | AI
+  delay(1);
+}
+
+static void pca9685_set_pwm(uint8_t ch, uint16_t off)
+{
+  uint8_t reg = PCA9685_LED0_ON_L + 4 * ch;
+  Wire.beginTransmission(PCA9685_ADDR);
+  Wire.write(reg);
+  Wire.write(0);
+  Wire.write(0);
+  Wire.write(off & 0xFF);
+  Wire.write(off >> 8);
+  Wire.endTransmission();
+}
+
+// ── MPU6050 driver ─────────────────────────────────────────────────────
+static void mpu6050_init()
+{
+  i2c_write_byte(MPU6050_ADDR, MPU6050_PWR_MGMT_1, 0x00);
+  delay(100);
+}
+
+static void mpu6050_read(
+  float & ax, float & ay, float & az,
+  float & gx, float & gy, float & gz)
+{
+  uint8_t raw[14];
+  i2c_read_bytes(MPU6050_ADDR, MPU6050_ACCEL_XOUT_H, raw, 14);
+
+  int16_t raw_ax = (raw[0]  << 8) | raw[1];
+  int16_t raw_ay = (raw[2]  << 8) | raw[3];
+  int16_t raw_az = (raw[4]  << 8) | raw[5];
+  int16_t raw_gx = (raw[8]  << 8) | raw[9];
+  int16_t raw_gy = (raw[10] << 8) | raw[11];
+  int16_t raw_gz = (raw[12] << 8) | raw[13];
+
+  ax = raw_ax / 16384.0f * 9.80665f;
+  ay = raw_ay / 16384.0f * 9.80665f;
+  az = raw_az / 16384.0f * 9.80665f;
+  gx = raw_gx / 131.0f * (PI / 180.0f);
+  gy = raw_gy / 131.0f * (PI / 180.0f);
+  gz = raw_gz / 131.0f * (PI / 180.0f);
+}
+
+// ── I2C diagnostics ────────────────────────────────────────────────────
+
+// Scan I2C bus for expected devices.
+// Returns bitmask: bit 0 = PCA9685 missing, bit 1 = MPU6050 missing.
+static int i2c_scan_devices()
+{
+  int missing = 0;
+  Wire.beginTransmission(PCA9685_ADDR);
+  if (Wire.endTransmission() != 0) missing |= 1;
+  Wire.beginTransmission(MPU6050_ADDR);
+  if (Wire.endTransmission() != 0) missing |= 2;
+  return missing;
+}
+
+// Verify that the AI (Auto-Increment) bit was set in PCA9685 MODE1.
+// Without AI, multi-byte writes to LED registers will fail.
+static bool pca9685_verify_init()
+{
+  uint8_t mode1 = 0;
+  i2c_read_bytes(PCA9685_ADDR, PCA9685_MODE1, &mode1, 1);
+  return (mode1 & 0x20) != 0;  // bit 5 = AI
+}
+
+// Blink the built-in LED in an error pattern: n flashes, then pause.
+static void blink_error(int count, int flash_ms, int pause_ms)
+{
+  for (int i = 0; i < count; ++i) {
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(flash_ms);
+    digitalWrite(LED_BUILTIN, LOW);
+    if (i < count - 1) delay(flash_ms);
+  }
+  delay(pause_ms);
+}
+
+// ── Bridge RPC providers ───────────────────────────────────────────────
+
+// set_servo_pwms(pwms)  —  called via Bridge.notify() from Python
+// pwms is a 12-element array sorted by channel; PWM_CHANNEL_MAP maps
+// each index to the physical PCA9685 channel.
+void set_servo_pwms(std::vector<uint16_t> pwms)
+{
+  size_t n = pwms.size();
+  if (n > 12) n = 12;
+  for (size_t i = 0; i < n; ++i) {
+    pca9685_set_pwm(PWM_CHANNEL_MAP[i], pwms[i]);
+  }
+}
+
+// get_imu_data() → [ax, ay, az, gx, gy, gz]  —  called via Bridge.call()
+std::vector<float> get_imu_data()
+{
+  float ax, ay, az, gx, gy, gz;
+  mpu6050_read(ax, ay, az, gx, gy, gz);
+  return {ax, ay, az, gx, gy, gz};
+}
+
+// get_hw_status() → [i2c_scan, ai_ok]  —  diagnostic endpoint
+std::vector<int> get_hw_status()
+{
+  int scan = i2c_scan_devices();
+  bool ai = false;
+  if (!(scan & 1)) {
+    ai = pca9685_verify_init();
+  }
+  return {scan, ai ? 1 : 0};
+}
+
+// scan_all_i2c() → [addr1, addr2, ...]  —  full I2C bus scan (addresses 1–126)
+static std::vector<uint8_t> scan_all_i2c()
+{
+  std::vector<uint8_t> found;
+  for (uint8_t addr = 1; addr < 127; ++addr) {
+    Wire.beginTransmission(addr);
+    if (Wire.endTransmission() == 0) {
+      found.push_back(addr);
+    }
+  }
+  return found;
+}
+
+// ── Arduino lifecycle ──────────────────────────────────────────────────
+void setup()
+{
+  Wire.begin();
+  Wire.setClock(400000);
+
+  // Diagnose I2C devices before any init so we can catch bus issues early.
+  g_i2c_scan = i2c_scan_devices();
+
+  mpu6050_init();
+  pca9685_init();
+
+  // Verify the AI bit was actually written to MODE1.
+  g_ai_ok = pca9685_verify_init();
+
+  Bridge.begin();
+
+  // Providers MUST be registered after Bridge.begin() and after the MPU Router
+  // is ready.  If $/register fails during setup() (Router not fully up yet),
+  // retry in loop() until all four are bound.
+  g_providers_ok =
+    Bridge.provide("set_servo_pwms", set_servo_pwms) &&
+    Bridge.provide("get_imu_data", get_imu_data) &&
+    Bridge.provide("get_hw_status", get_hw_status) &&
+    Bridge.provide("scan_all_i2c", scan_all_i2c);
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+}
+
+void loop()
+{
+  // Retry provider registration if it failed during setup (Router wasn't ready).
+  if (!g_providers_ok) {
+    g_providers_ok =
+      Bridge.provide("set_servo_pwms", set_servo_pwms) &&
+      Bridge.provide("get_imu_data", get_imu_data) &&
+      Bridge.provide("get_hw_status", get_hw_status) &&
+      Bridge.provide("scan_all_i2c", scan_all_i2c);
+  }
+
+  // LED blink codes for quick visual diagnostics:
+  //
+  //   Solid ON (normal)          — both I2C devices found, AI bit set
+  //   3 quick flashes, pause     — PCA9685 not responding on I2C bus
+  //   2 flashes, pause           — PCA9685 found but AI bit NOT set
+  //   1 flash, long pause        — only MPU6050 missing (PCA9685 OK)
+  //
+  if (g_i2c_scan & 1) {
+    blink_error(3, 100, 600);
+  } else if (!g_ai_ok) {
+    blink_error(2, 200, 800);
+  } else if (g_i2c_scan & 2) {
+    blink_error(1, 500, 1500);
+  } else {
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(10);
+  }
+}
