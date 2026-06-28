@@ -29,6 +29,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -41,12 +42,18 @@ def generate_launch_description():
     model_path = LaunchConfiguration('model_path')
     params_file = LaunchConfiguration('params_file')
     start_enabled = LaunchConfiguration('start_enabled')
+    heading_lock = LaunchConfiguration('heading_lock')
+    heading_lock_yaw = LaunchConfiguration('heading_lock_yaw')
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('model_path', default_value=default_model),
         DeclareLaunchArgument('params_file', default_value=default_params),
         DeclareLaunchArgument('start_enabled', default_value='true'),
+        # Absolute heading lock for the straight-line demo (off for nav, where
+        # Nav2 owns the heading). heading_lock_yaw is the world heading to hold.
+        DeclareLaunchArgument('heading_lock', default_value='false'),
+        DeclareLaunchArgument('heading_lock_yaw', default_value='0.0'),
 
         Node(
             package='big_bertha_policy_controller',
@@ -59,6 +66,8 @@ def generate_launch_description():
                     'use_sim_time': use_sim_time,
                     'model_path': model_path,
                     'start_enabled': start_enabled,
+                    'heading_lock': ParameterValue(heading_lock, value_type=bool),
+                    'heading_lock_yaw': ParameterValue(heading_lock_yaw, value_type=float),
                 },
             ],
         ),

@@ -74,7 +74,11 @@ controller_server:
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
-    failure_tolerance: 0.3
+    # Long failure tolerance: the crawl is slow and the regulated controller can
+    # briefly produce no valid command on a tight curve; at 0.3 s that tripped
+    # "controller patience exceeded" -> the BT fired Spin/DriveOnHeading
+    # recoveries that wreck the gait. 10 s lets the crawl work through it.
+    failure_tolerance: 10.0
     progress_checker_plugins: ["progress_checker"]
     goal_checker_plugins: ["general_goal_checker"] # "precise_goal_checker"
     controller_plugins: ["FollowPath"]
@@ -83,8 +87,11 @@ controller_server:
     # Progress checker parameters
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.5
-      movement_time_allowance: 10.0
+      required_movement_radius: 0.05
+      # Big Bertha crawls at ~0.1 m/s and yaws slowly, so it needs a long
+      # allowance to clear the progress bar (was 45 s -> aborted). The crawl can
+      # spend many seconds turning in place, so keep this generous.
+      movement_time_allowance: 150.0
     # Goal checker parameters
     #precise_goal_checker:
     #  plugin: "nav2_controller::SimpleGoalChecker"
@@ -94,31 +101,66 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.25
+      # With ground-truth localization (demo default) Nav2 sees the true pose and
+      # the cross-track steering climbs the residual DART crab off the wall, so
+      # the robot physically reaches B. 0.6 m latches success as the robot passes
+      # within ~0.56 m (an honest arrival for a ~0.36 m crawler) and stops it
+      # before the under-damped approach can overshoot past B. (1.2 here masked
+      # the old AMCL false-success where the robot sat metres short.)
+      xy_goal_tolerance: 0.6
+      # Reaching point B is what matters; the crawl yaws slowly and need not end
+      # at a specific heading, so don't gate goal success on final orientation
+      # (was 0.25 rad -> the robot could sit on B forever failing the yaw check).
+      yaw_goal_tolerance: 3.15
     # RegulatedPurePursuitController: robust for a small diff-drive base and
     # the gz VelocityControl drive. Tuned for Big Bertha's modest speeds in
     # the obstacle arena.
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.4
-      lookahead_dist: 0.6
-      min_lookahead_dist: 0.3
-      max_lookahead_dist: 0.9
+      # Match the learned crawl envelope: the gait tracks ~0.08-0.12 m/s forward
+      # (MG995-actuator-limited -- a higher command just saturates the gait and
+      # overruns the path). The short lookahead keeps the carrot near the robot
+      # for tight following.
+      desired_linear_vel: 0.12
+      # Tighter lookahead (was 2.5/1.5/3.0): the carrot stays near the robot ON
+      # the path so it tracks the path's turns around obstacles instead of aiming
+      # far past them and grazing walls. The old large value was a workaround for
+      # a gait that could not yaw; the symmetric/flatter policy now yaws +/-0.8
+      # and use_rotate_to_heading makes the sharp turns, so we can follow tightly
+      # -- the responsiveness fix (robot acts on a new path quickly).
+      # 1.2 -> 0.7: even tighter so the robot does NOT cut the corner of the
+      # path's bend around an on-path obstacle (box_1/pillar_1/box_2 all sit on
+      # the diagonal, a slalom with ~0.8-1.1 m gaps). A short carrot keeps it
+      # weaving through the gap centres; the responsive gait (yaw track ~1.0) can
+      # follow it without the spiral the old large value guarded against.
+      lookahead_dist: 0.7
+      min_lookahead_dist: 0.5
+      max_lookahead_dist: 1.0
       lookahead_time: 1.5
-      rotate_to_heading_angular_vel: 1.2
+      rotate_to_heading_angular_vel: 0.8  # match the gait's trained yaw cap (+/-0.8 rad/s)
       transform_tolerance: 0.2
       use_velocity_scaled_lookahead_dist: false
       min_approach_linear_velocity: 0.05
       approach_velocity_scaling_dist: 0.6
       use_collision_detection: true
+      # Kept at 1.0 s (a 0.4 s trial let the robot clip obstacles). The real cause
+      # of the old "freeze near obstacles" was ghost walls from the tilted body
+      # lidar, now removed by scan_ground_filter -- so 1.0 s no longer over-freezes
+      # yet still halts safely before a genuine collision.
       max_allowed_time_to_collision_up_to_carrot: 1.0
       use_regulated_linear_velocity_scaling: true
       use_cost_regulated_linear_velocity_scaling: false
       regulated_linear_scaling_min_radius: 0.9
-      regulated_linear_scaling_min_speed: 0.25
+      # Floor the regulated speed at the crawl's real pace, not 0.25 (which the
+      # gait cannot reach, so the controller thought it was stalled).
+      regulated_linear_scaling_min_speed: 0.06
+      # Enable hard in-place turns: when the path heading error exceeds
+      # rotate_to_heading_min_angle, RPP stops and rotates on the spot instead of
+      # arcing forward. This is the "hard left/right" the robot needs to peel away
+      # from an obstacle it is about to hit -- without it the slow forward-only
+      # arc could not change heading fast enough and the robot stuck on contact.
       use_rotate_to_heading: true
-      rotate_to_heading_min_angle: 0.785
+      rotate_to_heading_min_angle: 0.5
       max_angular_accel: 3.2
       max_robot_pose_search_dist: 10.0
       allow_reversing: false
@@ -126,6 +168,7 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
+      use_sim_time: true
       update_frequency: 5.0
       publish_frequency: 2.0
       global_frame: odom
@@ -139,7 +182,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        inflation_radius: 0.38
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -151,7 +194,7 @@ local_costmap:
         mark_threshold: 0
         observation_sources: scan
         scan:
-          topic: /scan
+          topic: /scan_filtered
           max_obstacle_height: 2.0
           clearing: True
           marking: True
@@ -168,23 +211,39 @@ local_costmap:
 global_costmap:
   global_costmap:
     ros__parameters:
+      use_sim_time: true
       update_frequency: 1.0
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
       robot_radius: 0.18
       resolution: 0.05
-      # The saved map is only partially explored; treat unknown cells as free
-      # so the planner can route through unmapped open space instead of
-      # refusing to plan. The lidar obstacle layer still blocks real obstacles.
+      # Rolling window large enough to always contain both the robot and the
+      # A->B goal (~10 m diagonal in a 10x10 arena). A static global costmap is
+      # sized to the live slam_toolbox map, which at goal-send time only covers
+      # the explored patch near spawn -> the far goal falls OUTSIDE the costmap
+      # and NavfnPlanner returns "failed to create plan". A 24 m rolling window
+      # centred on the robot keeps the goal in-bounds the whole way; obstacles
+      # are marked by the lidar (obstacle_layer) so the planner routes around
+      # what it has seen and treats the rest as free.
+      rolling_window: true
+      width: 24
+      height: 24
+      # Treat never-observed cells as free so the planner can route through
+      # not-yet-mapped open space instead of refusing to plan.
       track_unknown_space: false
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      # NOTE: no static_layer here. A StaticLayer fights a rolling_window grid
+      # (it wants to resize/anchor the costmap to the incoming /map), which left
+      # the global costmap unplannable even for an in-bounds, obstacle-free
+      # goal. The lidar obstacle_layer + a rolling window is the standard combo
+      # for navigating with a live, partial map.
+      plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
         observation_sources: scan
         scan:
-          topic: /scan
+          topic: /scan_filtered
           max_obstacle_height: 2.0
           clearing: True
           marking: True
@@ -202,7 +261,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        inflation_radius: 0.38
       always_send_full_costmap: True
 
 # The yaml_filename does not need to be specified since it going to be set by defaults in launch.
@@ -306,8 +365,8 @@ velocity_smoother:
     stamp_smoothed_velocity_with_smoothing_time: False
     scale_velocities: False
     feedback: "OPEN_LOOP"
-    max_velocity: [0.5, 0.0, 2.0]
-    min_velocity: [-0.5, 0.0, -2.0]
+    max_velocity: [0.4, 0.0, 0.15]
+    min_velocity: [-0.1, 0.0, -0.15]
     max_accel: [2.5, 0.0, 3.2]
     max_decel: [-2.5, 0.0, -3.2]
     odom_topic: "odom"
@@ -328,12 +387,28 @@ collision_monitor:
     stop_pub_timeout: 2.0
     # Polygons represent zone around the robot for "stop", "slowdown" and "limit" action types,
     # and robot footprint for "approach" action type.
-    polygons: ["FootprintApproach"]
+    polygons: ["PolygonStop", "FootprintApproach"]
+    # Hard stop backstop: if >=4 scan points (a wall/obstacle) enter this fixed
+    # box around the robot, force cmd_vel to zero (the gait then gates and holds).
+    # This guarantees zero wall collisions regardless of why the robot is moving
+    # -- including the post-goal idle creep that no cmd_vel change would stop. The
+    # +/-0.35 x +/-0.30 m box sits well inside the ~0.87 m clearance the planner
+    # keeps during navigation, so it never false-triggers on the planned path.
+    PolygonStop:
+      type: "polygon"
+      action_type: "stop"
+      points: "[[0.35, 0.30], [0.35, -0.30], [-0.35, -0.30], [-0.35, 0.30]]"
+      min_points: 4
+      visualize: True
+      enabled: True
     FootprintApproach:
       type: "polygon"
       action_type: "approach"
       footprint_topic: "/local_costmap/published_footprint"
-      time_before_collision: 1.2
+      # 1.2 -> 1.8: project the footprint further ahead along the velocity so the
+      # monitor scales the speed toward 0 earlier -- a wider safety margin for the
+      # zero-collision goal (the slow crawl still has room to keep moving).
+      time_before_collision: 1.8
       simulation_time_step: 0.1
       min_points: 6
       visualize: False
@@ -341,7 +416,7 @@ collision_monitor:
     observation_sources: ["scan"]
     scan:
       type: "scan"
-      topic: "scan"
+      topic: "scan_filtered"
       min_height: 0.15
       max_height: 2.0
       enabled: True

@@ -59,6 +59,7 @@ from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
+from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -133,8 +134,21 @@ def generate_launch_description():
     )
     localization = include(
         os.path.join('localization', 'localization.launch.py'),
-        {'use_sim_time': use_sim_time, 'map': map_yaml},
+        {'use_sim_time': use_sim_time, 'map': map_yaml,
+         'localization': LaunchConfiguration('localization'),
+         'x': x, 'y': y, 'yaw': yaw},
         condition=UnlessCondition(slam),
+    )
+
+    # perception: IMU-gated ghost-wall filter. The body lidar tilts with the
+    # gait; this drops floor hits so the costmap stops seeing flickering walls.
+    # Costmaps + collision monitor consume /scan_filtered (see nav2_params.yaml).
+    scan_filter = Node(
+        package='big_bertha_sim_bringup',
+        executable='scan_ground_filter',
+        name='scan_ground_filter',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}],
     )
 
     # planning: Nav2 servers (planner/controller/costmaps/BT).
@@ -160,6 +174,10 @@ def generate_launch_description():
             'slam', default_value='false',
             description='true: SLAM (mapping); false: known-map (localization)'),
         DeclareLaunchArgument(
+            'localization', default_value='amcl',
+            description="known-map map->odom provider: 'amcl' (scan-match, "
+                        "default) or 'ground_truth' (static, experimental)"),
+        DeclareLaunchArgument(
             'rviz', default_value='false',
             description='Also launch RViz'),
         DeclareLaunchArgument(
@@ -184,11 +202,17 @@ def generate_launch_description():
         DeclareLaunchArgument('x', default_value='-3.5'),
         DeclareLaunchArgument('y', default_value='-3.5'),
         DeclareLaunchArgument('z', default_value='0.12'),
-        DeclareLaunchArgument('yaw', default_value='0.785'),
+        # Face +x (East): the A->B demo traverses the obstacle-free bottom
+        # corridor (y=-3.5, all obstacles sit at y>=-1.8) as a straight shot,
+        # which the drift-cancelled gait can hold. (The diagonal toward (3.5,3.5)
+        # is walled off by box_1/pillar_1/box_2 and needs hard turns the gait
+        # cannot make.) Must match the AMCL seed in amcl.yaml.
+        DeclareLaunchArgument('yaw', default_value='0.0'),
 
         simulation,
         locomotion,
         state_estimation,
+        scan_filter,
         mapping,
         localization,
         planning,

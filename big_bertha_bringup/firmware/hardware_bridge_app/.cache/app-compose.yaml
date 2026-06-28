@@ -1,0 +1,66 @@
+name: spider_bot_bringup-big_bertha_bringup-firmware-hardware_bridge_app
+services:
+  main:
+    image: ghcr.io/arduino/app-bricks/python-apps-base:0.10.1
+    volumes:
+    - type: bind
+      source: /home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app
+      target: /app
+    - type: bind
+      source: /dev
+      target: /dev
+    - type: bind
+      source: /run/udev
+      target: /run/udev
+      read_only: true
+    - type: bind
+      source: /var/run/arduino-router.sock
+      target: /var/run/arduino-router.sock
+    - type: bind
+      source: /dev/leds/builtin/led1_b
+      target: /dev/leds/builtin/led1_b
+    - type: bind
+      source: /dev/leds/builtin/led1_g
+      target: /dev/leds/builtin/led1_g
+    - type: bind
+      source: /dev/leds/builtin/led1_r
+      target: /dev/leds/builtin/led1_r
+    - type: bind
+      source: /dev/leds/builtin/led2_b
+      target: /dev/leds/builtin/led2_b
+    - type: bind
+      source: /dev/leds/builtin/led2_g
+      target: /dev/leds/builtin/led2_g
+    - type: bind
+      source: /dev/leds/builtin/led2_r
+      target: /dev/leds/builtin/led2_r
+    device_cgroup_rules:
+    - c 226:* rmw
+    - c 250:* rmw
+    - c 504:* rmw
+    - c 81:* rmw
+    - c 116:* rmw
+    ports:
+    - 50007:50007
+    user: 1000:1000
+    group_add:
+    - 44
+    - 29
+    - 991
+    - 20
+    - 1001
+    entrypoint: /run.sh
+    extra_hosts:
+    - msgpack-rpc-router:host-gateway
+    labels:
+      cc.arduino.app: "true"
+      cc.arduino.app.main: "true"
+      cc.arduino.app.path: /home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app
+    environment:
+      APP_HOME: /home/arduino/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app
+      HOST_IP: 192.168.43.101
+    logging:
+      driver: json-file
+      options:
+        max-file: "2"
+        max-size: 5m
