@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Latency benchmark subscriber: computes one-way wall-clock latency
-(now - header.stamp, both RCL_STEADY_TIME) for each received message, prints
-min/mean/p50/p99/max/stddev in microseconds after N_SAMPLES, then exits.
+r"""
+Latency benchmark subscriber.
+
+Computes one-way wall-clock latency (now - header.stamp, both
+RCL_STEADY_TIME) for each received message, prints min/mean/p50/p99/max/
+stddev in microseconds after N_SAMPLES, then exits.
 
 Usage: lat_sub.py [n_samples=5000] [label]
 
@@ -15,24 +18,26 @@ Example A/B run (3 configs, see HANDOFF_BRINGUP.md for measured numbers):
   RMW_IMPLEMENTATION=rmw_cyclonedds_cpp python3 lat_sub.py 5000 'Cyclone no-SHM'
 
   # Cyclone DDS + iceoryx SHM (RouDi must be running first: ../roudi.sh)
-  RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \\
-    CYCLONEDDS_URI="file://$(pwd)/../../config/dds/cyclonedds_shm.xml" \\
+  RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+    CYCLONEDDS_URI="file://$(pwd)/../../config/dds/cyclonedds_shm.xml" \
     python3 lat_pub.py 500 &
-  RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \\
-    CYCLONEDDS_URI="file://$(pwd)/../../config/dds/cyclonedds_shm.xml" \\
+  RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+    CYCLONEDDS_URI="file://$(pwd)/../../config/dds/cyclonedds_shm.xml" \
     python3 lat_sub.py 5000 'Cyclone + SHM'
 """
 import sys
 
 import numpy as np
 import rclpy
-from rclpy.node import Node
 from rclpy.clock import Clock, ClockType
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
+from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+
 from sensor_msgs.msg import JointState
 
 
 class LatSub(Node):
+
     def __init__(self, n_samples: int, label: str):
         super().__init__('lat_sub')
         qos = QoSProfile(
@@ -60,9 +65,9 @@ class LatSub(Node):
 
     def report(self):
         arr = np.array(self.latencies_us)
-        print(f"=== {self.label} (n={len(arr)}) ===")
-        print(f"min={arr.min():.1f}us mean={arr.mean():.1f}us p50={np.percentile(arr, 50):.1f}us "
-              f"p99={np.percentile(arr, 99):.1f}us max={arr.max():.1f}us std={arr.std():.1f}us")
+        print(f'=== {self.label} (n={len(arr)}) ===')
+        print(f'min={arr.min():.1f}us mean={arr.mean():.1f}us p50={np.percentile(arr, 50):.1f}us '
+              f'p99={np.percentile(arr, 99):.1f}us max={arr.max():.1f}us std={arr.std():.1f}us')
 
 
 def main():
