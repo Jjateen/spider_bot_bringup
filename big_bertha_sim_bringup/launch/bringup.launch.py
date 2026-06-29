@@ -43,6 +43,9 @@ sim_drive      Enable the sim-only kinematic gz VelocityControl drive (a
 map            Saved map YAML for known-map mode. Default: the bundled
                ``maps/obstacle_world.yaml``.
 x, y, z, yaw   Spawn pose (demo point A). Defaults: ``-3.5 -3.5 0.12 0.785``.
+dds_shm        Cyclone DDS + per-process iceoryx SHM for /joint_states,
+               self-contained (forces Cyclone DDS, starts RouDi). Default:
+               ``true``. ``false`` for plain default Fast DDS.
 """
 
 import os
@@ -81,6 +84,9 @@ def generate_launch_description():
     y = LaunchConfiguration('y')
     z = LaunchConfiguration('z')
     yaw = LaunchConfiguration('yaw')
+    dds_shm = LaunchConfiguration('dds_shm')
+    cyclonedds_shm_uri = 'file://' + os.path.join(
+        sim_pkg, 'config', 'dds', 'cyclonedds_shm.xml')
 
     default_map = PathJoinSubstitution(
         [FindPackageShare('big_bertha_sim_bringup'),
@@ -105,18 +111,27 @@ def generate_launch_description():
             'sim_drive': sim_drive,
             'spawn_controllers': 'true',
             'x': x, 'y': y, 'z': z, 'yaw': yaw,
+            'dds_shm': dds_shm,
         },
     )
 
     # locomotion: the C++ ONNX gait controller (/cmd_vel -> joint targets).
     # Scoped so its ``params_file:=policy.yaml`` default stays local (see the
-    # leak note in include()).
+    # leak note in include()). dds_shm/cyclonedds_shm_uri must be threaded
+    # through here too (mirrors demo_straight.launch.py) -- without it,
+    # gz_server gets SHM but policy_controller_node doesn't, so the
+    # /joint_states pair never actually forms a zero-copy channel (per-pair
+    # matching needs both sides on the SHM-enabled CYCLONEDDS_URI).
     locomotion = GroupAction([
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 os.path.join(
                     policy_pkg, 'launch', 'policy_controller.launch.py')),
-            launch_arguments={'use_sim_time': use_sim_time}.items(),
+            launch_arguments={
+                'use_sim_time': use_sim_time,
+                'dds_shm': dds_shm,
+                'cyclonedds_shm_uri': cyclonedds_shm_uri,
+            }.items(),
         ),
     ], scoped=True)
 
@@ -208,6 +223,12 @@ def generate_launch_description():
         # is walled off by box_1/pillar_1/box_2 and needs hard turns the gait
         # cannot make.) Must match the AMCL seed in amcl.yaml.
         DeclareLaunchArgument('yaw', default_value='0.0'),
+        DeclareLaunchArgument(
+            'dds_shm', default_value='true',
+            description='Per-process Cyclone DDS shared-memory scoping for '
+                        '/joint_states (see simulation.launch.py) -- on by '
+                        'default, self-contained (forces Cyclone DDS, starts '
+                        'RouDi). dds_shm:=false for plain default Fast DDS.'),
 
         simulation,
         locomotion,
