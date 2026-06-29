@@ -27,7 +27,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration
 
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -45,7 +45,6 @@ def generate_launch_description():
     start_enabled = LaunchConfiguration('start_enabled')
     heading_lock = LaunchConfiguration('heading_lock')
     heading_lock_yaw = LaunchConfiguration('heading_lock_yaw')
-    rt_priority = LaunchConfiguration('rt_priority')
     dds_shm = LaunchConfiguration('dds_shm')
     cyclonedds_shm_uri = LaunchConfiguration('cyclonedds_shm_uri')
 
@@ -59,14 +58,6 @@ def generate_launch_description():
     shm_on = SetEnvironmentVariable(
         'CYCLONEDDS_URI', cyclonedds_shm_uri, condition=IfCondition(dds_shm))
 
-    # '' (rt_priority=0, default) -> no prefix, runs at normal SCHED_OTHER
-    # priority. Opt-in only: SCHED_FIFO needs CAP_SYS_NICE or an rtprio ulimit,
-    # which most dev/CI shells don't have -- this must not break the default
-    # launch path on a host without it.
-    rt_prefix = PythonExpression([
-        "'chrt -f ' + '", rt_priority, "' if '", rt_priority, "' != '0' else ''",
-    ])
-
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         DeclareLaunchArgument('model_path', default_value=default_model),
@@ -76,11 +67,6 @@ def generate_launch_description():
         # Nav2 owns the heading). heading_lock_yaw is the world heading to hold.
         DeclareLaunchArgument('heading_lock', default_value='false'),
         DeclareLaunchArgument('heading_lock_yaw', default_value='0.0'),
-        # SCHED_FIFO priority (1-99) for the policy node, via chrt. Protects the
-        # 50Hz gait loop from being starved by SLAM/Nav2/perception on a weak,
-        # CPU-constrained target (the UNO Q's 4x Cortex-A55) under contention --
-        # not needed on a dev machine with idle cores. 0 = disabled (default).
-        DeclareLaunchArgument('rt_priority', default_value='0'),
         # Per-process Cyclone DDS shared-memory, on by default (see comment
         # above) when launched via demo_straight.launch.py, which supplies
         # cyclonedds_shm_uri. Safe no-op if invoked standalone with no URI
@@ -94,7 +80,6 @@ def generate_launch_description():
             executable='policy_controller_node',
             name='policy_controller',
             output='screen',
-            prefix=rt_prefix,
             parameters=[
                 params_file,
                 {
