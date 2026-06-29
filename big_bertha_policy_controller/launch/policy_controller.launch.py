@@ -81,9 +81,11 @@ def generate_launch_description():
         # CPU-constrained target (the UNO Q's 4x Cortex-A55) under contention --
         # not needed on a dev machine with idle cores. 0 = disabled (default).
         DeclareLaunchArgument('rt_priority', default_value='0'),
-        # Per-process Cyclone DDS shared-memory opt-in (see comment above).
-        # No-op unless dds_shm:=true with a real cyclonedds_shm_uri supplied.
-        DeclareLaunchArgument('dds_shm', default_value='false'),
+        # Per-process Cyclone DDS shared-memory, on by default (see comment
+        # above) when launched via demo_straight.launch.py, which supplies
+        # cyclonedds_shm_uri. Safe no-op if invoked standalone with no URI
+        # (empty CYCLONEDDS_URI -> Cyclone uses its built-in defaults).
+        DeclareLaunchArgument('dds_shm', default_value='true'),
         DeclareLaunchArgument('cyclonedds_shm_uri', default_value=''),
 
         shm_on,

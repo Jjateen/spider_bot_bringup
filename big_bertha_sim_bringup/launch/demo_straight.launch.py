@@ -251,11 +251,11 @@ def generate_launch_description():
         # (y=-3.5; all obstacles sit at y>=-1.8, east wall at x=5).
         DeclareLaunchArgument('yaw', default_value='0.0'),
         DeclareLaunchArgument(
-            'dds_shm', default_value='false',
+            'dds_shm', default_value='true',
             description='Per-process Cyclone DDS shared-memory scoping for '
-                        '/joint_states (see simulation.launch.py); requires '
-                        'RMW_IMPLEMENTATION=rmw_cyclonedds_cpp + RouDi running '
-                        '(scripts/roudi.sh) first'),
+                        '/joint_states (see simulation.launch.py) -- on by '
+                        'default, self-contained (forces Cyclone DDS, starts '
+                        'RouDi). dds_shm:=false for plain default Fast DDS.'),
 
         simulation,
         locomotion,

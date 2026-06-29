@@ -38,6 +38,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    ExecuteProcess,
     IncludeLaunchDescription,
     RegisterEventHandler,
     SetEnvironmentVariable,
@@ -71,22 +72,35 @@ def generate_launch_description():
     world_path = PathJoinSubstitution([sim_pkg, 'worlds', world])
     bridge_config = os.path.join(sim_pkg, 'config', 'ros_gz_bridge.yaml')
 
-    # Per-process Cyclone DDS shared-memory scoping (only takes effect when
-    # dds_shm:=true; RMW_IMPLEMENTATION must already be rmw_cyclonedds_cpp, set
-    # separately via scripts/dds_env.sh). SharedMemory Enable=true is per
-    # PARTICIPANT, not per-topic -- and robot_state_publisher's one-shot
-    # TRANSIENT_LOCAL /robot_description publish hangs forever for a
-    # late-joining SHM-enabled subscriber (confirmed bug, see
-    # config/dds/cyclonedds_shm.xml + ros2/rmw_cyclonedds#401). Fix: keep
-    # robot_state_publisher (the writer) and spawn_robot (a late-joining
-    # one-shot reader) on the plain (SHM-off) profile; only gz_server (hosts
-    # controller_manager, the /joint_states writer -- a continuous stream, not
-    # a one-shot durable publish, so the late-joiner bug doesn't apply) runs
-    # with SHM on. Per-endpoint matching means a pair where either side lacks
-    # SHM falls back to normal network transport, same as Phase 1.
+    # Per-process Cyclone DDS shared-memory scoping, on by default.
+    # SharedMemory Enable=true is per PARTICIPANT, not per-topic -- and
+    # robot_state_publisher's one-shot TRANSIENT_LOCAL /robot_description
+    # publish hangs forever for a late-joining SHM-enabled subscriber
+    # (confirmed bug, see config/dds/cyclonedds_shm.xml + rmw_cyclonedds#401).
+    # Fix: keep robot_state_publisher (the writer) and spawn_robot (a
+    # late-joining one-shot reader) on the plain (SHM-off) profile; only
+    # gz_server (hosts controller_manager, the /joint_states writer -- a
+    # continuous stream, not a one-shot durable publish, so the late-joiner
+    # bug doesn't apply) runs with SHM on. Per-endpoint matching means a pair
+    # where either side lacks SHM falls back to normal network transport,
+    # same as plain Cyclone DDS. Verified via iox-introspection-client that
+    # /joint_states genuinely flows over the iceoryx channel when this is on.
+    #
+    # Self-contained: forces RMW_IMPLEMENTATION=rmw_cyclonedds_cpp and starts
+    # RouDi itself (Enable=true with no RouDi aborts every SHM-enabled
+    # process at domain creation -- confirmed via core dump) so no manual
+    # `source scripts/dds_env.sh` / `scripts/roudi.sh` step is needed. If a
+    # RouDi from a previous run is already alive, this ExecuteProcess exits
+    # immediately (it binds a fixed IPC channel name) -- kill stale
+    # `iox-roudi` processes first if SHM-enabled nodes fail to start.
     dds_dir = os.path.join(sim_pkg, 'config', 'dds')
     cyclonedds_uri = 'file://' + os.path.join(dds_dir, 'cyclonedds.xml')
     cyclonedds_shm_uri = 'file://' + os.path.join(dds_dir, 'cyclonedds_shm.xml')
+    force_cyclonedds = SetEnvironmentVariable(
+        'RMW_IMPLEMENTATION', 'rmw_cyclonedds_cpp', condition=IfCondition(dds_shm))
+    roudi = ExecuteProcess(
+        cmd=['iox-roudi'], output='screen', condition=IfCondition(dds_shm))
+
     def shm_off():
         return SetEnvironmentVariable(
             'CYCLONEDDS_URI', cyclonedds_uri, condition=IfCondition(dds_shm))
@@ -227,11 +241,13 @@ def generate_launch_description():
         DeclareLaunchArgument('z', default_value='0.12'),
         DeclareLaunchArgument('yaw', default_value='0.785'),
         DeclareLaunchArgument(
-            'dds_shm', default_value='false',
+            'dds_shm', default_value='true',
             description='Per-process Cyclone DDS shared-memory scoping (see '
-                        'comment above); no-op unless RMW_IMPLEMENTATION is '
-                        'already rmw_cyclonedds_cpp'),
+                        'comment above); self-contained (forces Cyclone DDS, '
+                        'starts RouDi). false = plain default Fast DDS.'),
 
+        force_cyclonedds,
+        roudi,
         set_resource_path,
         shm_off(),
         rsp,
