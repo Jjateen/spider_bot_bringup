@@ -7,9 +7,13 @@ find_package(sensor_msgs REQUIRED)
 
 # Install all bringup assets into the package share directory. RViz +
 # PlotJuggler configs live under config/ (config/rviz, config/plotjuggler).
+# USE_SOURCE_PERMISSIONS: plain install(DIRECTORY) drops the executable bit on
+# scripts/*.sh (send_patrol.sh, dds_env.sh, roudi.sh), breaking direct
+# invocation from the install tree.
 install(
   DIRECTORY launch config worlds scripts
   DESTINATION share/${PROJECT_NAME}
+  USE_SOURCE_PERMISSIONS
 )
 
 # Perception helper node (scan_ground_filter: IMU-gated ghost-wall removal).
