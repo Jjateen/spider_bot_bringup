@@ -62,6 +62,7 @@
 
 #include <Arduino_RouterBridge.h>
 #include <Wire.h>
+
 #include <vector>
 
 // ── I2C device addresses ────────────────────────────────────────────────
@@ -76,7 +77,7 @@ static const uint8_t PCA9685_ADDR = 0x40;
 
 // ── PCA9685 register map ───────────────────────────────────────────────
 // MODE1 register: controls sleep, restart, auto-increment, etc.
-static const uint8_t PCA9685_MODE1     = 0x00;
+static const uint8_t PCA9685_MODE1 = 0x00;
 // PRE_SCALE: sets PWM base frequency. Value = 25000000 / (4096 × f_target) - 1.
 static const uint8_t PCA9685_PRE_SCALE = 0xFE;
 // Base address for LED0's 4-byte PWM registers (ON_L, ON_H, OFF_L, OFF_H).
@@ -107,11 +108,11 @@ static const uint8_t PWM_CHANNEL_MAP[12] = {0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 
 //   bit 0 = PCA9685 not responding (check 5V supply, address jumpers, wiring)
 //   bit 1 = MPU6050 not responding (check 3.3V supply, AD0 pull-down, wiring)
 // Re-checked every 1 s in loop() to detect hot-plug / brownout recovery.
-static int  g_i2c_scan  = 0;
+static int g_i2c_scan = 0;
 // PCA9685 auto-increment flag. After init, MODE1.bit5 (AI) must be set.
 // If AI is missing, multi-byte PWM writes will corrupt adjacent channels.
 // This catches a failed init even if the device ACKed the I2C address.
-static bool g_ai_ok     = false;
+static bool g_ai_ok = false;
 
 // ── Push timing (milliseconds) ─────────────────────────────────────────
 // IMU is pushed at 20 Hz (every 50 ms). The policy controller on the ROS 2
@@ -123,12 +124,12 @@ static bool g_ai_ok     = false;
 // The M33's millis() clock runs from the Zephyr system timer (typically a
 // 32 kHz RTC or ARM SysTick). It is not synchronised to ROS 2 /clock — the
 // ROS 2 node timestamps the IMU message with its own clock on receipt.
-static unsigned long g_last_imu_push    = 0;
+static unsigned long g_last_imu_push = 0;
 static unsigned long g_last_status_push = 0;
 // Hardware status (I2C health check) is pushed at 1 Hz — non-critical
 // diagnostic info that doesn't need real-time sampling. The 1 Hz rate
 // keeps the Bridge.notify channel mostly free for IMU data.
-static const unsigned long IMU_INTERVAL    = 50;    // ~20 Hz
+static const unsigned long IMU_INTERVAL = 50;       // ~20 Hz
 static const unsigned long STATUS_INTERVAL = 1000;  // 1 Hz
 
 // ── I2C helpers ─────────────────────────────────────────────────────────
@@ -198,7 +199,7 @@ static void pca9685_init()
   i2c_write_byte(PCA9685_ADDR, PCA9685_MODE1, 0x10);  // sleep (bit4=1)
   delay(1);
   i2c_write_byte(PCA9685_ADDR, PCA9685_PRE_SCALE, 121);
-  i2c_write_byte(PCA9685_ADDR, PCA9685_MODE1, 0xA0);   // RESTART | AI
+  i2c_write_byte(PCA9685_ADDR, PCA9685_MODE1, 0xA0);  // RESTART | AI
   delay(1);
 }
 
@@ -223,10 +224,10 @@ static void pca9685_set_pwm(uint8_t ch, uint16_t off)
   uint8_t reg = PCA9685_LED0_ON_L + 4 * ch;
   Wire.beginTransmission(PCA9685_ADDR);
   Wire.write(reg);
-  Wire.write(0);       // ON_L  = 0  → turn on at cycle start
-  Wire.write(0);       // ON_H  = 0
-  Wire.write(off & 0xFF);         // OFF_L = low byte
-  Wire.write(off >> 8);           // OFF_H = high byte
+  Wire.write(0);           // ON_L  = 0  → turn on at cycle start
+  Wire.write(0);           // ON_H  = 0
+  Wire.write(off & 0xFF);  // OFF_L = low byte
+  Wire.write(off >> 8);    // OFF_H = high byte
   Wire.endTransmission();
 }
 
@@ -301,17 +302,15 @@ static void mpu6050_init()
 //
 // Outputs match sensor_msgs/Imu field semantics: linear_acceleration in m/s²,
 // angular_velocity in rad/s, in the IMU body frame.
-static void mpu6050_read(
-  float & ax, float & ay, float & az,
-  float & gx, float & gy, float & gz)
+static void mpu6050_read(float & ax, float & ay, float & az, float & gx, float & gy, float & gz)
 {
   uint8_t raw[14];
   i2c_read_bytes(MPU6050_ADDR, 0x3B, raw, 14);
 
-  int16_t raw_ax = (raw[0]  << 8) | raw[1];
-  int16_t raw_ay = (raw[2]  << 8) | raw[3];
-  int16_t raw_az = (raw[4]  << 8) | raw[5];
-  int16_t raw_gx = (raw[8]  << 8) | raw[9];
+  int16_t raw_ax = (raw[0] << 8) | raw[1];
+  int16_t raw_ay = (raw[2] << 8) | raw[3];
+  int16_t raw_az = (raw[4] << 8) | raw[5];
+  int16_t raw_gx = (raw[8] << 8) | raw[9];
   int16_t raw_gy = (raw[10] << 8) | raw[11];
   int16_t raw_gz = (raw[12] << 8) | raw[13];
 
