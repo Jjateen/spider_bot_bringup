@@ -9,7 +9,6 @@
 
 #include <Arduino_RouterBridge.h>
 #include <Wire.h>
-
 #include <vector>
 
 // ── I2C addresses ──────────────────────────────────────────────────────
@@ -17,12 +16,12 @@ static const uint8_t MPU6050_ADDR = 0x68;
 static const uint8_t PCA9685_ADDR = 0x40;
 
 // PCA9685 registers
-static const uint8_t PCA9685_MODE1 = 0x00;
+static const uint8_t PCA9685_MODE1     = 0x00;
 static const uint8_t PCA9685_PRE_SCALE = 0xFE;
 static const uint8_t PCA9685_LED0_ON_L = 0x06;
 
 // MPU6050 registers
-static const uint8_t MPU6050_PWR_MGMT_1 = 0x6B;
+static const uint8_t MPU6050_PWR_MGMT_1   = 0x6B;
 static const uint8_t MPU6050_ACCEL_XOUT_H = 0x3B;
 
 // ── I2C helpers ────────────────────────────────────────────────────────
@@ -74,15 +73,17 @@ static void mpu6050_init()
   delay(100);
 }
 
-static void mpu6050_read(float & ax, float & ay, float & az, float & gx, float & gy, float & gz)
+static void mpu6050_read(
+  float & ax, float & ay, float & az,
+  float & gx, float & gy, float & gz)
 {
   uint8_t raw[14];
   i2c_read_bytes(MPU6050_ADDR, MPU6050_ACCEL_XOUT_H, raw, 14);
 
-  int16_t raw_ax = (raw[0] << 8) | raw[1];
-  int16_t raw_ay = (raw[2] << 8) | raw[3];
-  int16_t raw_az = (raw[4] << 8) | raw[5];
-  int16_t raw_gx = (raw[8] << 8) | raw[9];
+  int16_t raw_ax = (raw[0]  << 8) | raw[1];
+  int16_t raw_ay = (raw[2]  << 8) | raw[3];
+  int16_t raw_az = (raw[4]  << 8) | raw[5];
+  int16_t raw_gx = (raw[8]  << 8) | raw[9];
   int16_t raw_gy = (raw[10] << 8) | raw[11];
   int16_t raw_gz = (raw[12] << 8) | raw[13];
 
@@ -131,4 +132,7 @@ void setup()
   digitalWrite(LED_BUILTIN, HIGH);
 }
 
-void loop() { delay(10); }
+void loop()
+{
+  delay(10);
+}
