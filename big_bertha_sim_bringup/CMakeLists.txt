@@ -24,6 +24,19 @@ install(
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# DDS throughput benchmark (C++ counterpart to scripts/lat_bench/fps_*.py,
+# free of rclpy's per-message binding overhead -- see HANDOFF_BRINGUP.md for
+# why the Python harness alone wasn't a reliable instrument for large
+# messages). Diagnostic tool, not used by any launch file.
+add_executable(fps_pub_cpp src/fps_pub_cpp.cpp)
+ament_target_dependencies(fps_pub_cpp rclcpp sensor_msgs)
+add_executable(fps_sub_cpp src/fps_sub_cpp.cpp)
+ament_target_dependencies(fps_sub_cpp rclcpp sensor_msgs)
+install(
+  TARGETS fps_pub_cpp fps_sub_cpp
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 # maps/ is added by a later chained PR (mapping/localization); install it
 # only when present so earlier-chain branches still build.
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/maps")
