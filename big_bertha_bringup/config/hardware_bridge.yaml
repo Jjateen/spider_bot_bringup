@@ -17,9 +17,14 @@
 
     # IMU covariance matrices (9 elements each, row-major).
     # Orientation covariance = [-1] means orientation not estimated.
+<<<<<<< HEAD
     # Accel/gyro covariances are overwritten at startup from calibration
     # samples (sample variance of N readings while stationary).  These
     # static values are fallback defaults when calibration is disabled.
+=======
+    # Accel/gyro diagonals derived from MPU6050 datasheet (DLPF=3, 44 Hz BW)
+    # with margin for motor vibration.
+>>>>>>> a28c4ef (feat: improved sensor nodes)
     orientation_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     linear_acceleration_covariance: [0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001]
     angular_velocity_covariance: [0.00001, 0.0, 0.0, 0.0, 0.00001, 0.0, 0.0, 0.0, 0.00001]
