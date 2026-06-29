@@ -3,16 +3,28 @@
             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
             xsi:schemaLocation="https://cdds.io/config https://raw.githubusercontent.com/eclipse-cyclonedds/cyclonedds/master/etc/cyclonedds.xsd">
   <Domain id="any">
-    <General>
-      <Interfaces>
-        <NetworkInterface name="lo" priority="default" multicast="false" />
-      </Interfaces>
-      <AllowMulticast>false</AllowMulticast>
-    </General>
+    <!-- NOT CURRENTLY USABLE for the full bringup graph -- kept for reference /
+         future per-topic work, do not wire into a launch file as-is.
+         Cyclone defaults for General/Interfaces (see cyclonedds.xml: restricting
+         to loopback-only + AllowMulticast=false broke discovery for some nodes). -->
     <SharedMemory>
-      <!-- REQUIRES RouDi running first (scripts/roudi.sh) -- Enable=true with no
-           RouDi aborts every node at domain creation (iox::errorHandler SIGABRT),
-           it does not fall back to normal transport. -->
+      <!-- REQUIRES RouDi running first (scripts/roudi.sh). Enable=true with no
+           RouDi aborts every node at domain creation (iox::errorHandler SIGABRT);
+           it does not fall back to normal transport.
+
+           Confirmed second, separate failure mode even WITH RouDi running:
+           SHM has no historical-sample mechanism for TRANSIENT_LOCAL durability,
+           so robot_state_publisher's one-shot durable /robot_description publish
+           never reaches the late-joining spawn_big_bertha subscriber -- it hangs
+           forever (verified not a timing issue: ran 60+s past the normal spawn
+           point, message counters on other topics kept advancing the whole
+           time). That stall blocks gz_ros2_control from ever loading, so
+           controller_manager/joint_state_broadcaster/position_controller never
+           appear. Cyclone's per-endpoint SHM matching was expected to fall back
+           to normal transport for QoS-incompatible pairs; it doesn't here.
+           Needs either a per-topic SHM allowlist (exclude transient_local
+           topics) or a newer Cyclone/iceoryx combo with working fallback before
+           this profile is safe to launch with. -->
       <Enable>true</Enable>
       <LogLevel>error</LogLevel>
     </SharedMemory>

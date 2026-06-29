@@ -6,15 +6,14 @@
     <!-- Cyclone defaults for General/Interfaces: an earlier attempt to restrict
          discovery to loopback-only + AllowMulticast=false broke SPDP discovery
          for robot_state_publisher/ros_gz_bridge/policy_controller_node (processes
-         stayed alive but never appeared in `ros2 node list`/`ros2 topic list`) --
-         those nodes start later/separately from the gz_ros2_control process tree,
-         which happened to still discover fine, so this isn't safe to ship without
-         a real interface-tuning pass. Deferred; this profile isolates the RMW
-         swap alone for a clean before/after vs default Fast DDS. -->
+         stayed alive but never appeared in `ros2 node list`/`ros2 topic list`),
+         while the gz_ros2_control process tree still discovered fine, so this
+         isn't safe to ship without a real interface-tuning pass. Deferred; this
+         profile isolates the RMW swap alone for a clean before/after vs Fast DDS. -->
     <SharedMemory>
-      <!-- Off by default: confirmed by crash (iox::errorHandler -> std::terminate
-           in PoshRuntime init, SIGABRT) that Cyclone does NOT fall back gracefully
-           when Enable=true and RouDi isn't running -- it aborts the process at
+      <!-- Off by default: confirmed by crash (iox::errorHandler, std::terminate
+           in PoshRuntime init, SIGABRT) that Cyclone does not fall back gracefully
+           when Enable=true and RouDi isn't running; it aborts the process at
            domain creation. Use cyclonedds_shm.xml (+ start RouDi first) instead. -->
       <Enable>false</Enable>
       <LogLevel>error</LogLevel>
