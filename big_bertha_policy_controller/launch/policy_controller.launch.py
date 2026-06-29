@@ -25,7 +25,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 
 from launch_ros.actions import Node
@@ -45,6 +46,18 @@ def generate_launch_description():
     heading_lock = LaunchConfiguration('heading_lock')
     heading_lock_yaw = LaunchConfiguration('heading_lock_yaw')
     rt_priority = LaunchConfiguration('rt_priority')
+    dds_shm = LaunchConfiguration('dds_shm')
+    cyclonedds_shm_uri = LaunchConfiguration('cyclonedds_shm_uri')
+
+    # This node only ever subscribes continuous streams (/odom, /imu,
+    # /joint_states, /cmd_vel) -- never a one-shot TRANSIENT_LOCAL topic -- so
+    # it's safe to always run with SHM on when dds_shm:=true (see
+    # simulation.launch.py for why robot_state_publisher/spawn_robot can't).
+    # cyclonedds_shm_uri is supplied by the caller (it owns the path to its
+    # own dds config) rather than looked up here, to avoid a reverse package
+    # dependency on big_bertha_sim_bringup.
+    shm_on = SetEnvironmentVariable(
+        'CYCLONEDDS_URI', cyclonedds_shm_uri, condition=IfCondition(dds_shm))
 
     # '' (rt_priority=0, default) -> no prefix, runs at normal SCHED_OTHER
     # priority. Opt-in only: SCHED_FIFO needs CAP_SYS_NICE or an rtprio ulimit,
@@ -68,7 +81,12 @@ def generate_launch_description():
         # CPU-constrained target (the UNO Q's 4x Cortex-A55) under contention --
         # not needed on a dev machine with idle cores. 0 = disabled (default).
         DeclareLaunchArgument('rt_priority', default_value='0'),
+        # Per-process Cyclone DDS shared-memory opt-in (see comment above).
+        # No-op unless dds_shm:=true with a real cyclonedds_shm_uri supplied.
+        DeclareLaunchArgument('dds_shm', default_value='false'),
+        DeclareLaunchArgument('cyclonedds_shm_uri', default_value=''),
 
+        shm_on,
         Node(
             package='big_bertha_policy_controller',
             executable='policy_controller_node',

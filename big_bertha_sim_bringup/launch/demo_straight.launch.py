@@ -77,6 +77,9 @@ def generate_launch_description():
     y = LaunchConfiguration('y')
     z = LaunchConfiguration('z')
     yaw = LaunchConfiguration('yaw')
+    dds_shm = LaunchConfiguration('dds_shm')
+    cyclonedds_shm_uri = 'file://' + os.path.join(
+        sim_pkg, 'config', 'dds', 'cyclonedds_shm.xml')
 
     # simulation (rsp + gz + spawn + ros2_control). Ground-truth odom tf
     # (odom_tf:=true) means gz publishes odom->base_link directly, so no EKF is
@@ -91,6 +94,7 @@ def generate_launch_description():
             'sim_drive': 'false',
             'spawn_controllers': 'true',
             'x': x, 'y': y, 'z': z, 'yaw': yaw,
+            'dds_shm': dds_shm,
         }.items(),
     )
 
@@ -108,6 +112,8 @@ def generate_launch_description():
                 'use_sim_time': use_sim_time,
                 'heading_lock': 'true',
                 'heading_lock_yaw': LaunchConfiguration('yaw'),
+                'dds_shm': dds_shm,
+                'cyclonedds_shm_uri': cyclonedds_shm_uri,
             }.items(),
         ),
     ], scoped=True)
@@ -244,6 +250,12 @@ def generate_launch_description():
         # Face +x (East): straight traverse of the clear bottom corridor
         # (y=-3.5; all obstacles sit at y>=-1.8, east wall at x=5).
         DeclareLaunchArgument('yaw', default_value='0.0'),
+        DeclareLaunchArgument(
+            'dds_shm', default_value='false',
+            description='Per-process Cyclone DDS shared-memory scoping for '
+                        '/joint_states (see simulation.launch.py); requires '
+                        'RMW_IMPLEMENTATION=rmw_cyclonedds_cpp + RouDi running '
+                        '(scripts/roudi.sh) first'),
 
         simulation,
         locomotion,
