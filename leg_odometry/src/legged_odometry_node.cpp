@@ -32,7 +32,8 @@ public:
 
     RCLCPP_INFO(get_logger(), "velocity source: %s", velocity_source_.c_str());
 
-    last_cmd_positions_.resize(12, 0.0);
+    last_cmd_positions_ = default_joint_pos_;
+    last_joint_positions_ = default_joint_pos_;
 
     cmd_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       "/position_controller/commands", rclcpp::QoS(1),
@@ -71,7 +72,7 @@ private:
     }
 
     for (size_t i = 0; i < 12; ++i) {
-      double pos = default_joint_pos_[i] + msg->data[i];
+      double pos = msg->data[i];
       js.position.push_back(pos);
 
       if (dt > 1e-6) {
@@ -180,7 +181,7 @@ private:
     js.header.stamp = now();
     js.name = joint_names_;
     for (size_t i = 0; i < 12; ++i) {
-      js.position.push_back(default_joint_pos_[i] + last_joint_positions_[i]);
+      js.position.push_back(last_joint_positions_[i]);
       js.velocity.push_back(last_joint_velocities_[i]);
     }
     joint_state_pub_->publish(js);
