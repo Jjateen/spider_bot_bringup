@@ -13,12 +13,19 @@ BUS_LABELS = {0: "Wire (D20/D21)", 1: "Wire1 (Qwiic)", 2: "Wire2 (A4/A5)"}
 DEVICE_NAMES = {0x40: "PCA9685", 0x68: "MPU6050"}
 
 bus_scans = {}
+buses_done = set()
 pca_result = None
 last_scan_ts = 0
 
 
-def on_bus_scan_result(bus_id, addrs):
-    bus_scans[bus_id] = list(addrs)
+def on_bus_device(bus_id, addr):
+    if bus_id not in bus_scans:
+        bus_scans[bus_id] = []
+    bus_scans[bus_id].append(addr)
+
+
+def on_bus_done(bus_id):
+    buses_done.add(bus_id)
 
 
 def on_pca9685_result(present, mode1, pre_scale, ai_ok):
@@ -69,8 +76,9 @@ def print_results():
 
 
 def trigger_scan():
-    global bus_scans, pca_result, last_scan_ts
+    global bus_scans, buses_done, pca_result, last_scan_ts
     bus_scans = {}
+    buses_done = set()
     pca_result = None
     Bridge.notify("scan_bus")
     time.sleep(0.5)
@@ -92,7 +100,8 @@ def user_loop():
 
 
 def main():
-    Bridge.provide("bus_scan_result", on_bus_scan_result)
+    Bridge.provide("bus_device", on_bus_device)
+    Bridge.provide("bus_done", on_bus_done)
     Bridge.provide("pca9685_result", on_pca9685_result)
     App.run(user_loop=user_loop)
 

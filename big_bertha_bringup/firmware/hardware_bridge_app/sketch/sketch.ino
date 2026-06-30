@@ -481,7 +481,7 @@ void setup()
   //
   // At 400 kHz: 12-channel servo update = ~1.2 ms, 14-byte IMU read = ~50 µs.
   Wire.begin();
-  Wire.setClock(400000);
+  Wire.setClock(50000);
 
   // Scan for known devices and store the result for LED blink code.
   // This runs before Bridge is up, so the LED is the only feedback channel

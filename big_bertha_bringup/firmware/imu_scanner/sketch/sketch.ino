@@ -148,7 +148,7 @@ void on_scan_bus()
 void setup()
 {
   Wire.begin();
-  Wire.setClock(400000);
+  Wire.setClock(50000);
 
   Bridge.begin();
 

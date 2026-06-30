@@ -11,15 +11,11 @@
 #include <Arduino_RouterBridge.h>
 #include <Wire.h>
 
-#include <vector>
-
 static const uint8_t PCA9685_ADDR = 0x40;
 static const uint8_t MPU6050_ADDR = 0x68;
 
 static const uint8_t PCA9685_MODE1 = 0x00;
 static const uint8_t PCA9685_LED0_ON_L = 0x06;
-
-// ── I2C helpers (bus-agnostic) ─────────────────────────────────────────
 
 static bool i2c_probe(TwoWire & bus, uint8_t dev)
 {
@@ -39,18 +35,24 @@ static bool i2c_read_bytes(TwoWire & bus, uint8_t dev, uint8_t reg, uint8_t * bu
   return true;
 }
 
-// ── Full I2C scan on a given bus ───────────────────────────────────────
+// ── Scan a single bus, sending one Bridge.notify per device found ─────
 
-static std::vector<uint8_t> i2c_scan_all(TwoWire & bus)
+static void scan_single_bus(int bus_id, TwoWire & bus)
 {
-  std::vector<uint8_t> found;
   for (uint8_t addr = 1; addr < 127; ++addr) {
     bus.beginTransmission(addr);
     if (bus.endTransmission() == 0) {
-      found.push_back(addr);
+      Bridge.notify("bus_device", bus_id, addr);
     }
   }
-  return found;
+  Bridge.notify("bus_done", bus_id);
+}
+
+void on_scan_bus()
+{
+  scan_single_bus(0, Wire);
+  scan_single_bus(1, Wire1);
+  scan_single_bus(2, Wire2);
 }
 
 // ── PCA9685 diagnostics ─────────────────────────────────────────────────
@@ -89,27 +91,10 @@ void on_servo_test(uint8_t ch, uint16_t pwm)
   Bridge.notify("servo_test_result", 1, ch, pwm);
 }
 
-// ── Bus scan handler ────────────────────────────────────────────────────
-
-static void scan_single_bus(int bus_id, TwoWire & bus)
-{
-  auto devices = i2c_scan_all(bus);
-  Bridge.notify("bus_scan_result", bus_id, devices);
-}
-
-void on_scan_bus()
-{
-  scan_single_bus(0, Wire);
-  scan_single_bus(1, Wire1);
-  scan_single_bus(2, Wire2);
-}
-
-// ── Setup & Loop ────────────────────────────────────────────────────────
-
 void setup()
 {
   Wire.begin();
-  Wire.setClock(400000);
+  Wire.setClock(50000);
 
   Wire1.begin();
   Wire1.setClock(400000);

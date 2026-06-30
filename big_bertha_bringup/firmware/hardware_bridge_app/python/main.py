@@ -109,13 +109,9 @@ def tcp_server():
 
 # ── Bridge.notify handlers (called when STM32 pushes data) ──────────────────
 
-def on_imu(ax, ay, az, gx, gy, gz):
-    # Detect a missing IMU — the firmware skips Bridge.notify on I2C failure,
-    # so this callback won't fire at all when the sensor is absent. But if the
-    # firmware somehow pushes zeros, log it here as a cross-check.
+def on_imu(ax, ay, az, gx, gy, gz, sample_id=None, timestamp=None):
     if all(v == 0.0 for v in (ax, ay, az, gx, gy, gz)):
         print("[bridge] WARNING: IMU reading all zeros — sensor may be missing")
-    # STM32 sent new IMU data — save it so the ROS node can read it later
     with cache_lock:
         cache["imu"] = {
             "ax": ax, "ay": ay, "az": az,
@@ -123,14 +119,15 @@ def on_imu(ax, ay, az, gx, gy, gz):
         }
 
 
-def on_hw_status(scan, ai_ok):
-    # STM32 checked its I2C devices — save the health report
+def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0):
     with cache_lock:
         cache["hw_status"] = {
             "i2c_scan": scan,
             "ai_ok": bool(ai_ok),
-            "pca9685_ok": (scan & 1) == 0,     # servo driver is good?
-            "mpu6050_ok": (scan & 2) == 0,     # IMU is good?
+            "pca9685_ok": (scan & 1) == 0,
+            "mpu6050_ok": (scan & 2) == 0,
+            "servo_calls": servo_calls,
+            "ping_count": ping_count,
         }
 
 
