@@ -485,8 +485,10 @@ private:
 
   void publish_imu(double ax, double ay, double az, double gx, double gy, double gz)
   {
-    // Skip publishing if the IMU appears absent (all zeros → mpu6050_read
-    // returned false on the STM32, so the firmware pushed nothing).
+    // Skip publishing if the IMU appears absent. Three-layer protection:
+    //   1. STM32 firmware probes I2C before each read (g_mpu6050_present)
+    //   2. Python relay caches None when no Bridge.notify arrives
+    //   3. This zero-check catches the "no imu data yet" error response
     if (std::abs(ax) < 1e-9 && std::abs(ay) < 1e-9 && std::abs(az) < 1e-9 &&
         std::abs(gx) < 1e-9 && std::abs(gy) < 1e-9 && std::abs(gz) < 1e-9) {
       return;

@@ -114,6 +114,10 @@ static int g_i2c_scan = 0;
 // This catches a failed init even if the device ACKed the I2C address.
 static bool g_ai_ok = false;
 
+// MPU6050 presence flag. Set by the probe in setup(), refreshed every 1 s.
+// When false the IMU read is entirely skipped — no I2C traffic, no garbage.
+static bool g_mpu6050_present = false;
+
 // ── Push timing (milliseconds) ─────────────────────────────────────────
 // IMU is pushed at 20 Hz (every 50 ms). The policy controller on the ROS 2
 // side runs at 50 Hz (decimated from a 200 Hz PD timer), so every 2-3 policy
@@ -259,15 +263,19 @@ static void pca9685_set_pwm(uint8_t ch, uint16_t off)
 static const uint8_t MPU6050_PWR_MGMT_1 = 0x6B;
 
 // Wake the MPU6050 from sleep by writing 0 to the power-management register.
+// Returns true if the sensor ACKed its I2C address, false if absent.
 // Default power-on state is sleep (bit6=1, SLEEP=1). Writing 0x00 clears
 // SLEEP, wakes the device, and selects the internal 8 MHz oscillator as the
 // clock source (default after wake). The 100 ms delay allows the internal
 // MEMS PLL to stabilise before the first read — without it the first few
 // samples contain settling transients.
-static void mpu6050_init()
+static bool mpu6050_init()
 {
+  Wire.beginTransmission(MPU6050_ADDR);
+  if (Wire.endTransmission() != 0) return false;   // no ACK → sensor absent
   i2c_write_byte(MPU6050_ADDR, MPU6050_PWR_MGMT_1, 0x00);
   delay(100);
+  return true;
 }
 
 // Read accelerometer (±2g) and gyroscope (±250°/s) data and convert to SI.
@@ -484,7 +492,7 @@ void setup()
   // become ready slightly after power-on (e.g. the MPU6050 needs ~50 ms
   // for its internal MEMS PLL to lock, and the PCA9685 may power-up
   // asynchronously from the 5V rail).
-  mpu6050_init();
+  g_mpu6050_present = mpu6050_init();
   pca9685_init();
 
   // Verify PCA9685 initialised properly (auto-increment bit check).
@@ -538,17 +546,22 @@ void loop()
 {
   unsigned long now = millis();
 
-  // ── Push IMU data at ~20 Hz ──────────────────────────────────────────
+  // ── Push IMU data at ~20 Hz (only if the sensor was detected) ──────
   // Reads raw accelerometer and gyroscope from the MPU6050 over I2C,
   // converts to SI units (m/s², rad/s), and pushes to the Python relay
   // via Bridge.notify. Python caches the latest value for the ROS 2 node.
+  //
+  // When g_mpu6050_present is false (sensor absent or I2C NAK), the read
+  // is entirely skipped — no I2C traffic is generated and no Bridge.notify
+  // is sent, which prevents the fake/zero IMU data that was previously
+  // pushed from uninitialised stack memory.
   //
   // The effective push rate is lower than IMU_INTERVAL would suggest
   // because of the 10 ms delay() in the LED branch when no fault is
   // present. At 10 ms per iteration + 200 µs I2C read, the actual IMU
   //   push interval is ~50-60 ms (16-20 Hz), which is still within the
   //   target range for the policy controller.
-  if (now - g_last_imu_push >= IMU_INTERVAL) {
+  if (g_mpu6050_present && now - g_last_imu_push >= IMU_INTERVAL) {
     g_last_imu_push = now;
     float ax, ay, az, gx, gy, gz;
     if (mpu6050_read(ax, ay, az, gx, gy, gz)) {                      // read the sensor
@@ -568,6 +581,7 @@ void loop()
   if (now - g_last_status_push >= STATUS_INTERVAL) {
     g_last_status_push = now;
     int scan = i2c_scan_devices();               // check which devices are connected
+    g_mpu6050_present = (scan & 2) == 0;         // bit 1 = MPU6050 missing
     bool ai = false;
     if (!(scan & 1)) {                            // only check the init flag if the servo driver is present
       ai = pca9685_verify_init();
