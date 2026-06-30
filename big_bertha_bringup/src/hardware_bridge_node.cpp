@@ -49,37 +49,51 @@ public:
   HardwareBridgeNode() : Node("hardware_bridge")
   {
     // ── Parameters ────────────────────────────────────────────────────
+
+    // Where to find the Python relay
     host_ = declare_parameter<std::string>("host", "127.0.0.1");
     port_ = declare_parameter<int>("port", 50007);
+
+    // Servo pulse range (0 to 4095)
     pwm_min_ = declare_parameter<int>("pwm_min", 102);
     pwm_max_ = declare_parameter<int>("pwm_max", 512);
+
+    // Safety: never let a servo go past this angle
     joint_limit_ = declare_parameter<double>("joint_limit", 3.14159);
+
+    // Per-servo calibration values
     servo_lower_ = declare_parameter<std::vector<double>>(
-      "servo_lower_limit", {140, 50, 0, 180, 50, 150, 30, 140, 180, 45, 135, 40});
+      "servo_lower_limit", {140, 50, 0, 180, 50, 150, 30, 140, 180, 45, 135, 40});  // smallest angle (degrees)
     servo_upper_ = declare_parameter<std::vector<double>>(
-      "servo_upper_limit", {0, 180, 150, 50, 180, 0, 150, 0, 40, 180, 0, 180});
+      "servo_upper_limit", {0, 180, 150, 50, 180, 0, 150, 0, 40, 180, 0, 180});     // largest angle (degrees)
     servo_offset_ = declare_parameter<std::vector<double>>(
-      "servo_offset", {0, 10, 5, 0, 10, 2, 0, 0, 8, 0, 0, 0});
+      "servo_offset", {0, 10, 5, 0, 10, 2, 0, 0, 8, 0, 0, 0});                     // mounting offset (degrees)
     {
       std::vector<int64_t> def_ch = {6, 5, 4, 2, 1, 0, 10, 9, 8, 14, 13, 12};
       auto ch = declare_parameter<std::vector<int64_t>>("servo_channel", def_ch);
-      servo_channel_.assign(ch.begin(), ch.end());
+      servo_channel_.assign(ch.begin(), ch.end());                                   // which plug on the board each servo uses
     }
     {
       std::vector<int64_t> def_dir = {-1, -1, -1, -1, -1, -1, 1, -1, -1, 1, -1, -1};
       auto dir = declare_parameter<std::vector<int64_t>>("servo_direction", def_dir);
-      servo_direction_.assign(dir.begin(), dir.end());
+      servo_direction_.assign(dir.begin(), dir.end());                               // +1 = keep policy sign, -1 = flip policy sign
     }
+
+    // IMU noise levels (higher = noisier, lower = trust more)
     orient_cov_ = declare_parameter<std::vector<double>>(
-      "orientation_covariance", {-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+      "orientation_covariance", {-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});  // -1 means "not available"
     accel_cov_ = declare_parameter<std::vector<double>>(
       "linear_acceleration_covariance", {0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001});
     gyro_cov_ = declare_parameter<std::vector<double>>(
       "angular_velocity_covariance", {0.00001, 0.0, 0.0, 0.0, 0.00001, 0.0, 0.0, 0.0, 0.00001});
+
+    // Calibration: measure sensor drift at startup
     gyro_calibration_enabled_ = declare_parameter<bool>("gyro_calibration_enabled", true);
     gyro_calibration_samples_ = declare_parameter<int>("gyro_calibration_samples", 200);
     accel_calibration_enabled_ = declare_parameter<bool>("accel_calibration_enabled", true);
     accel_calibration_samples_ = declare_parameter<int>("accel_calibration_samples", 200);
+
+    // Test mode: move only one servo, hold the rest still
     single_joint_mode_ = declare_parameter<bool>("single_joint_mode", false);
     single_joint_index_ = declare_parameter<int>("single_joint_index", 10);
 
@@ -100,18 +114,19 @@ public:
 
   ~HardwareBridgeNode() override
   {
-    running_ = false;
+    running_ = false;                              // tell the reader thread to stop
     if (reader_thread_.joinable()) {
-      reader_thread_.join();
+      reader_thread_.join();                        // wait for it to finish
     }
     if (sock_fd_ >= 0) {
-      ::close(sock_fd_);
+      ::close(sock_fd_);                            // close the TCP connection
     }
   }
 
 private:
   void connect()
   {
+    // Set up the address we want to connect to
     struct sockaddr_in addr
     {
     };
@@ -119,16 +134,18 @@ private:
     addr.sin_port = htons(port_);
     inet_pton(AF_INET, host_.c_str(), &addr.sin_addr);
 
+    // Open a TCP socket
     sock_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
     if (sock_fd_ < 0) {
       RCLCPP_ERROR(get_logger(), "failed to create socket");
       return;
     }
 
+    // Try to reach the Python relay
     if (::connect(sock_fd_, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
       RCLCPP_WARN(get_logger(), "failed to connect to %s:%d — will retry", host_.c_str(), port_);
       ::close(sock_fd_);
-      sock_fd_ = -1;
+      sock_fd_ = -1;          // mark as disconnected, caller will retry
     } else {
       RCLCPP_INFO(get_logger(), "connected to Python relay at %s:%d", host_.c_str(), port_);
     }
@@ -137,28 +154,30 @@ private:
   // ── Outbound: joint targets → servo PWM via TCP + Bridge RPC ────────
   void on_cmd(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
   {
+    // We expect exactly 12 joint positions
     if (msg->data.size() != 12) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000, "expected 12 joints, got %zu", msg->data.size());
       return;
     }
 
-    // Compute per-joint PWMs with direction, offset, and 90° servo center.
+    // Turn each joint angle (in radians) into a PWM value (0 to 4095)
     std::vector<int> pwms(12);
     for (size_t i = 0; i < 12; ++i) {
-      double rad = std::clamp(msg->data[i], -joint_limit_, joint_limit_);
-      double deg = rad * 180.0 / M_PI;
-      deg = deg * servo_direction_[i];
-      deg = deg + servo_offset_[i];
-      deg = deg + 90.0;  // servo center at 90°
+      double rad = std::clamp(msg->data[i], -joint_limit_, joint_limit_);   // keep within safe bounds
+      double deg = rad * 180.0 / M_PI;                                      // change radians to degrees
+      deg = deg * servo_direction_[i];                                       // flip the sign if the policy's convention is reversed
+      deg = deg + servo_offset_[i];                                          // fix the servo's mounting angle
+      deg = deg + 90.0;                                                      // servo middle is at 90 degrees
       double lo = std::min(servo_lower_[i], servo_upper_[i]);
       double hi = std::max(servo_lower_[i], servo_upper_[i]);
-      deg = std::clamp(deg, lo, hi);
-      double t = deg / 180.0;
-      double pwm = std::round(t * (pwm_max_ - pwm_min_) + pwm_min_);
-      pwms[i] = static_cast<int>(std::clamp(pwm, 0.0, 4095.0));
+      deg = std::clamp(deg, lo, hi);                                         // keep within the servo's physical range
+      double t = deg / 180.0;                                                // how far from 0 to 180
+      double pwm = std::round(t * (pwm_max_ - pwm_min_) + pwm_min_);        // stretch to the PWM range
+      pwms[i] = static_cast<int>(std::clamp(pwm, 0.0, 4095.0));             // keep within 12-bit range
     }
 
+    // Test mode: only move one servo, hold the rest at neutral
     if (single_joint_mode_) {
       int active = pwms[single_joint_index_];
       int neutral = (pwm_min_ + pwm_max_) / 2;
@@ -168,14 +187,14 @@ private:
       pwms[single_joint_index_] = active;
     }
 
-    // Reorder by PCA9685 channel so the firmware maps index → physical ch.
+    // Sort by channel number so the firmware gets them in wiring order
     std::vector<std::pair<int, int>> ch_pwm(12);
     for (size_t i = 0; i < 12; ++i) {
       ch_pwm[i] = {servo_channel_[i], pwms[i]};
     }
     std::sort(ch_pwm.begin(), ch_pwm.end());
 
-    // Build JSON: {"cmd":"servo","pwms":[12 ints]}
+    // Build a JSON command for the Python relay
     std::string json = R"({"cmd":"servo","pwms":[)";
     for (size_t i = 0; i < 12; ++i) {
       if (i > 0) json += ',';
@@ -184,12 +203,12 @@ private:
     json += "]}\n";
 
     {
-      std::lock_guard<std::mutex> lk(sock_mutex_);
+      std::lock_guard<std::mutex> lk(sock_mutex_);    // only one thread writes to the socket at a time
       if (sock_fd_ < 0) return;
       ssize_t n = ::send(sock_fd_, json.data(), json.size(), MSG_NOSIGNAL);
       if (n <= 0) {
         ::close(sock_fd_);
-        sock_fd_ = -1;
+        sock_fd_ = -1;                                // send failed — will reconnect on next try
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "socket write error — reconnecting");
       }
     }
@@ -199,6 +218,8 @@ private:
   void reader_loop()
   {
     // ── Startup: calibrate sensors once ──────────────────────────
+
+    // Keep trying until both the TCP connection and calibration work
     while (running_) {
       if (sock_fd_ < 0) {
         std::lock_guard<std::mutex> lk(sock_mutex_);
@@ -207,11 +228,12 @@ private:
       if (sock_fd_ >= 0 && calibrate_sensors()) {
         break;
       }
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+      std::this_thread::sleep_for(std::chrono::seconds(1));   // wait before retry
     }
 
     // ── Main IMU polling loop ────────────────────────────────────
     while (running_) {
+      // If the socket died, wait and try to reconnect
       if (sock_fd_ < 0) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         {
@@ -221,12 +243,15 @@ private:
         continue;
       }
 
+      // Ask the Python relay for the latest IMU reading
       if (!send_imu_request()) continue;
 
       {
+        // Read the reply
         std::string line;
         if (!read_imu_line(line)) continue;
 
+        // Parse the JSON and send it to ROS
         if (!line.empty()) {
           double ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
           parse_imu_json(line, ax, ay, az, gx, gy, gz);
@@ -234,8 +259,7 @@ private:
         }
       }
 
-      // Drain any additional buffered lines so the receive buffer
-      // never accumulates — prevents TCP backpressure deadlock.
+      // Drain any leftover data so the receive buffer never fills up
       drain_imu_buf();
 
       std::this_thread::sleep_for(std::chrono::milliseconds(10));  // ~100 Hz
@@ -245,34 +269,35 @@ private:
   bool send_imu_request()
   {
     std::lock_guard<std::mutex> lk(sock_mutex_);
+    // Send: {"cmd":"imu"}\n
     const char req[] = R"({"cmd":"imu"})"
                        "\n";
     ssize_t n = ::send(sock_fd_, req, sizeof(req) - 1, MSG_NOSIGNAL);
     if (n <= 0) {
       ::close(sock_fd_);
-      sock_fd_ = -1;
+      sock_fd_ = -1;          // socket is dead, mark for reconnect
       return false;
     }
     return true;
   }
 
-  // Read one line (up to '\n') from the socket using a buffered read
-  // of up to 4096 bytes per syscall instead of one byte at a time.
+  // Read one line (up to '\n') from the socket
   bool read_imu_line(std::string & line)
   {
     line.clear();
-    // First consume anything already in the line buffer.
+    // Check what we already have in the buffer before reading more
     auto pos = read_buf_.find('\n');
     while (pos == std::string::npos) {
       if (!refill_read_buf()) return false;
       pos = read_buf_.find('\n');
     }
+    // Split off everything up to the newline
     line = read_buf_.substr(0, pos);
     read_buf_.erase(0, pos + 1);
     return true;
   }
 
-  // Refill read_buf_ from the socket (up to 4096 bytes).
+  // Read up to 4096 bytes from the socket into our buffer
   bool refill_read_buf()
   {
     char buf[4096];
@@ -286,28 +311,30 @@ private:
     return true;
   }
 
-  // Drain any pending lines from the receive buffer without
-  // processing them — prevents TCP backpressure.
+  // Drain any leftover data so the receive buffer never fills up
   void drain_imu_buf()
   {
     if (sock_fd_ < 0) return;
+    // Check if there is data waiting without blocking
     fd_set rfds;
     FD_ZERO(&rfds);
     FD_SET(sock_fd_, &rfds);
-    struct timeval tv = {0, 0};
+    struct timeval tv = {0, 0};                          // zero timeout = check and return immediately
     if (select(sock_fd_ + 1, &rfds, nullptr, nullptr, &tv) > 0) {
+      // Data is waiting — read it and throw it away, keeping only the last partial line
       char buf[4096];
       ssize_t n;
       do {
         n = ::read(sock_fd_, buf, sizeof(buf));
         if (n > 0) {
           read_buf_.append(buf, n);
+          // Keep only the last incomplete line
           auto pos = read_buf_.rfind('\n');
           if (pos != std::string::npos) {
             read_buf_.erase(0, pos + 1);
           }
         }
-      } while (n > 0);
+      } while (n > 0);                                   // keep reading until no more data
       if (n < 0) {
         ::close(sock_fd_);
         sock_fd_ = -1;
@@ -317,6 +344,7 @@ private:
 
   bool calibrate_sensors()
   {
+    // Take as many samples as needed (whichever sensor needs more)
     int samples = std::max(gyro_calibration_samples_, accel_calibration_samples_);
     if (samples == 0) return true;
 
@@ -324,9 +352,10 @@ private:
 
     auto cal_start = std::chrono::steady_clock::now();
 
+    // Running totals so we can average them later
     double gx_sum = 0, gy_sum = 0, gz_sum = 0;
     double ax_sum = 0, ay_sum = 0, az_sum = 0;
-    double ax_sq_sum = 0, ay_sq_sum = 0, az_sq_sum = 0;
+    double ax_sq_sum = 0, ay_sq_sum = 0, az_sq_sum = 0;   // also track squares for variance
     int collected = 0;
 
     while (running_ && collected < samples) {
@@ -335,6 +364,7 @@ private:
       std::string line;
       if (!read_imu_line(line)) return false;
 
+      // Got a reading — add it to the totals
       if (!line.empty()) {
         double ax, ay, az, gx, gy, gz;
         parse_imu_json(line, ax, ay, az, gx, gy, gz);
@@ -355,6 +385,8 @@ private:
 
     if (collected == 0) return true;
 
+    // Gyro bias: when the robot is still, gyro should read zero.
+    // Any non-zero average is the drift we need to subtract.
     if (gyro_calibration_enabled_) {
       gyro_bias_x_ = gx_sum / collected;
       gyro_bias_y_ = gy_sum / collected;
@@ -364,14 +396,17 @@ private:
         gyro_bias_z_);
     }
 
+    // Accel bias: when the robot is level, X and Y should read zero,
+    // and Z should read 9.81 (gravity). Anything different is bias.
     if (accel_calibration_enabled_) {
       double ax_mean = ax_sum / collected;
       double ay_mean = ay_sum / collected;
       double az_mean = az_sum / collected;
       accel_bias_x_ = ax_mean;
       accel_bias_y_ = ay_mean;
-      accel_bias_z_ = az_mean - 9.81;
+      accel_bias_z_ = az_mean - 9.81;           // remove gravity from vertical axis
 
+      // Variance tells us how noisy each axis is
       double ax_var = ax_sq_sum / collected - ax_mean * ax_mean;
       double ay_var = ay_sq_sum / collected - ay_mean * ay_mean;
       double az_var = az_sq_sum / collected - az_mean * az_mean;
@@ -393,6 +428,7 @@ private:
       get_logger(), "calibration took %ld ms (%d samples, ~%.1f Hz)", cal_duration_ms_, collected,
       collected / (cal_duration_ms_ / 1000.0));
 
+    // Estimate how much the heading will drift since calibration
     if (gyro_calibration_enabled_) {
       double drift_x = gyro_bias_x_ * (cal_duration_ms_ / 1000.0);
       double drift_y = gyro_bias_y_ * (cal_duration_ms_ / 1000.0);
@@ -409,20 +445,22 @@ private:
     const std::string & line, double & ax, double & ay, double & az, double & gx, double & gy,
     double & gz)
   {
+    // Find a key like "ax" in the JSON and return the number after it
     auto find_val = [&](const std::string & key) -> double {
       auto pos = line.find("\"" + key + "\"");
       if (pos == std::string::npos) return 0.0;
       auto colon = line.find(':', pos);
       if (colon == std::string::npos) return 0.0;
-      // skip past colon and any whitespace
+      // Skip past the colon and any spaces
       auto start = colon + 1;
       while (start < line.size() && (line[start] == ' ' || line[start] == '\t')) ++start;
-      // read until comma or '}'
+      // Read until we hit a comma, closing brace, or bracket
       auto end = start;
       while (end < line.size() && line[end] != ',' && line[end] != '}' && line[end] != ']') ++end;
       return std::stod(line.substr(start, end - start));
     };
 
+    // Grab all six values from the IMU JSON
     ax = find_val("ax");
     ay = find_val("ay");
     az = find_val("az");
@@ -437,6 +475,7 @@ private:
     msg.header.stamp = now();
     msg.header.frame_id = "imu_link";
 
+    // Remove the bias we measured during calibration
     double ax_corr = ax - accel_bias_x_;
     double ay_corr = ay - accel_bias_y_;
     double az_corr = az - accel_bias_z_;
@@ -453,18 +492,21 @@ private:
     msg.angular_velocity.y = gy_corr;
     msg.angular_velocity.z = gz_corr;
 
+    // Fill in the noise levels (covariance matrices)
     std::copy(orient_cov_.begin(), orient_cov_.end(), msg.orientation_covariance.begin());
     std::copy(accel_cov_.begin(), accel_cov_.end(), msg.linear_acceleration_covariance.begin());
     std::copy(gyro_cov_.begin(), gyro_cov_.end(), msg.angular_velocity_covariance.begin());
 
     imu_pub_->publish(msg);
 
+    // Track how much the heading has drifted since calibration
     auto now_steady = std::chrono::steady_clock::now();
     double elapsed = std::chrono::duration<double>(now_steady - cal_finish_time_).count();
     drift_angle_x_ = gyro_bias_x_ * elapsed;
     drift_angle_y_ = gyro_bias_y_ * elapsed;
     drift_angle_z_ = gyro_bias_z_ * elapsed;
 
+    // Print drift every 10 seconds so we can see if calibration is still good
     static auto last_drift_log = std::chrono::steady_clock::now();
     double since_last_log = std::chrono::duration<double>(now_steady - last_drift_log).count();
     if (since_last_log > 10.0) {
@@ -520,7 +562,7 @@ private:
 
 int main(int argc, char ** argv)
 {
-  signal(SIGPIPE, SIG_IGN);
+  signal(SIGPIPE, SIG_IGN);                      // don't crash if the Python relay disconnects
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<HardwareBridgeNode>());
   rclcpp::shutdown();

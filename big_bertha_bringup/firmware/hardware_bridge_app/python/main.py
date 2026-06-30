@@ -19,46 +19,51 @@ import time
 TCP_HOST = "0.0.0.0"
 TCP_PORT = 50007
 
-# Cache for data pushed by the MCU via Bridge.notify
+# Store the latest data from the robot's sensors
 cache = {
-    "imu": None,
-    "hw_status": None,
-    "i2c_scan": [],
+    "imu": None,         # most recent IMU reading
+    "hw_status": None,   # most recent hardware health check
+    "i2c_scan": [],      # list of I2C devices found
 }
-cache_lock = threading.Lock()
+cache_lock = threading.Lock()   # only one thread reads or writes the cache at a time
 
 
 def handle_client(conn):
     buf = b""
     try:
         while True:
+            # Read whatever the ROS node sent us
             data = conn.recv(4096)
             if not data:
-                break
+                break                     # connection closed
             buf += data
+            # Commands are separated by newlines — handle each one
             while b"\n" in buf:
                 line, buf = buf.split(b"\n", 1)
                 try:
-                    req = json.loads(line.decode())
+                    req = json.loads(line.decode())   # turn the text into a dictionary
                 except json.JSONDecodeError as e:
                     conn.sendall(json.dumps({"error": str(e)}).encode() + b"\n")
                     continue
 
                 cmd = req.get("cmd")
 
+                # ── Move the servos ──
                 if cmd == "servo":
                     pwms = req["pwms"]
-                    Bridge.notify("set_servo_pwms", pwms)
+                    Bridge.notify("set_servo_pwms", pwms)   # tell the STM32
                     conn.sendall(b'{"ok":true}\n')
 
+                # ── Return the latest IMU reading ──
                 elif cmd == "imu":
                     with cache_lock:
-                        imu = cache["imu"]
+                        imu = cache["imu"]                 # grab the latest IMU
                     if imu is not None:
                         conn.sendall(json.dumps(imu).encode() + b"\n")
                     else:
                         conn.sendall(json.dumps({"error": "no imu data yet"}).encode() + b"\n")
 
+                # ── Return hardware health status ──
                 elif cmd == "status":
                     with cache_lock:
                         hw = cache["hw_status"]
@@ -67,10 +72,10 @@ def handle_client(conn):
                     else:
                         conn.sendall(json.dumps({"error": "no status yet"}).encode() + b"\n")
 
+                # ── Scan the I2C bus for connected devices ──
                 elif cmd == "scan_i2c":
                     Bridge.notify("scan_i2c")
-                    # Give the MCU a moment to scan and push the result
-                    time.sleep(0.5)
+                    time.sleep(0.5)                          # wait for the scan to finish
                     with cache_lock:
                         scan = {"addrs": sorted(cache["i2c_scan"])}
                     conn.sendall(json.dumps(scan).encode() + b"\n")
@@ -80,21 +85,21 @@ def handle_client(conn):
                         json.dumps({"error": "unknown cmd"}).encode() + b"\n"
                     )
     except (ConnectionResetError, BrokenPipeError):
-        pass
+        pass               # client disconnected — nothing to do
     finally:
         conn.close()
 
 
 def tcp_server():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # allow restart without waiting
     sock.bind((TCP_HOST, TCP_PORT))
     sock.listen()
-    sock.settimeout(1.0)
+    sock.settimeout(1.0)                                         # wake up every second to check for shutdown
 
     while True:
         try:
-            conn, addr = sock.accept()
+            conn, addr = sock.accept()                           # a new ROS node connected
             threading.Thread(
                 target=handle_client, args=(conn,), daemon=True
             ).start()
@@ -102,9 +107,10 @@ def tcp_server():
             continue
 
 
-# ── Bridge.notify handlers (called when MCU pushes data) ──────────────────
+# ── Bridge.notify handlers (called when STM32 pushes data) ──────────────────
 
 def on_imu(ax, ay, az, gx, gy, gz):
+    # STM32 sent new IMU data — save it so the ROS node can read it later
     with cache_lock:
         cache["imu"] = {
             "ax": ax, "ay": ay, "az": az,
@@ -113,16 +119,18 @@ def on_imu(ax, ay, az, gx, gy, gz):
 
 
 def on_hw_status(scan, ai_ok):
+    # STM32 checked its I2C devices — save the health report
     with cache_lock:
         cache["hw_status"] = {
             "i2c_scan": scan,
             "ai_ok": bool(ai_ok),
-            "pca9685_ok": (scan & 1) == 0,
-            "mpu6050_ok": (scan & 2) == 0,
+            "pca9685_ok": (scan & 1) == 0,     # servo driver is good?
+            "mpu6050_ok": (scan & 2) == 0,     # IMU is good?
         }
 
 
 def on_i2c_scan(addrs):
+    # STM32 finished scanning the I2C bus — save the list of devices found
     with cache_lock:
         cache["i2c_scan"] = list(addrs)
 
@@ -132,14 +140,14 @@ def loop():
 
 
 def main():
-    # Register notification handlers BEFORE the MCU starts sending data.
+    # Register the handlers before the STM32 starts sending data
     Bridge.provide("imu", on_imu)
     Bridge.provide("hw_status", on_hw_status)
     Bridge.provide("i2c_scan", on_i2c_scan)
 
     t = threading.Thread(target=tcp_server, daemon=True)
     t.start()
-    App.run(user_loop=loop)
+    App.run(user_loop=loop)                    # this blocks — keeps the program alive until stopped
 
 
 if __name__ == "__main__":

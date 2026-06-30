@@ -307,6 +307,7 @@ static void mpu6050_read(float & ax, float & ay, float & az, float & gx, float &
   uint8_t raw[14];
   i2c_read_bytes(MPU6050_ADDR, 0x3B, raw, 14);
 
+  // Combine the two bytes for each axis (big-endian: high byte first)
   int16_t raw_ax = (raw[0] << 8) | raw[1];
   int16_t raw_ay = (raw[2] << 8) | raw[3];
   int16_t raw_az = (raw[4] << 8) | raw[5];
@@ -314,10 +315,11 @@ static void mpu6050_read(float & ax, float & ay, float & az, float & gx, float &
   int16_t raw_gy = (raw[10] << 8) | raw[11];
   int16_t raw_gz = (raw[12] << 8) | raw[13];
 
-  ax = raw_ax / 16384.0f * 9.80665f;
+  // Turn raw sensor numbers into real-world units
+  ax = raw_ax / 16384.0f * 9.80665f;          // accelerometer: LSB → m/s²
   ay = raw_ay / 16384.0f * 9.80665f;
   az = raw_az / 16384.0f * 9.80665f;
-  gx = raw_gx / 131.0f * (PI / 180.0f);
+  gx = raw_gx / 131.0f * (PI / 180.0f);       // gyroscope: LSB → rad/s
   gy = raw_gy / 131.0f * (PI / 180.0f);
   gz = raw_gz / 131.0f * (PI / 180.0f);
 }
@@ -344,9 +346,9 @@ static void mpu6050_read(float & ax, float & ay, float & az, float & gx, float &
 static int i2c_scan_devices()
 {
   int missing = 0;
-  Wire.beginTransmission(PCA9685_ADDR);
+  Wire.beginTransmission(PCA9685_ADDR);          // check if the servo driver is there
   if (Wire.endTransmission() != 0) missing |= 1;
-  Wire.beginTransmission(MPU6050_ADDR);
+  Wire.beginTransmission(MPU6050_ADDR);          // check if the IMU is there
   if (Wire.endTransmission() != 0) missing |= 2;
   return missing;
 }
@@ -364,7 +366,7 @@ static bool pca9685_verify_init()
 {
   uint8_t mode1 = 0;
   i2c_read_bytes(PCA9685_ADDR, PCA9685_MODE1, &mode1, 1);
-  return (mode1 & 0x20) != 0;
+  return (mode1 & 0x20) != 0;    // bit 5 (AI) must be set — if not, the chip didn't initialise properly
 }
 
 // LED blink error codes (built-in LED on the UNO Q board):
@@ -387,12 +389,12 @@ static bool pca9685_verify_init()
 static void blink_error(int count, int flash_ms, int pause_ms)
 {
   for (int i = 0; i < count; ++i) {
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(flash_ms);
-    digitalWrite(LED_BUILTIN, LOW);
-    if (i < count - 1) delay(flash_ms);
+    digitalWrite(LED_BUILTIN, HIGH);                       // turn LED on
+    delay(flash_ms);                                       // wait (flash_ms milliseconds)
+    digitalWrite(LED_BUILTIN, LOW);                        // turn LED off
+    if (i < count - 1) delay(flash_ms);                    // gap between flashes
   }
-  delay(pause_ms);
+  delay(pause_ms);                                         // pause before repeating the pattern
 }
 
 // ── RPC handlers (called when Python relays a notification) ──────────────
@@ -421,9 +423,9 @@ static void blink_error(int count, int flash_ms, int pause_ms)
 void set_servo_pwms(std::vector<uint16_t> pwms)
 {
   size_t n = pwms.size();
-  if (n > 12) n = 12;
+  if (n > 12) n = 12;                                    // ignore anything beyond the 12 servos
   for (size_t i = 0; i < n; ++i) {
-    pca9685_set_pwm(PWM_CHANNEL_MAP[i], pwms[i]);
+    pca9685_set_pwm(PWM_CHANNEL_MAP[i], pwms[i]);        // set each servo's pulse width
   }
 }
 
@@ -437,13 +439,13 @@ void set_servo_pwms(std::vector<uint16_t> pwms)
 void on_scan_i2c()
 {
   std::vector<uint8_t> found;
-  for (uint8_t addr = 1; addr < 127; ++addr) {
+  for (uint8_t addr = 1; addr < 127; ++addr) {     // try every possible I2C address
     Wire.beginTransmission(addr);
-    if (Wire.endTransmission() == 0) {
+    if (Wire.endTransmission() == 0) {              // device answered — add it to the list
       found.push_back(addr);
     }
   }
-  Bridge.notify("i2c_scan", found);
+  Bridge.notify("i2c_scan", found);                 // send the list back to Python
 }
 
 // ── Setup & Loop ─────────────────────────────────────────────────────────
@@ -536,13 +538,13 @@ void loop()
   // The effective push rate is lower than IMU_INTERVAL would suggest
   // because of the 10 ms delay() in the LED branch when no fault is
   // present. At 10 ms per iteration + 200 µs I2C read, the actual IMU
-  // push interval is ~50-60 ms (16-20 Hz), which is still within the
-  // target range for the policy controller.
+  //   push interval is ~50-60 ms (16-20 Hz), which is still within the
+  //   target range for the policy controller.
   if (now - g_last_imu_push >= IMU_INTERVAL) {
     g_last_imu_push = now;
     float ax, ay, az, gx, gy, gz;
-    mpu6050_read(ax, ay, az, gx, gy, gz);
-    Bridge.notify("imu", ax, ay, az, gx, gy, gz);
+    mpu6050_read(ax, ay, az, gx, gy, gz);                            // read the sensor
+    Bridge.notify("imu", ax, ay, az, gx, gy, gz);                     // send it to Python
   }
 
   // ── Push hardware status at 1 Hz ──────────────────────────────────────
@@ -553,12 +555,12 @@ void loop()
   //
   // If a device was missing at startup but appears later (e.g. 5V supply
   // was turned on after MCU boot), this loop will detect it within 1 s
-  // and clear the corresponding error bit, restoring normal LED behaviour.
+  //   and clear the corresponding error bit, restoring normal LED behaviour.
   if (now - g_last_status_push >= STATUS_INTERVAL) {
     g_last_status_push = now;
-    int scan = i2c_scan_devices();
+    int scan = i2c_scan_devices();               // check which devices are connected
     bool ai = false;
-    if (!(scan & 1)) {
+    if (!(scan & 1)) {                            // only check the init flag if the servo driver is present
       ai = pca9685_verify_init();
     }
     Bridge.notify("hw_status", scan, ai ? 1 : 0);
@@ -575,14 +577,15 @@ void loop()
   // This means the blink code reflects the boot-time state. The 1 Hz
   // status push re-scans the bus but does NOT overwrite g_i2c_scan — that
   // would cause the blink code to flicker if a device intermittently NAKs.
+  // Show the most important error on the LED (first match wins)
   if (g_i2c_scan & 1) {
-    blink_error(3, 100, 600);
+    blink_error(3, 100, 600);                    // servo driver is missing — urgent
   } else if (!g_ai_ok) {
-    blink_error(2, 200, 800);
+    blink_error(2, 200, 800);                    // servo driver didn't initialise right
   } else if (g_i2c_scan & 2) {
-    blink_error(1, 500, 1500);
+    blink_error(1, 500, 1500);                   // IMU is missing
   } else {
-    digitalWrite(LED_BUILTIN, HIGH);
+    digitalWrite(LED_BUILTIN, HIGH);             // everything OK — LED stays on
     delay(10);
   }
 }
