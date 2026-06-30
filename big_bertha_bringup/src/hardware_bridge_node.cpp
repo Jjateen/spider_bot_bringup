@@ -251,11 +251,15 @@ private:
         std::string line;
         if (!read_imu_line(line)) continue;
 
-        // Parse the JSON and send it to ROS
+        // Parse the JSON and send it to ROS.
+        // If the STM32 firmware didn't push IMU data (sensor absent or I2C
+        // failure), the Python relay returns {"error":"no imu data yet"} —
+        // parse_imu_json returns false and we skip the publish.
         if (!line.empty()) {
           double ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
-          parse_imu_json(line, ax, ay, az, gx, gy, gz);
-          publish_imu(ax, ay, az, gx, gy, gz);
+          if (parse_imu_json(line, ax, ay, az, gx, gy, gz)) {
+            publish_imu(ax, ay, az, gx, gy, gz);
+          }
         }
       }
 
@@ -367,7 +371,9 @@ private:
       // Got a reading — add it to the totals
       if (!line.empty()) {
         double ax, ay, az, gx, gy, gz;
-        parse_imu_json(line, ax, ay, az, gx, gy, gz);
+        if (!parse_imu_json(line, ax, ay, az, gx, gy, gz)) {
+          continue;  // error response (sensor absent) — skip this sample
+        }
         gx_sum += gx;
         gy_sum += gy;
         gz_sum += gz;
@@ -383,13 +389,12 @@ private:
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
-    if (collected == 0) return true;
-
-    // Detect a missing/not-responding IMU: if every sample was all zeros, the
-    // sensor is likely absent or the I2C bus has an issue. Disable calibration
-    // so we don't publish a nonsense bias or a zero'd IMU stream.
-    if (std::abs(gx_sum) < 1e-9 && std::abs(gy_sum) < 1e-9 && std::abs(gz_sum) < 1e-9 &&
-        std::abs(ax_sum) < 1e-9 && std::abs(ay_sum) < 1e-9 && std::abs(az_sum) < 1e-9) {
+    // Detect a missing/not-responding IMU: if we got 0 samples (every response
+    // was an error from Python because the firmware never pushed IMU data) or
+    // all samples were zero, the sensor is absent or the I2C bus has an issue.
+    // Disable calibration so we don't publish a nonsense bias.
+    if (collected == 0 || (std::abs(gx_sum) < 1e-9 && std::abs(gy_sum) < 1e-9 && std::abs(gz_sum) < 1e-9 &&
+        std::abs(ax_sum) < 1e-9 && std::abs(ay_sum) < 1e-9 && std::abs(az_sum) < 1e-9)) {
       RCLCPP_ERROR(
         get_logger(),
         "IMU appears to be missing — all %d samples were zero. Check wiring and I2C bus.",
@@ -455,45 +460,45 @@ private:
     return true;
   }
 
-  void parse_imu_json(
+  // Parse a JSON IMU response. Returns true if all 6 fields (ax, ay, az, gx, gy, gz)
+  // were found and parsed successfully. Returns false if any field is missing (e.g.
+  // the Python relay returned an error response when the STM32 firmware did not
+  // push IMU data because the sensor was absent).
+  bool parse_imu_json(
     const std::string & line, double & ax, double & ay, double & az, double & gx, double & gy,
     double & gz)
   {
     // Find a key like "ax" in the JSON and return the number after it
-    auto find_val = [&](const std::string & key) -> double {
+    auto find_val = [&](const std::string & key) -> std::pair<bool, double> {
       auto pos = line.find("\"" + key + "\"");
-      if (pos == std::string::npos) return 0.0;
+      if (pos == std::string::npos) return {false, 0.0};
       auto colon = line.find(':', pos);
-      if (colon == std::string::npos) return 0.0;
+      if (colon == std::string::npos) return {false, 0.0};
       // Skip past the colon and any spaces
       auto start = colon + 1;
       while (start < line.size() && (line[start] == ' ' || line[start] == '\t')) ++start;
       // Read until we hit a comma, closing brace, or bracket
       auto end = start;
       while (end < line.size() && line[end] != ',' && line[end] != '}' && line[end] != ']') ++end;
-      return std::stod(line.substr(start, end - start));
+      try {
+        return {true, std::stod(line.substr(start, end - start))};
+      } catch (...) {
+        return {false, 0.0};
+      }
     };
 
-    // Grab all six values from the IMU JSON
-    ax = find_val("ax");
-    ay = find_val("ay");
-    az = find_val("az");
-    gx = find_val("gx");
-    gy = find_val("gy");
-    gz = find_val("gz");
+    // Grab all six values from the IMU JSON — fail if any are missing
+    auto r = find_val("ax"); if (!r.first) return false; ax = r.second;
+    r = find_val("ay"); if (!r.first) return false; ay = r.second;
+    r = find_val("az"); if (!r.first) return false; az = r.second;
+    r = find_val("gx"); if (!r.first) return false; gx = r.second;
+    r = find_val("gy"); if (!r.first) return false; gy = r.second;
+    r = find_val("gz"); if (!r.first) return false; gz = r.second;
+    return true;
   }
 
   void publish_imu(double ax, double ay, double az, double gx, double gy, double gz)
   {
-    // Skip publishing if the IMU appears absent. Three-layer protection:
-    //   1. STM32 firmware probes I2C before each read (g_mpu6050_present)
-    //   2. Python relay caches None when no Bridge.notify arrives
-    //   3. This zero-check catches the "no imu data yet" error response
-    if (std::abs(ax) < 1e-9 && std::abs(ay) < 1e-9 && std::abs(az) < 1e-9 &&
-        std::abs(gx) < 1e-9 && std::abs(gy) < 1e-9 && std::abs(gz) < 1e-9) {
-      return;
-    }
-
     auto msg = sensor_msgs::msg::Imu();
     msg.header.stamp = now();
     msg.header.frame_id = "imu_link";
