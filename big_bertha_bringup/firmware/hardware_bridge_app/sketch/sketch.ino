@@ -140,29 +140,33 @@ static const unsigned long STATUS_INTERVAL = 1000;  // 1 Hz
 // within the 400 kHz fast-mode limit of 400 pF.
 
 // Write a single byte to an I2C device register.
+// Returns true on success, false on NACK or bus error.
 // Generates: START + dev_addr(W) + reg + data + STOP.
-static void i2c_write_byte(uint8_t dev, uint8_t reg, uint8_t val)
+static bool i2c_write_byte(uint8_t dev, uint8_t reg, uint8_t val)
 {
   Wire.beginTransmission(dev);
   Wire.write(reg);
   Wire.write(val);
-  Wire.endTransmission();
+  return Wire.endTransmission() == 0;
 }
 
 // Read a block of bytes from an I2C device register.
+// Returns true on success, false on NACK or bus error.
+// On failure, buf is left unchanged — caller should zero it before calling.
 // Generates: START + dev_addr(W) + reg + REPEATED-START + dev_addr(R) + data... + STOP.
 // The repeated-start (endTransmission(false)) is critical: without it the
 // MPU6050 releases the bus between the register-select and data-read phases,
 // and a second device could start a transaction, corrupting the read.
-static void i2c_read_bytes(uint8_t dev, uint8_t reg, uint8_t * buf, size_t len)
+static bool i2c_read_bytes(uint8_t dev, uint8_t reg, uint8_t * buf, size_t len)
 {
   Wire.beginTransmission(dev);
   Wire.write(reg);
-  Wire.endTransmission(false);
-  Wire.requestFrom(dev, (uint8_t)len);
-  for (size_t i = 0; i < len && Wire.available(); ++i) {
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom(dev, (uint8_t)len) != len) return false;
+  for (size_t i = 0; i < len; ++i) {
     buf[i] = Wire.read();
   }
+  return true;
 }
 
 // ── PCA9685 servo controller ────────────────────────────────────────────
@@ -302,10 +306,13 @@ static void mpu6050_init()
 //
 // Outputs match sensor_msgs/Imu field semantics: linear_acceleration in m/s²,
 // angular_velocity in rad/s, in the IMU body frame.
-static void mpu6050_read(float & ax, float & ay, float & az, float & gx, float & gy, float & gz)
+static bool mpu6050_read(float & ax, float & ay, float & az, float & gx, float & gy, float & gz)
 {
-  uint8_t raw[14];
-  i2c_read_bytes(MPU6050_ADDR, 0x3B, raw, 14);
+  uint8_t raw[14] = {0};
+  if (!i2c_read_bytes(MPU6050_ADDR, 0x3B, raw, 14)) {
+    ax = ay = az = gx = gy = gz = 0.0f;
+    return false;
+  }
 
   // Combine the two bytes for each axis (big-endian: high byte first)
   int16_t raw_ax = (raw[0] << 8) | raw[1];
@@ -322,6 +329,7 @@ static void mpu6050_read(float & ax, float & ay, float & az, float & gx, float &
   gx = raw_gx / 131.0f * (PI / 180.0f);       // gyroscope: LSB → rad/s
   gy = raw_gy / 131.0f * (PI / 180.0f);
   gz = raw_gz / 131.0f * (PI / 180.0f);
+  return true;
 }
 
 // ── Diagnostics ─────────────────────────────────────────────────────────
@@ -543,8 +551,9 @@ void loop()
   if (now - g_last_imu_push >= IMU_INTERVAL) {
     g_last_imu_push = now;
     float ax, ay, az, gx, gy, gz;
-    mpu6050_read(ax, ay, az, gx, gy, gz);                            // read the sensor
-    Bridge.notify("imu", ax, ay, az, gx, gy, gz);                     // send it to Python
+    if (mpu6050_read(ax, ay, az, gx, gy, gz)) {                      // read the sensor
+      Bridge.notify("imu", ax, ay, az, gx, gy, gz);                   // send it to Python
+    }
   }
 
   // ── Push hardware status at 1 Hz ──────────────────────────────────────

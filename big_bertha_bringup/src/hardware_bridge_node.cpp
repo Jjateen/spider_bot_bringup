@@ -385,6 +385,20 @@ private:
 
     if (collected == 0) return true;
 
+    // Detect a missing/not-responding IMU: if every sample was all zeros, the
+    // sensor is likely absent or the I2C bus has an issue. Disable calibration
+    // so we don't publish a nonsense bias or a zero'd IMU stream.
+    if (std::abs(gx_sum) < 1e-9 && std::abs(gy_sum) < 1e-9 && std::abs(gz_sum) < 1e-9 &&
+        std::abs(ax_sum) < 1e-9 && std::abs(ay_sum) < 1e-9 && std::abs(az_sum) < 1e-9) {
+      RCLCPP_ERROR(
+        get_logger(),
+        "IMU appears to be missing — all %d samples were zero. Check wiring and I2C bus.",
+        collected);
+      gyro_calibration_enabled_ = false;
+      accel_calibration_enabled_ = false;
+      return true;
+    }
+
     // Gyro bias: when the robot is still, gyro should read zero.
     // Any non-zero average is the drift we need to subtract.
     if (gyro_calibration_enabled_) {
@@ -471,6 +485,13 @@ private:
 
   void publish_imu(double ax, double ay, double az, double gx, double gy, double gz)
   {
+    // Skip publishing if the IMU appears absent (all zeros → mpu6050_read
+    // returned false on the STM32, so the firmware pushed nothing).
+    if (std::abs(ax) < 1e-9 && std::abs(ay) < 1e-9 && std::abs(az) < 1e-9 &&
+        std::abs(gx) < 1e-9 && std::abs(gy) < 1e-9 && std::abs(gz) < 1e-9) {
+      return;
+    }
+
     auto msg = sensor_msgs::msg::Imu();
     msg.header.stamp = now();
     msg.header.frame_id = "imu_link";
