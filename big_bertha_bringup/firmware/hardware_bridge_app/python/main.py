@@ -57,6 +57,7 @@ def handle_client(conn):
                 elif cmd == "servo":
                     pwms = req["pwms"]
                     Bridge.notify("set_servo_pwms", pwms)   # tell the STM32
+                    conn.sendall(b'{"ok":true}\n')
 
                 # ── Return the latest IMU reading ──
                 elif cmd == "imu":
