@@ -153,15 +153,32 @@ def on_i2c_scan(addrs):
         cache["i2c_scan"] = list(addrs)
 
 
+last_pwms = None   # track last sent PWMs to skip duplicates
+notify_errs = 0     # count consecutive Bridge.notify failures
+
 def loop():
+    global last_pwms, notify_errs
     last_log = 0
     while True:
         # Flush servo PWMs to the STM32 from the main thread
         with cache_lock:
             pwms = cache["servo_pwms"]
             cache["servo_pwms"] = None
+
         if pwms is not None:
-            Bridge.notify("set_servo_pwms", pwms)
+            # Only send if values changed significantly (avoid flooding IPC)
+            changed = last_pwms is None or any(
+                abs(a - b) > 2 for a, b in zip(pwms, last_pwms)
+            )
+            if changed:
+                last_pwms = list(pwms)
+                try:
+                    Bridge.notify("set_servo_pwms", *pwms)  # 12 separate args
+                    notify_errs = 0
+                except Exception as e:
+                    notify_errs += 1
+                    if notify_errs <= 3:
+                        print(f"[bridge] Bridge.notify failed: {e}")
 
         with cache_lock:
             has_imu = cache["imu"] is not None
@@ -169,7 +186,7 @@ def loop():
             has_scan = cache["i2c_scan"] is not None
         now = time.time()
         if now - last_log >= 5:
-            print(f"[bridge] loop: imu={'yes' if has_imu else 'no'} status={'yes' if has_status else 'no'} i2c_scan={'yes' if has_scan else 'no'}")
+            print(f"[bridge] loop: imu={'yes' if has_imu else 'no'} status={'yes' if has_status else 'no'} i2c_scan={'yes' if has_scan else 'no'} notify_errs={notify_errs}")
             last_log = now
         time.sleep(0.01)
 

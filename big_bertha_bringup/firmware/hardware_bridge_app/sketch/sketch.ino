@@ -46,6 +46,8 @@ static uint16_t g_pwm[16] = {0};
 
 static unsigned long g_last_imu_push = 0;
 static unsigned long g_last_status_push = 0;
+static unsigned long g_last_blink = 0;
+static int g_blink_code = 0;
 static uint32_t g_imu_sample = 0;
 static int g_servo_calls = 0;
 static int g_ping_count = 0;
@@ -157,34 +159,50 @@ static int i2c_scan_devices()
   return missing;
 }
 
-// LED blink error codes:
-//   3 quick (100ms) = PCA9685 missing
-//   2 medium (200ms)= PCA9685 init fail
-//   1 long (500ms)  = MPU6050 missing
-//   Solid on        = everything OK
-static void blink_error(int count, int flash_ms, int pause_ms)
+// LED blink codes (non-blocking)
+//   code 0: solid ON              — everything OK
+//   code 1: 100ms period          — PCA9685 missing
+//   code 2: 400ms period          — PCA9685 init fail
+//   code 3: 2000ms period         — MPU6050 missing
+static void blink_update()
 {
-  for (int i = 0; i < count; ++i) {
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(flash_ms);
+  unsigned long now = millis();
+
+  // Determine which code should be active
+  int code = 0;
+  if (g_i2c_scan & 1)       code = 1;
+  else if (!g_ai_ok)         code = 2;
+  else if (g_i2c_scan & 2)   code = 3;
+
+  // Changed code → reset blink phase
+  if (code != g_blink_code) {
+    g_blink_code = code;
+    g_last_blink = now;
+    if (code == 0) { digitalWrite(LED_BUILTIN, HIGH); return; }
     digitalWrite(LED_BUILTIN, LOW);
-    if (i < count - 1) delay(flash_ms);
+    return;
   }
-  delay(pause_ms);
+
+  if (code == 0) return;  // solid ON
+
+  unsigned long period = (code == 1) ? 100UL : (code == 2) ? 400UL : 2000UL;
+  unsigned long half = period / 2;
+  bool on = (now - g_last_blink) < half;
+  digitalWrite(LED_BUILTIN, on ? HIGH : LOW);
+  if (now - g_last_blink >= period) g_last_blink = now;
 }
 
 // ── Bridge RPC handlers ───────────────────────────────────────────────
 
-void set_servo_pwms(std::vector<int> pwms)
+void set_servo_pwms(int p0, int p1, int p2, int p3, int p4, int p5, int p6, int p7, int p8, int p9, int p10, int p11)
 {
   ++g_servo_calls;
 
   if (!pca9685_verify_init()) pca9685_init();
 
-  size_t n = pwms.size();
-  if (n > 12) n = 12;
-  for (size_t i = 0; i < n; ++i)
-    g_pwm[PWM_CHANNEL_MAP[i]] = (uint16_t)pwms[i];
+  int vals[12] = {p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11};
+  for (int i = 0; i < 12; ++i)
+    g_pwm[PWM_CHANNEL_MAP[i]] = (uint16_t)vals[i];
 
   pca9685_write_all();
 }
@@ -264,10 +282,10 @@ void loop()
   // Push hardware status at 1 Hz
   if (now - g_last_status_push >= STATUS_INTERVAL) {
     g_last_status_push = now;
-    int scan = i2c_scan_devices();
-    g_mpu6050_present = (scan & 2) == 0;
+    g_i2c_scan = i2c_scan_devices();
+    g_mpu6050_present = (g_i2c_scan & 2) == 0;
     bool ai = false;
-    if (!(scan & 1)) {
+    if (!(g_i2c_scan & 1)) {
       ai = pca9685_verify_init();
       if (!ai) {
         pca9685_init();
@@ -275,18 +293,9 @@ void loop()
       }
     }
     g_ai_ok = ai;
-    Bridge.notify("hw_status", scan, ai ? 1 : 0, g_servo_calls, g_ping_count);
+    Bridge.notify("hw_status", g_i2c_scan, ai ? 1 : 0, g_servo_calls, g_ping_count);
   }
 
-  // LED blink codes (priority cascade)
-  if (g_i2c_scan & 1) {
-    blink_error(3, 100, 600);
-  } else if (!g_ai_ok) {
-    blink_error(2, 200, 800);
-  } else if (g_i2c_scan & 2) {
-    blink_error(1, 500, 1500);
-  } else {
-    digitalWrite(LED_BUILTIN, HIGH);
-    // No delay in healthy path — IMU runs at full rate
-  }
+  // LED blink codes (non-blocking)
+  blink_update();
 }
