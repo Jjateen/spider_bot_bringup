@@ -57,7 +57,6 @@ def generate_launch_description():
     policy_pkg = get_package_share_directory('big_bertha_policy_controller')
     leg_pkg = get_package_share_directory('leg_odometry')
     sim_pkg = get_package_share_directory('big_bertha_sim_bringup')
-    sim_launch_dir = os.path.join(sim_pkg, 'launch')
 
     slam = LaunchConfiguration('slam')
     use_sim_time = LaunchConfiguration('use_sim_time')

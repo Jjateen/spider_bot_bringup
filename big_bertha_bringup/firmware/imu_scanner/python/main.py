@@ -12,7 +12,6 @@
 # The M33 pushes IMU data from loop() at ~1 Hz — no request needed.
 
 from arduino.app_utils import App, Bridge
-import sys
 import time
 
 # ── State ─────────────────────────────────────────────────────────────────

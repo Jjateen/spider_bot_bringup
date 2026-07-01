@@ -11,7 +11,6 @@
 #   Request:  {"cmd":"imu"}\n
 #   Response: {"ax":f,"ay":f,"az":f,"gx":f,"gy":f,"gz":f}\n
 
-from arduino.app_utils import App
 from main import main  # relay logic lives in main.py
 
 if __name__ == "__main__":
