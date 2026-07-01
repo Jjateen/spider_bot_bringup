@@ -48,8 +48,12 @@ def handle_client(conn):
 
                 cmd = req.get("cmd")
 
+                # ── Ping ──
+                if cmd == "ping":
+                    conn.sendall(b'{"ok":true}\n')
+
                 # ── Move the servos ──
-                if cmd == "servo":
+                elif cmd == "servo":
                     pwms = req["pwms"]
                     Bridge.notify("set_servo_pwms", pwms)   # tell the STM32
                     conn.sendall(b'{"ok":true}\n')
@@ -116,6 +120,7 @@ def on_imu(ax, ay, az, gx, gy, gz, sample_id=None, timestamp=None):
         cache["imu"] = {
             "ax": ax, "ay": ay, "az": az,
             "gx": gx, "gy": gy, "gz": gz,
+            "lin_acc_x": ax, "lin_acc_y": ay, "lin_acc_z": az,
         }
 
 
@@ -138,7 +143,8 @@ def on_i2c_scan(addrs):
 
 
 def loop():
-    pass
+    while True:
+        time.sleep(1)
 
 
 def main():
