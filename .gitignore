@@ -28,6 +28,7 @@ verification_artifacts/
 # Cache files
 .cache/
 
-# Local-only planning doc (not tracked)
+# Local-only planning / issues (not tracked)
 PLAN.md
-Big_Bertha_Hardware_Bridge_Guide.pdf'
+ISSUES.md
+Big_Bertha_Hardware_Bridge_Guide.pdf
