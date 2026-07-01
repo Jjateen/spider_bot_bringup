@@ -218,7 +218,21 @@ void setup()
   pca9685_init();
   g_ai_ok = pca9685_verify_init();
 
-  Bridge.begin(460800);
+  // Initialize Bridge RPC.  If begin() fails, started=false and the
+  // background thread skips update() — incoming RPCs from the Python
+  // relay (set_servo_pwms, ping) would never be dispatched.  We call
+  // Bridge.update() directly in loop() as a safety net, so we do NOT
+  // retry begin() here (retrying would leak transport/client/server
+  // objects).
+  bool bridge_ok = Bridge.begin(460800);
+  if (!bridge_ok) {
+    // Blink code 4 = Bridge RPC negotiation failed (router unreachable
+    // or responded false).  The loop-update fallback will still process
+    // incoming RPCs on the regular channel.
+  }
+
+  // Register RPC handlers on the regular channel (processed by the
+  // background thread when started, ALWAYS by our loop() update call).
   Bridge.provide("set_servo_pwms", set_servo_pwms);
   Bridge.provide("scan_i2c", on_scan_i2c);
   Bridge.provide("ping", on_ping);
@@ -229,6 +243,12 @@ void setup()
 
 void loop()
 {
+  // Process incoming RPC calls from the Python relay (set_servo_pwms,
+  // ping, scan_i2c) regardless of whether the background thread started
+  // successfully.  update() is guarded by internal mutexes so redundant
+  // calls from the background thread are harmless.
+  Bridge.update();
+
   unsigned long now = millis();
 
   // Push IMU at 125 Hz (only if sensor was detected)

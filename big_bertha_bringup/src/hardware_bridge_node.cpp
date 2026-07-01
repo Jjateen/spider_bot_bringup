@@ -227,8 +227,11 @@ private:
     {
       std::lock_guard<std::mutex> lk(sock_mutex_);    // only one thread writes to the socket at a time
       if (sock_fd_ < 0) return;
-      ssize_t n = ::send(sock_fd_, json.data(), json.size(), MSG_NOSIGNAL);
-      if (n <= 0) {
+      ssize_t n = ::send(sock_fd_, json.data(), json.size(), MSG_NOSIGNAL | MSG_DONTWAIT);
+      if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        // Socket buffer full (Python relay saturated by Bridge RPC).
+        // Skip this command rather than stalling the ROS spin loop.
+      } else if (n <= 0) {
         ::close(sock_fd_);
         sock_fd_ = -1;                                // send failed — will reconnect on next try
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "socket write error — reconnecting");
@@ -362,6 +365,7 @@ private:
         }
       } while (n > 0);                                   // keep reading until no more data
       if (n < 0) {
+        std::lock_guard<std::mutex> lk(sock_mutex_);
         ::close(sock_fd_);
         sock_fd_ = -1;
       }
