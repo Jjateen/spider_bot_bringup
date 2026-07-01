@@ -280,9 +280,22 @@ private:
         // If the STM32 firmware didn't push IMU data (sensor absent or I2C
         // failure), the Python relay returns {"error":"no imu data yet"} —
         // parse_imu_json returns false and we skip the publish.
+        // If a non-IMU line was consumed (e.g. {"ok":true} from an
+        // interleaved servo response), try the next line from the buffer
+        // without sending a new request.
         if (!line.empty()) {
           double ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
-          if (parse_imu_json(line, ax, ay, az, gx, gy, gz)) {
+          bool got_imu = parse_imu_json(line, ax, ay, az, gx, gy, gz);
+          if (!got_imu) {
+            // Non-IMU line — check if another response is already buffered
+            auto nl = read_buf_.find('\n');
+            if (nl != std::string::npos) {
+              std::string next = read_buf_.substr(0, nl);
+              read_buf_.erase(0, nl + 1);
+              got_imu = parse_imu_json(next, ax, ay, az, gx, gy, gz);
+            }
+          }
+          if (got_imu) {
             publish_imu(ax, ay, az, gx, gy, gz);
           }
         }
