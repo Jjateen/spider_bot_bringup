@@ -63,18 +63,18 @@ public:
 
     // Per-servo calibration values
     servo_lower_ = declare_parameter<std::vector<double>>(
-      "servo_lower_limit", {140, 50, 0, 180, 50, 150, 30, 140, 180, 45, 135, 40});  // smallest angle (degrees)
+      "servo_lower_limit", {45, 30, 180, 140, 135, 140, 50, 50, 40, 180, 150, 0});   // smallest angle (degrees)
     servo_upper_ = declare_parameter<std::vector<double>>(
-      "servo_upper_limit", {0, 180, 150, 50, 180, 0, 150, 0, 40, 180, 0, 180});     // largest angle (degrees)
+      "servo_upper_limit", {180, 150, 50, 0, 0, 0, 180, 180, 180, 40, 0, 150});      // largest angle (degrees)
     servo_offset_ = declare_parameter<std::vector<double>>(
-      "servo_offset", {0, 10, 5, 0, 10, 2, 0, 0, 8, 0, 0, 0});                     // mounting offset (degrees)
+      "servo_offset", {0, 0, 0, 0, 0, 0, 10, 10, 0, 8, 2, 5});                      // mounting offset (degrees)
     {
-      std::vector<int64_t> def_ch = {6, 5, 4, 2, 1, 0, 10, 9, 8, 14, 13, 12};
+      std::vector<int64_t> def_ch = {14, 10, 2, 6, 13, 9, 1, 5, 12, 8, 0, 4};
       auto ch = declare_parameter<std::vector<int64_t>>("servo_channel", def_ch);
       servo_channel_.assign(ch.begin(), ch.end());                                   // which plug on the board each servo uses
     }
     {
-      std::vector<int64_t> def_dir = {-1, -1, -1, -1, -1, -1, 1, -1, -1, 1, -1, -1};
+      std::vector<int64_t> def_dir = {1, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
       auto dir = declare_parameter<std::vector<int64_t>>("servo_direction", def_dir);
       servo_direction_.assign(dir.begin(), dir.end());                               // +1 = keep policy sign, -1 = flip policy sign
     }
@@ -201,6 +201,10 @@ private:
 
     // Test mode: only move one servo, hold the rest at neutral
     if (single_joint_mode_) {
+      if (single_joint_index_ < 0 || single_joint_index_ >= 12) {
+        RCLCPP_WARN(get_logger(), "single_joint_index_ %d out of range 0-11", single_joint_index_);
+        single_joint_index_ = 0;
+      }
       int active = pwms[single_joint_index_];
       int neutral = (pwm_min_ + pwm_max_) / 2;
       for (auto & p : pwms) {
@@ -225,16 +229,17 @@ private:
     json += "]}\n";
 
     {
-      std::lock_guard<std::mutex> lk(sock_mutex_);    // only one thread writes to the socket at a time
+      std::lock_guard<std::mutex> lk(sock_mutex_);
       if (sock_fd_ < 0) return;
-      ssize_t n = ::send(sock_fd_, json.data(), json.size(), MSG_NOSIGNAL | MSG_DONTWAIT);
+      ssize_t n = ::send(sock_fd_, json.data(), json.size(), MSG_NOSIGNAL);
       if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-        // Socket buffer full (Python relay saturated by Bridge RPC).
-        // Skip this command rather than stalling the ROS spin loop.
-      } else if (n <= 0) {
+        std::this_thread::sleep_for(std::chrono::microseconds(500));
+        n = ::send(sock_fd_, json.data(), json.size(), MSG_NOSIGNAL);
+      }
+      if (n <= 0) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "socket write error (errno=%d) — reconnecting", errno);
         ::close(sock_fd_);
-        sock_fd_ = -1;                                // send failed — will reconnect on next try
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "socket write error — reconnecting");
+        sock_fd_ = -1;
       }
     }
   }
@@ -343,11 +348,16 @@ private:
   bool refill_read_buf()
   {
     char buf[4096];
-    ssize_t n = ::read(sock_fd_, buf, sizeof(buf));
-    if (n <= 0) {
-      ::close(sock_fd_);
-      sock_fd_ = -1;
-      return false;
+    ssize_t n;
+    {
+      std::lock_guard<std::mutex> lk(sock_mutex_);
+      if (sock_fd_ < 0) return false;
+      n = ::read(sock_fd_, buf, sizeof(buf));
+      if (n <= 0) {
+        ::close(sock_fd_);
+        sock_fd_ = -1;
+        return false;
+      }
     }
     read_buf_.append(buf, n);
     return true;
@@ -358,26 +368,26 @@ private:
   // has queued extras (e.g. during brief thread interleaving).
   void drain_imu_buf()
   {
-    if (sock_fd_ < 0) return;
-    // Check if there is data waiting without blocking
-    fd_set rfds;
-    FD_ZERO(&rfds);
-    FD_SET(sock_fd_, &rfds);
-    struct timeval tv = {0, 0};                          // zero timeout = check and return immediately
-    if (select(sock_fd_ + 1, &rfds, nullptr, nullptr, &tv) > 0) {
-      // Data is waiting — read it into the buffer
-      char buf[4096];
-      ssize_t n;
-      do {
-        n = ::read(sock_fd_, buf, sizeof(buf));
-        if (n > 0) {
-          read_buf_.append(buf, n);
+    char buf[4096];
+    ssize_t n;
+    {
+      std::lock_guard<std::mutex> lk(sock_mutex_);
+      if (sock_fd_ < 0) return;
+      fd_set rfds;
+      FD_ZERO(&rfds);
+      FD_SET(sock_fd_, &rfds);
+      struct timeval tv = {0, 0};
+      if (select(sock_fd_ + 1, &rfds, nullptr, nullptr, &tv) > 0) {
+        do {
+          n = ::read(sock_fd_, buf, sizeof(buf));
+          if (n > 0) {
+            read_buf_.append(buf, n);
+          }
+        } while (n > 0);
+        if (n < 0) {
+          ::close(sock_fd_);
+          sock_fd_ = -1;
         }
-      } while (n > 0);                                   // keep reading until no more data
-      if (n < 0) {
-        std::lock_guard<std::mutex> lk(sock_mutex_);
-        ::close(sock_fd_);
-        sock_fd_ = -1;
       }
     }
   }
