@@ -23,11 +23,11 @@
     #   servo_channel     — PCA9685 PWM channel (0-15)
     #   servo_direction   — +1 or -1 multiplied with the joint action
     # Values from the physical hardware calibration (spider_bot_training/README.md).
-    servo_lower_limit: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]                  # degrees — smallest angle per joint
-    servo_upper_limit: [180.0, 180.0, 180.0, 180.0, 180.0, 180.0, 180.0, 180.0, 180.0, 180.0, 180.0, 180.0]  # degrees — largest angle per joint
-    servo_offset: [0.0, 0.0, 0.0, 0.0, -18.33, -18.33, -18.33, -18.33, 104.28, 104.28, 104.28, 104.28] # degrees — maps training default to servo neutral
-    servo_channel: [6, 5, 4, 2, 1, 0, 10, 9, 8, 14, 13, 12]                                           # which plug on the board each servo uses
-    servo_direction: [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]                                  # +1 = keep policy sign, -1 = flip policy sign
+    servo_lower_limit: [45.0, 30.0, 180.0, 140.0, 135.0, 140.0, 50.0, 50.0, 40.0, 180.0, 150.0, 0.0]    # degrees — smallest angle per joint
+    servo_upper_limit: [180.0, 150.0, 50.0, 0.0, 0.0, 0.0, 180.0, 180.0, 180.0, 40.0, 0.0, 150.0]      # degrees — largest angle per joint
+    servo_offset: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 8.0, 2.0, 5.0]                      # degrees — servo mounting offset
+    servo_channel: [14, 10, 2, 6, 13, 9, 1, 5, 12, 8, 0, 4]                                           # which plug on the board each servo uses
+    servo_direction: [1, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]                                   # +1 = keep sign, -1 = flip sign
 
     # IMU covariance matrices (9 elements each, row-major).
     # Orientation covariance = [-1] means orientation not estimated.
