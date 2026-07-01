@@ -269,7 +269,12 @@ void loop()
     bool ai = false;
     if (!(scan & 1)) {
       ai = pca9685_verify_init();
+      if (!ai) {
+        pca9685_init();
+        ai = pca9685_verify_init();
+      }
     }
+    g_ai_ok = ai;
     Bridge.notify("hw_status", scan, ai ? 1 : 0, g_servo_calls, g_ping_count);
   }
 
