@@ -23,9 +23,10 @@ TCP_PORT = 50007
 cache = {
     "imu": None,         # most recent IMU reading
     "hw_status": None,   # most recent hardware health check
-    "i2c_scan": [],      # list of I2C devices found
+    "i2c_scan": None,    # None = never scanned, [] = scanned but empty
 }
 cache_lock = threading.Lock()   # only one thread reads or writes the cache at a time
+scan_count = 0                   # incremented each time on_i2c_scan is called
 
 
 def handle_client(conn):
@@ -81,8 +82,14 @@ def handle_client(conn):
                     Bridge.notify("scan_i2c")
                     time.sleep(0.5)                          # wait for the scan to finish
                     with cache_lock:
-                        scan = {"addrs": sorted(cache["i2c_scan"])}
-                    conn.sendall(json.dumps(scan).encode() + b"\n")
+                        val = cache["i2c_scan"]
+                    if val is None:
+                        conn.sendall(
+                            json.dumps({"error": "no scan data yet"}).encode() + b"\n"
+                        )
+                    else:
+                        scan = {"addrs": sorted(val)}
+                        conn.sendall(json.dumps(scan).encode() + b"\n")
 
                 else:
                     conn.sendall(
@@ -138,23 +145,39 @@ def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0):
 
 def on_i2c_scan(addrs):
     # STM32 finished scanning the I2C bus — save the list of devices found
+    global scan_count
+    scan_count += 1
     with cache_lock:
         cache["i2c_scan"] = list(addrs)
 
 
 def loop():
+    last_log = 0
     while True:
+        with cache_lock:
+            has_imu = cache["imu"] is not None
+            has_status = cache["hw_status"] is not None
+            has_scan = cache["i2c_scan"] is not None
+        now = time.time()
+        if now - last_log >= 5:
+            print(f"[bridge] loop: imu={'yes' if has_imu else 'no'} status={'yes' if has_status else 'no'} i2c_scan={'yes' if has_scan else 'no'}")
+            last_log = now
         time.sleep(1)
 
 
 def main():
     # Register the handlers before the STM32 starts sending data
+    print("[bridge] registering notification handlers...")
     Bridge.provide("imu", on_imu)
+    print("[bridge] registered imu handler")
     Bridge.provide("hw_status", on_hw_status)
+    print("[bridge] registered hw_status handler")
     Bridge.provide("i2c_scan", on_i2c_scan)
+    print("[bridge] registered i2c_scan handler")
 
     t = threading.Thread(target=tcp_server, daemon=True)
     t.start()
+    print(f"[bridge] TCP server listening on {TCP_HOST}:{TCP_PORT}")
     App.run(user_loop=loop)                    # this blocks — keeps the program alive until stopped
 
 
