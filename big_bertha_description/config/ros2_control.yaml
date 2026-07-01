@@ -62,6 +62,6 @@ position_controller:
       - Revolute_118   # ankle leg3
       - Revolute_121   # ankle leg4
     default_positions:
-      [0.0, 0.0, 0.0, 0.0,
-       0.5, 0.5, 0.5, 0.5,
-       0.0, 0.0, 0.0, 0.0]
+      [0.0, 0.0, 0.0, 0.0, 
+      -0.32, -0.32, -0.32, -0.32, 
+      1.82, 1.82, 1.82, 1.82]
