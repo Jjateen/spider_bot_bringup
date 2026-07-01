@@ -8,7 +8,7 @@
 # hips, then all knees, then all ankles), so obs[i]/action[i] index this order:
 #   [110,113,116,119, 111,114,117,120, 112,115,118,121]
 #    \---- hips ----/  \--- knees ---/  \--- ankles --/
-# default_joint_pos is therefore [0]x4 (hips) [0.5]x4 (knees) [0]x4 (ankles).
+# default_joint_pos is therefore [0]x4 (hips) [-0.32]x4 (knees) [1.82]x4 (ankles).
 # Feeding numeric order scrambles the obs and lands actions on wrong joints ->
 # the policy collapses the robot. The /joint_states->obs map is by NAME, so gz
 # publish order does not matter; only this list's order does.
@@ -101,5 +101,5 @@
       - Revolute_121   # idx11 ankle leg4
     default_joint_pos:
       [0.0, 0.0, 0.0, 0.0,
-       0.5, 0.5, 0.5, 0.5,
-       0.0, 0.0, 0.0, 0.0]
+        -0.32, -0.32, -0.32, -0.32,
+        1.82, 1.82, 1.82, 1.82]
