@@ -288,7 +288,7 @@ private:
         }
       }
 
-      // Drain any leftover data so the receive buffer never fills up
+      // Drain any leftover data into the buffer
       drain_imu_buf();
 
       std::this_thread::sleep_for(std::chrono::milliseconds(10));  // ~100 Hz
@@ -340,7 +340,9 @@ private:
     return true;
   }
 
-  // Drain any leftover data so the receive buffer never fills up
+  // Drain any leftover data from the socket into the buffer.
+  // This prevents the receive buffer from filling up when the Python relay
+  // has queued extras (e.g. during brief thread interleaving).
   void drain_imu_buf()
   {
     if (sock_fd_ < 0) return;
@@ -350,18 +352,13 @@ private:
     FD_SET(sock_fd_, &rfds);
     struct timeval tv = {0, 0};                          // zero timeout = check and return immediately
     if (select(sock_fd_ + 1, &rfds, nullptr, nullptr, &tv) > 0) {
-      // Data is waiting — read it and throw it away, keeping only the last partial line
+      // Data is waiting — read it into the buffer
       char buf[4096];
       ssize_t n;
       do {
         n = ::read(sock_fd_, buf, sizeof(buf));
         if (n > 0) {
           read_buf_.append(buf, n);
-          // Keep only the last incomplete line
-          auto pos = read_buf_.rfind('\n');
-          if (pos != std::string::npos) {
-            read_buf_.erase(0, pos + 1);
-          }
         }
       } while (n > 0);                                   // keep reading until no more data
       if (n < 0) {
