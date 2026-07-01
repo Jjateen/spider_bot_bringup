@@ -97,6 +97,12 @@ public:
     single_joint_mode_ = declare_parameter<bool>("single_joint_mode", false);
     single_joint_index_ = declare_parameter<int>("single_joint_index", 10);
 
+    // Rate limiter: per-step change clamp (radians) — prevents the policy
+    // from commanding speeds the MG995 servos cannot physically track.
+    // MG995 max = 375 °/s = 6.54 rad/s. At 50 Hz (20ms step):
+    //   6.54 × 0.02 = 0.131 rad/step. We use 0.12 for a 10% safety margin.
+    rate_limit_rad_ = declare_parameter<double>("rate_limit_rad", 0.12);
+
     // ── TCP connect ───────────────────────────────────────────────────
     connect();
 
@@ -161,10 +167,26 @@ private:
       return;
     }
 
+    // Rate-limit each joint target so servo tracking error never accumulates.
+    // On the first command just copy targets (nothing to limit from yet).
+    std::vector<double> targets(12);
+    if (first_cmd_) {
+      for (size_t i = 0; i < 12; ++i) targets[i] = msg->data[i];
+      first_cmd_ = false;
+    } else {
+      for (size_t i = 0; i < 12; ++i) {
+        targets[i] = std::clamp(
+          msg->data[i],
+          last_targets_[i] - rate_limit_rad_,
+          last_targets_[i] + rate_limit_rad_);
+      }
+    }
+    last_targets_ = targets;
+
     // Turn each joint angle (in radians) into a PWM value (0 to 4095)
     std::vector<int> pwms(12);
     for (size_t i = 0; i < 12; ++i) {
-      double rad = std::clamp(msg->data[i], -joint_limit_, joint_limit_);   // keep within safe bounds
+      double rad = std::clamp(targets[i], -joint_limit_, joint_limit_);    // keep within safe bounds
       double deg = rad * 180.0 / M_PI;                                      // change radians to degrees
       deg = deg * servo_direction_[i];                                       // flip the sign if the policy's convention is reversed
       deg = deg + servo_offset_[i];                                          // fix the servo's mounting angle
@@ -582,6 +604,11 @@ private:
   int64_t cal_duration_ms_{0};
   std::chrono::steady_clock::time_point cal_finish_time_;
   double drift_angle_x_{0.0}, drift_angle_y_{0.0}, drift_angle_z_{0.0};
+
+  // ── Rate limiter ───────────────────────────────────────────────────
+  double rate_limit_rad_;
+  std::vector<double> last_targets_{12, 0.0};
+  bool first_cmd_{true};
 
   // ── Threading ───────────────────────────────────────────────────────
   std::thread reader_thread_;
