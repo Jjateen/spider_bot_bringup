@@ -24,6 +24,7 @@ cache = {
     "imu": None,         # most recent IMU reading
     "hw_status": None,   # most recent hardware health check
     "i2c_scan": None,    # None = never scanned, [] = scanned but empty
+    "servo_pwms": None,  # latest servo PWM targets, flushed from main thread
 }
 cache_lock = threading.Lock()   # only one thread reads or writes the cache at a time
 scan_count = 0                   # incremented each time on_i2c_scan is called
@@ -56,7 +57,8 @@ def handle_client(conn):
                 # ── Move the servos ──
                 elif cmd == "servo":
                     pwms = req["pwms"]
-                    Bridge.notify("set_servo_pwms", pwms)   # tell the STM32
+                    with cache_lock:
+                        cache["servo_pwms"] = pwms           # defer Bridge.notify to main thread
                     conn.sendall(b'{"ok":true}\n')
 
                 # ── Return the latest IMU reading ──
@@ -154,6 +156,13 @@ def on_i2c_scan(addrs):
 def loop():
     last_log = 0
     while True:
+        # Flush servo PWMs to the STM32 from the main thread
+        with cache_lock:
+            pwms = cache["servo_pwms"]
+            cache["servo_pwms"] = None
+        if pwms is not None:
+            Bridge.notify("set_servo_pwms", pwms)
+
         with cache_lock:
             has_imu = cache["imu"] is not None
             has_status = cache["hw_status"] is not None
@@ -162,7 +171,7 @@ def loop():
         if now - last_log >= 5:
             print(f"[bridge] loop: imu={'yes' if has_imu else 'no'} status={'yes' if has_status else 'no'} i2c_scan={'yes' if has_scan else 'no'}")
             last_log = now
-        time.sleep(1)
+        time.sleep(0.01)
 
 
 def main():
