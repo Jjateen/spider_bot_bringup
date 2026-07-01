@@ -56,7 +56,13 @@ def handle_client(conn):
 
                 # ── Move the servos ──
                 elif cmd == "servo":
-                    pwms = req["pwms"]
+                    pwms = req.get("pwms")
+                    if not isinstance(pwms, list) or len(pwms) != 12:
+                        conn.sendall(json.dumps({"error": "pwms must be list of 12 ints"}).encode() + b"\n")
+                        continue
+                    if not all(isinstance(p, int) and 0 <= p <= 4095 for p in pwms):
+                        conn.sendall(json.dumps({"error": "each pwm must be int 0-4095"}).encode() + b"\n")
+                        continue
                     with cache_lock:
                         cache["servo_pwms"] = pwms           # defer Bridge.notify to main thread
                     conn.sendall(b'{"ok":true}\n')

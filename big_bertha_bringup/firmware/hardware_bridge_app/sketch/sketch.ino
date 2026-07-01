@@ -80,18 +80,19 @@ static bool i2c_read_bytes(uint8_t dev, uint8_t reg, uint8_t * buf, size_t len)
 
 // ── PCA9685 servo controller ─────────────────────────────────────────
 
-static void pca9685_init()
+static bool pca9685_init()
 {
-  i2c_write_byte(PCA9685_ADDR, PCA9685_MODE1, 0x10);  // sleep
+  if (!i2c_write_byte(PCA9685_ADDR, PCA9685_MODE1, 0x10)) return false;  // sleep
   delay(2);
-  i2c_write_byte(PCA9685_ADDR, PCA9685_PRE_SCALE, 121);  // 50 Hz
+  if (!i2c_write_byte(PCA9685_ADDR, PCA9685_PRE_SCALE, 121)) return false;  // 50 Hz
   delay(1);
-  i2c_write_byte(PCA9685_ADDR, PCA9685_MODE1, 0x20);  // wake + AI
+  if (!i2c_write_byte(PCA9685_ADDR, PCA9685_MODE1, 0x20)) return false;  // wake + AI
   delay(2);
+  return true;
 }
 
 // Write all 16 channels in a single I2C burst (auto-increment)
-static void pca9685_write_all()
+static bool pca9685_write_all()
 {
   Wire.beginTransmission(PCA9685_ADDR);
   Wire.write(PCA9685_LED0_ON_L);
@@ -102,7 +103,7 @@ static void pca9685_write_all()
     Wire.write(off & 0xFF);
     Wire.write((off >> 8) & 0x0F);
   }
-  Wire.endTransmission();
+  return Wire.endTransmission() == 0;
 }
 
 static bool pca9685_verify_init()
@@ -198,7 +199,9 @@ void set_servo_pwms(int p0, int p1, int p2, int p3, int p4, int p5, int p6, int 
 {
   ++g_servo_calls;
 
-  if (!pca9685_verify_init()) pca9685_init();
+  if (!pca9685_verify_init()) {
+    if (!pca9685_init()) return;
+  }
 
   int vals[12] = {p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11};
   for (int i = 0; i < 12; ++i)
@@ -233,8 +236,7 @@ void setup()
 
   g_i2c_scan = i2c_scan_devices();
   g_mpu6050_present = mpu6050_init();
-  pca9685_init();
-  g_ai_ok = pca9685_verify_init();
+  g_ai_ok = pca9685_init() && pca9685_verify_init();
 
   // Initialize Bridge RPC.  If begin() fails, started=false and the
   // background thread skips update() — incoming RPCs from the Python
@@ -288,8 +290,7 @@ void loop()
     if (!(g_i2c_scan & 1)) {
       ai = pca9685_verify_init();
       if (!ai) {
-        pca9685_init();
-        ai = pca9685_verify_init();
+        ai = pca9685_init() && pca9685_verify_init();
       }
     }
     g_ai_ok = ai;
