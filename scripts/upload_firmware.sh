@@ -129,7 +129,7 @@ trap - EXIT
 
 say CLEAN "Stopping compose container created by app start"
 arduino-app-cli app stop "$BOARD_APP" 2>/dev/null || true
-# Also remove the container to avoid accumulation
+docker rm -f hardware_bridge_app-main-1 2>/dev/null || true
 docker ps -a --format '{{.Names}}' 2>/dev/null | grep -v '^hardware-bridge$' | grep -E '(hardware_bridge_app|ros2_ws.*hardware_bridge)' | while IFS= read -r c; do
   docker rm -f "$c" 2>/dev/null || true
 done
