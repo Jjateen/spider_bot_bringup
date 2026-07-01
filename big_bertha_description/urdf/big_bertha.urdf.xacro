@@ -494,7 +494,7 @@
   </joint>
 
   <joint name="imu_joint" type="fixed">
-    <origin xyz="0.0 0.0 0.01" rpy="0 0 0"/>
+    <origin xyz="0.0 0.0 0.01" rpy="0 0 3.141592653589793"/>
     <parent link="base_link"/>
     <child link="imu_link"/>
   </joint>
