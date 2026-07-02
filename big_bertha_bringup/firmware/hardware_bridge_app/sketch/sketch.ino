@@ -70,6 +70,10 @@ static int g_pwm_last_fail_code = 0;   // endTransmission() return: 0=ok, 2=NACK
 static int g_set_servo_last_len = 0;   // data.length() from last set_servo_pwms call
 static int g_set_servo_last_idx = 0;   // parsed field count (12 = clean)
 static int g_pwm_readback_ch0 = -1;    // PCA9685 ch0 OFF register readback (-1 = read failed)
+static volatile bool g_diag_pending = false;
+static int g_diag_test_pwms[12];
+static unsigned long g_diag_settle_start = 0;
+static int g_diag_phase = 0;
 
 // 125 Hz IMU (8 ms) — matches expected rate for the 50 Hz policy controller
 static const unsigned long IMU_INTERVAL = 8;
@@ -89,7 +93,7 @@ static bool i2c_read_bytes(uint8_t dev, uint8_t reg, uint8_t * buf, size_t len)
 {
   Wire.beginTransmission(dev);
   Wire.write(reg);
-  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.endTransmission() != 0) return false;
   if (Wire.requestFrom(dev, (uint8_t)len) != len) return false;
   for (size_t i = 0; i < len; ++i) {
     buf[i] = Wire.read();
@@ -280,75 +284,14 @@ void on_scan_i2c()
   Bridge.notify("i2c_scan", found);
 }
 
-// ── Servo diagnostic: write test values, read back, report ────────────
-// Runs synchronously (diagnostic-only, not on hot path).
+// ── Servo diagnostic: schedules a test for loop() ─────────────────────
+// Stores test PWMs, defers all I2C work to loop() so Bridge.update()
+// never blocks waiting on I2C.
 void on_servo_diag()
 {
-  // 1. Write known test PWMs to each of the 12 active channels
-  int test_pwms[12];
-  for (int i = 0; i < 12; ++i) {
-    test_pwms[i] = 100 + i * 200;  // 100, 300, 500, ..., 2300
-    uint8_t ch = PWM_CHANNEL_MAP[i];
-    g_pwm[ch] = (uint16_t)test_pwms[i];
-    uint8_t reg = PCA9685_LED0_ON_L + 4 * ch;
-    Wire.beginTransmission(PCA9685_ADDR);
-    Wire.write(reg);
-    Wire.write(0x00);
-    Wire.write(0x00);
-    Wire.write(test_pwms[i] & 0xFF);
-    Wire.write((test_pwms[i] >> 8) & 0x0F);
-    Wire.endTransmission();
-  }
-
-  delay(5);  // settle
-
-  // 2. Read back each channel's OFF register
-  int readback[12];
-  int pass[12];
-  for (int i = 0; i < 12; ++i) {
-    uint8_t ch = PWM_CHANNEL_MAP[i];
-    uint8_t reg = PCA9685_LED0_ON_L + 4 * ch + 2;  // OFF_L
-    uint8_t off_l = 0, off_h = 0;
-    bool ok = i2c_read_bytes(PCA9685_ADDR, reg, &off_l, 1)
-           && i2c_read_bytes(PCA9685_ADDR, reg + 1, &off_h, 1);
-    if (ok) {
-      readback[i] = off_l | ((off_h & 0x0F) << 8);
-    } else {
-      readback[i] = -1;
-    }
-    pass[i] = (ok && abs(readback[i] - test_pwms[i]) <= 2) ? 1 : 0;
-  }
-
-  // 3. Read MODE1 to verify init state
-  uint8_t mode1 = 0;
-  bool mode1_ok = i2c_read_bytes(PCA9685_ADDR, PCA9685_MODE1, &mode1, 1);
-  int mode1_val = mode1_ok ? (int)mode1 : -1;
-
-  // 4. Probe PCA9685 presence
-  bool pca_present = (i2c_scan_devices() & 1) == 0;
-
-  // 5. Build report as JSON string packed into one Bridge RPC arg
-  String report = "{\"pca_present\":";
-  report += pca_present ? "true" : "false";
-  report += ",\"mode1\":"; report += mode1_val;
-  report += ",\"ai_ok\":"; report += (mode1_ok && (mode1 & 0x20)) ? "true" : "false";
-  report += ",\"test_pwms\":[";
-  for (int i = 0; i < 12; ++i) {
-    if (i > 0) report += ",";
-    report += test_pwms[i];
-  }
-  report += "],\"readback\":[";
-  for (int i = 0; i < 12; ++i) {
-    if (i > 0) report += ",";
-    report += readback[i];
-  }
-  report += "],\"pass\":[";
-  for (int i = 0; i < 12; ++i) {
-    if (i > 0) report += ",";
-    report += pass[i];
-  }
-  report += "]}";
-  Bridge.notify("servo_diag_result", report);
+  for (int i = 0; i < 12; ++i)
+    g_diag_test_pwms[i] = 100 + i * 200;  // 100, 300, 500, ..., 2300
+  g_diag_pending = true;
 }
 
 // ── Setup & Loop ──────────────────────────────────────────────────────
@@ -406,6 +349,75 @@ void loop()
     }
   }
 
+  // ── Deferred servo diagnostic ──────────────────────────────────────
+  // Non-blocking state machine so that Bridge.update() stays responsive.
+  if (g_diag_pending) {
+    if (g_diag_phase == 0) {
+      // Phase 0: write test PWMs to all 12 active channels
+      for (int i = 0; i < 12; ++i) {
+        uint8_t ch = PWM_CHANNEL_MAP[i];
+        uint16_t val = (uint16_t)g_diag_test_pwms[i];
+        uint8_t reg = PCA9685_LED0_ON_L + 4 * ch;
+        Wire.beginTransmission(PCA9685_ADDR);
+        Wire.write(reg);
+        Wire.write(0x00);
+        Wire.write(0x00);
+        Wire.write(val & 0xFF);
+        Wire.write((val >> 8) & 0x0F);
+        Wire.endTransmission();
+      }
+      g_diag_settle_start = millis();
+      g_diag_phase = 1;
+    } else if (g_diag_phase == 1 && millis() - g_diag_settle_start >= 5) {
+      // Phase 1: settle elapsed — read back and report
+      int readback[12];
+      int pass[12];
+      for (int i = 0; i < 12; ++i) {
+        uint8_t ch = PWM_CHANNEL_MAP[i];
+        uint8_t reg = PCA9685_LED0_ON_L + 4 * ch + 2;  // OFF_L
+        uint8_t buf[2] = {0};
+        bool ok = i2c_read_bytes(PCA9685_ADDR, reg, buf, 2);
+        if (ok) {
+          readback[i] = buf[0] | ((buf[1] & 0x0F) << 8);
+        } else {
+          readback[i] = -1;
+        }
+        pass[i] = (ok && abs(readback[i] - g_diag_test_pwms[i]) <= 2) ? 1 : 0;
+      }
+
+      uint8_t mode1 = 0;
+      bool mode1_ok = i2c_read_bytes(PCA9685_ADDR, PCA9685_MODE1, &mode1, 1);
+      int mode1_val = mode1_ok ? (int)mode1 : -1;
+
+      bool pca_present = (i2c_scan_devices() & 1) == 0;
+
+      String report = "{\"pca_present\":";
+      report += pca_present ? "true" : "false";
+      report += ",\"mode1\":"; report += mode1_val;
+      report += ",\"ai_ok\":"; report += (mode1_ok && (mode1 & 0x20)) ? "true" : "false";
+      report += ",\"test_pwms\":[";
+      for (int i = 0; i < 12; ++i) {
+        if (i > 0) report += ",";
+        report += g_diag_test_pwms[i];
+      }
+      report += "],\"readback\":[";
+      for (int i = 0; i < 12; ++i) {
+        if (i > 0) report += ",";
+        report += readback[i];
+      }
+      report += "],\"pass\":[";
+      for (int i = 0; i < 12; ++i) {
+        if (i > 0) report += ",";
+        report += pass[i];
+      }
+      report += "]}";
+      Bridge.notify("servo_diag_result", report);
+
+      g_diag_pending = false;
+      g_diag_phase = 0;
+    }
+  }
+
   // Push IMU at 125 Hz (only if sensor was detected)
   if (g_mpu6050_present && now - g_last_imu_push >= IMU_INTERVAL) {
     g_last_imu_push = now;
@@ -432,10 +444,9 @@ void loop()
     g_ai_ok = ai;
 
     // Read back PCA9685 channel 0 OFF register to verify writes
-    uint8_t off_l = 0, off_h = 0;
-    if (i2c_read_bytes(PCA9685_ADDR, PCA9685_LED0_ON_L + 2, &off_l, 1) &&
-        i2c_read_bytes(PCA9685_ADDR, PCA9685_LED0_ON_L + 3, &off_h, 1)) {
-      g_pwm_readback_ch0 = off_l | ((off_h & 0x0F) << 8);
+    uint8_t pair[2] = {0};
+    if (i2c_read_bytes(PCA9685_ADDR, PCA9685_LED0_ON_L + 2, pair, 2)) {
+      g_pwm_readback_ch0 = pair[0] | ((pair[1] & 0x0F) << 8);
     } else {
       g_pwm_readback_ch0 = -1;
     }
