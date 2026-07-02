@@ -179,7 +179,7 @@ def loop():
             if changed:
                 last_pwms = list(pwms)
                 try:
-                    Bridge.notify("set_servo_pwms", *pwms)  # 12 separate args
+                    Bridge.notify("set_servo_pwms", ",".join(str(p) for p in pwms))  # single string, avoids 12-arg limit
                     notify_errs = 0
                 except Exception as e:
                     notify_errs += 1

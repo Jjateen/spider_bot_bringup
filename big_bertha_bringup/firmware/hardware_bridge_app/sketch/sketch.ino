@@ -9,13 +9,17 @@
 //   ROS 2 node (C++) → TCP JSON :50007 → Python relay (main.py)
 //     → Bridge RPC → STM32U585 (this sketch) → I2C → PCA9685 + MPU6050
 //
-// ── Improvements over original ────────────────────────────────────────
-//   - Bridge.begin(460800) — explicit baud rate matching arduino-router
-//   - Bulk PCA9685 write — all 16 channels in one I2C transaction
-//   - 125 Hz IMU push — better temporal resolution for policy controller
-//   - Auto re-init of PCA9685 on verify failure — self-healing
-//   - ping provider — quick liveness check
-//   - LED blink codes — hardware diagnostics at a glance
+// ── Design principles ─────────────────────────────────────────────────
+//   - Non-blocking: Bridge RPC handler never waits on I2C. Servo PWM
+//     data arrives as a single comma-separated string (fixes 12-arg
+//     Bridge RPC limit). The handler stores values and defers the
+//     I2C write to loop() via g_pwm_dirty flag.
+//   - No verify-on-hot-path: pca9685_verify_init() runs only in the
+//     1 Hz status loop, never in the servo write path. Every servo
+//     write is one I2C transaction — no re-init delays.
+//   - 100 kHz I2C clock: up from 50 kHz (which was below spec).
+//     Both PCA9685 and MPU6050 support 400 kHz; 100 kHz is a safe
+//     conservative step that halves all blocking times.
 
 #include <Arduino_RouterBridge.h>
 #include <Wire.h>
@@ -43,6 +47,11 @@ static bool g_mpu6050_present = false;
 
 // Current PWM off-counts for all 16 channels (0 = output low = servo off)
 static uint16_t g_pwm[16] = {0};
+
+// Set true by set_servo_pwms when new PWM data arrives; cleared by loop()
+// after writing to the PCA9685. Volatile because handler runs in Bridge RPC
+// background thread.
+static volatile bool g_pwm_dirty = false;
 
 static unsigned long g_last_imu_push = 0;
 static unsigned long g_last_status_push = 0;
@@ -195,19 +204,29 @@ static void blink_update()
 
 // ── Bridge RPC handlers ───────────────────────────────────────────────
 
-void set_servo_pwms(int p0, int p1, int p2, int p3, int p4, int p5, int p6, int p7, int p8, int p9, int p10, int p11)
+void set_servo_pwms(String data)
 {
   ++g_servo_calls;
 
-  if (!pca9685_verify_init()) {
-    if (!pca9685_init()) return;
+  // Parse comma-separated PWM values (e.g. "307,153,512,...")
+  // Single-arg format avoids the Bridge RPC 12-argument limit.
+  int vals[12];
+  int idx = 0;
+  int start = 0;
+  int len = data.length();
+  for (int i = 0; i <= len && idx < 12; ++i) {
+    if (i == len || data.charAt(i) == ',') {
+      vals[idx++] = data.substring(start, i).toInt();
+      start = i + 1;
+    }
   }
+  if (idx != 12) return;
 
-  int vals[12] = {p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11};
   for (int i = 0; i < 12; ++i)
     g_pwm[PWM_CHANNEL_MAP[i]] = (uint16_t)vals[i];
 
-  pca9685_write_all();
+  // Defer I2C write to loop() — handler stays non-blocking
+  g_pwm_dirty = true;
 }
 
 void on_ping()
@@ -232,7 +251,7 @@ void on_scan_i2c()
 void setup()
 {
   Wire.begin();
-  Wire.setClock(50000);
+  Wire.setClock(100000);  // 100 kHz (was 50 kHz — below I2C spec)
 
   g_i2c_scan = i2c_scan_devices();
   g_mpu6050_present = mpu6050_init();
@@ -270,6 +289,14 @@ void loop()
   Bridge.update();
 
   unsigned long now = millis();
+
+  // ── Deferred servo write ──────────────────────────────────────────
+  // Write new PWM values to the PCA9685 if the Python relay sent them.
+  // No verify/init check on the hot path — health checks happen at 1 Hz.
+  if (g_pwm_dirty) {
+    g_pwm_dirty = false;
+    pca9685_write_all();
+  }
 
   // Push IMU at 125 Hz (only if sensor was detected)
   if (g_mpu6050_present && now - g_last_imu_push >= IMU_INTERVAL) {
