@@ -100,27 +100,27 @@ static bool pca9685_init()
   return true;
 }
 
-// Write 4 PCA9685 channels in a single I2C transaction (17 bytes — safe for
-// any Wire buffer).  Called 4 times by pca9685_write_all() to cover all 16.
-static bool pca9685_write_chunk(int start_ch, int count)
+// Write each active servo channel individually (5 bytes per I2C transaction).
+// Takes a snapshot of g_pwm[] at the start so all 12 writes come from the
+// same ROS message — a new servo command arriving mid-cycle sets
+// g_pwm_dirty again and will be picked up on the next cycle.
+static bool pca9685_write_servos()
 {
-  Wire.beginTransmission(PCA9685_ADDR);
-  Wire.write(PCA9685_LED0_ON_L + 4 * start_ch);
-  for (int ch = start_ch; ch < start_ch + count; ++ch) {
-    uint16_t off = g_pwm[ch];
+  uint16_t snapshot[12];
+  for (int i = 0; i < 12; ++i)
+    snapshot[i] = g_pwm[PWM_CHANNEL_MAP[i]];
+
+  for (int i = 0; i < 12; ++i) {
+    uint8_t ch = PWM_CHANNEL_MAP[i];
+    uint16_t off = snapshot[i];
+    uint8_t reg = PCA9685_LED0_ON_L + 4 * ch;
+    Wire.beginTransmission(PCA9685_ADDR);
+    Wire.write(reg);
     Wire.write(0x00);
     Wire.write(0x00);
     Wire.write(off & 0xFF);
     Wire.write((off >> 8) & 0x0F);
-  }
-  return Wire.endTransmission() == 0;
-}
-
-// Write all 16 channels in four small I2C bursts (auto-increment)
-static bool pca9685_write_all()
-{
-  for (int ch = 0; ch < 16; ch += 4) {
-    if (!pca9685_write_chunk(ch, 4)) return false;
+    if (Wire.endTransmission() != 0) return false;
   }
   return true;
 }
@@ -304,8 +304,9 @@ void loop()
   // Write new PWM values to the PCA9685 if the Python relay sent them.
   // No verify/init check on the hot path — health checks happen at 1 Hz.
   if (g_pwm_dirty) {
-    if (pca9685_write_all()) {
-      g_pwm_dirty = false;
+    g_pwm_dirty = false;  // optimistic clear — re-set below on failure
+    if (!pca9685_write_servos()) {
+      g_pwm_dirty = true;  // transaction failed, retry next cycle
     }
   }
 
