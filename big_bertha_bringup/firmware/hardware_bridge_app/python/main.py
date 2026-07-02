@@ -17,7 +17,6 @@ import threading
 import time
 
 TCP_HOST = "0.0.0.0"
-TCP_PORT = 50007
 
 # Store the latest data from the robot's sensors
 cache = {
@@ -30,31 +29,33 @@ cache_lock = threading.Lock()   # only one thread reads or writes the cache at a
 scan_count = 0                   # incremented each time on_i2c_scan is called
 
 
-def handle_client(conn):
+SERVO_PORT = 50007
+IMU_PORT = 50008
+
+
+def handle_servo_client(conn):
+    # Handles ONLY servo commands and ping — runs on port 50007.
+    # IMU and status requests go to port 50008.
     buf = b""
     try:
         while True:
-            # Read whatever the ROS node sent us
             data = conn.recv(4096)
             if not data:
-                break                     # connection closed
+                break
             buf += data
-            # Commands are separated by newlines — handle each one
             while b"\n" in buf:
                 line, buf = buf.split(b"\n", 1)
                 try:
-                    req = json.loads(line.decode())   # turn the text into a dictionary
+                    req = json.loads(line.decode())
                 except json.JSONDecodeError as e:
                     conn.sendall(json.dumps({"error": str(e)}).encode() + b"\n")
                     continue
 
                 cmd = req.get("cmd")
 
-                # ── Ping ──
                 if cmd == "ping":
                     conn.sendall(b'{"ok":true}\n')
 
-                # ── Move the servos ──
                 elif cmd == "servo":
                     pwms = req.get("pwms")
                     if not isinstance(pwms, list) or len(pwms) != 12:
@@ -64,19 +65,49 @@ def handle_client(conn):
                         conn.sendall(json.dumps({"error": "each pwm must be int 0-4095"}).encode() + b"\n")
                         continue
                     with cache_lock:
-                        cache["servo_pwms"] = pwms           # defer Bridge.notify to main thread
+                        cache["servo_pwms"] = pwms
                     conn.sendall(b'{"ok":true}\n')
 
-                # ── Return the latest IMU reading ──
+                else:
+                    conn.sendall(
+                        json.dumps({"error": "unknown cmd"}).encode() + b"\n"
+                    )
+    except (ConnectionResetError, BrokenPipeError):
+        pass
+    finally:
+        conn.close()
+
+
+def handle_imu_client(conn):
+    # Handles ONLY IMU, status, and scan commands — runs on port 50008.
+    buf = b""
+    try:
+        while True:
+            data = conn.recv(4096)
+            if not data:
+                break
+            buf += data
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                try:
+                    req = json.loads(line.decode())
+                except json.JSONDecodeError as e:
+                    conn.sendall(json.dumps({"error": str(e)}).encode() + b"\n")
+                    continue
+
+                cmd = req.get("cmd")
+
+                if cmd == "ping":
+                    conn.sendall(b'{"ok":true}\n')
+
                 elif cmd == "imu":
                     with cache_lock:
-                        imu = cache["imu"]                 # grab the latest IMU
+                        imu = cache["imu"]
                     if imu is not None:
                         conn.sendall(json.dumps(imu).encode() + b"\n")
                     else:
                         conn.sendall(json.dumps({"error": "no imu data yet"}).encode() + b"\n")
 
-                # ── Return hardware health status ──
                 elif cmd == "status":
                     with cache_lock:
                         hw = cache["hw_status"]
@@ -85,10 +116,9 @@ def handle_client(conn):
                     else:
                         conn.sendall(json.dumps({"error": "no status yet"}).encode() + b"\n")
 
-                # ── Scan the I2C bus for connected devices ──
                 elif cmd == "scan_i2c":
                     Bridge.notify("scan_i2c")
-                    time.sleep(0.5)                          # wait for the scan to finish
+                    time.sleep(0.5)
                     with cache_lock:
                         val = cache["i2c_scan"]
                     if val is None:
@@ -104,23 +134,40 @@ def handle_client(conn):
                         json.dumps({"error": "unknown cmd"}).encode() + b"\n"
                     )
     except (ConnectionResetError, BrokenPipeError):
-        pass               # client disconnected — nothing to do
+        pass
     finally:
         conn.close()
 
 
-def tcp_server():
+def tcp_servo_server():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # allow restart without waiting
-    sock.bind((TCP_HOST, TCP_PORT))
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((TCP_HOST, SERVO_PORT))
     sock.listen()
-    sock.settimeout(1.0)                                         # wake up every second to check for shutdown
+    sock.settimeout(1.0)
 
     while True:
         try:
-            conn, addr = sock.accept()                           # a new ROS node connected
+            conn, addr = sock.accept()
             threading.Thread(
-                target=handle_client, args=(conn,), daemon=True
+                target=handle_servo_client, args=(conn,), daemon=True
+            ).start()
+        except socket.timeout:
+            continue
+
+
+def tcp_imu_server():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind((TCP_HOST, IMU_PORT))
+    sock.listen()
+    sock.settimeout(1.0)
+
+    while True:
+        try:
+            conn, addr = sock.accept()
+            threading.Thread(
+                target=handle_imu_client, args=(conn,), daemon=True
             ).start()
         except socket.timeout:
             continue
@@ -207,9 +254,11 @@ def main():
     Bridge.provide("i2c_scan", on_i2c_scan)
     print("[bridge] registered i2c_scan handler")
 
-    t = threading.Thread(target=tcp_server, daemon=True)
-    t.start()
-    print(f"[bridge] TCP server listening on {TCP_HOST}:{TCP_PORT}")
+    t_servo = threading.Thread(target=tcp_servo_server, daemon=True)
+    t_servo.start()
+    t_imu = threading.Thread(target=tcp_imu_server, daemon=True)
+    t_imu.start()
+    print(f"[bridge] servo TCP server on {TCP_HOST}:{SERVO_PORT}, IMU TCP server on {TCP_HOST}:{IMU_PORT}")
     App.run(user_loop=loop)                    # this blocks — keeps the program alive until stopped
 
 

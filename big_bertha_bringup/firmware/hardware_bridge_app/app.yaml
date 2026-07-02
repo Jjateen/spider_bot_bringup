@@ -3,5 +3,6 @@ description: "Drives PCA9685 servos and reads MPU6050 IMU via Bridge RPC from th
 icon: 🕷️
 version: "0.1.0"
 ports:
-  - 50007
+  - 50007   # servo commands
+  - 50008   # IMU polling
 bricks: []

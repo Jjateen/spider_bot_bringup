@@ -154,7 +154,7 @@ public:
     // raised to 12 so the torque is not pinned bang-bang at the rail: at
     // kp=20/limit=8 the PD railed +/-8 on most joints, while kp=10/limit=12
     // keeps it inside the band (measured |tau| <= ~5.6) for clean damping.
-    use_effort_ = declare_parameter<bool>("use_effort", true);
+    use_effort_ = declare_parameter<bool>("use_effort", false);
     kp_ = declare_parameter<double>("kp", 20.0);
     kd_ = declare_parameter<double>("kd", 2.0);
     // Match Isaac's effort_limit_sim = 1 Nm exactly: the implicit PD there

@@ -215,12 +215,13 @@ private:
 
     // TODO: implement full forward kinematics for each leg using URDF geometry
     // and body-to-foot Jacobian to compute body velocity from joint velocities.
-    // Fall back to simple velocity estimate for now.
+    // Fall back to simple velocity estimate for now. Indices follow the Isaac
+    // group order (leg_odometry.yaml): [hips(0-3), knees(4-7), ankles(8-11)].
     double vx = 0.0, vy = 0.0, vz = 0.0;
     int stance = 0;
-    for (size_t i = 0; i < 12; i += 3) {
-      double knee_vel = last_joint_velocities_[i + 2];
-      double hip_vel = last_joint_velocities_[i + 1];
+    for (int leg = 0; leg < 4; ++leg) {
+      double hip_vel = last_joint_velocities_[leg];
+      double knee_vel = last_joint_velocities_[leg + 4];
       vx += 0.02 * hip_vel;
       vy += 0.02 * knee_vel;
       vz += 0.005 * (hip_vel + knee_vel);
@@ -239,12 +240,16 @@ private:
     position = last_position_ + velocity * dt;
   }
 
+  // Fallback defaults — the config yaml is always loaded via launch, so these
+  // are only used if the parameter declaration fails. Must match Isaac group
+  // order (all hips, all knees, all ankles) to agree with policy_controller_node.
   inline static const std::vector<std::string> kDefaultJointNames{
-    "Revolute_110", "Revolute_111", "Revolute_112", "Revolute_113", "Revolute_114", "Revolute_115",
-    "Revolute_116", "Revolute_117", "Revolute_118", "Revolute_119", "Revolute_120", "Revolute_121"};
+    "Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119",
+    "Revolute_111", "Revolute_114", "Revolute_117", "Revolute_120",
+    "Revolute_112", "Revolute_115", "Revolute_118", "Revolute_121"};
 
-  inline static const std::vector<double> kDefaultJointPos{0.0, -0.32, 1.82, 0.0, -0.32, 1.82,
-                                                           0.0, -0.32, 1.82, 0.0, -0.32, 1.82};
+  inline static const std::vector<double> kDefaultJointPos{
+    0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 1.82, 1.82, 1.82, 1.82};
 
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;

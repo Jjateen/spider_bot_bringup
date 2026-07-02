@@ -44,10 +44,11 @@ constexpr int kActionDim = 12;
 /// index 8). The onnx bakes in the empirical normalizer, so feed RAW obs.
 struct ObservationBuilder
 {
-  // Default per-leg pose [0.0, 0.5, 0.0] repeated for 4 legs (12 joints),
-  // ordered Revolute_110 .. Revolute_121.
-  std::array<double, kNumJoints> default_joint_pos{0.0, 0.5, 0.0, 0.0, 0.5, 0.0,
-                                                   0.0, 0.5, 0.0, 0.0, 0.5, 0.0};
+  // Default joint pose in Isaac articulation order (all hips, knees, ankles).
+  // The policy controller node overrides this from policy.yaml; this hardcoded
+  // value is the fallback if the parameter is missing.
+  std::array<double, kNumJoints> default_joint_pos{0.0, 0.0, 0.0, 0.0, -0.32, -0.32,
+                                                    -0.32, -0.32, 1.82, 1.82, 1.82, 1.82};
 
   // Cached inputs (updated by subscription callbacks).
   std::array<double, 3> root_lin_vel_b{0.0, 0.0, 0.0};
