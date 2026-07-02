@@ -100,12 +100,13 @@ static bool pca9685_init()
   return true;
 }
 
-// Write all 16 channels in a single I2C burst (auto-increment)
-static bool pca9685_write_all()
+// Write 4 PCA9685 channels in a single I2C transaction (17 bytes — safe for
+// any Wire buffer).  Called 4 times by pca9685_write_all() to cover all 16.
+static bool pca9685_write_chunk(int start_ch, int count)
 {
   Wire.beginTransmission(PCA9685_ADDR);
-  Wire.write(PCA9685_LED0_ON_L);
-  for (int ch = 0; ch < 16; ++ch) {
+  Wire.write(PCA9685_LED0_ON_L + 4 * start_ch);
+  for (int ch = start_ch; ch < start_ch + count; ++ch) {
     uint16_t off = g_pwm[ch];
     Wire.write(0x00);
     Wire.write(0x00);
@@ -113,6 +114,15 @@ static bool pca9685_write_all()
     Wire.write((off >> 8) & 0x0F);
   }
   return Wire.endTransmission() == 0;
+}
+
+// Write all 16 channels in four small I2C bursts (auto-increment)
+static bool pca9685_write_all()
+{
+  for (int ch = 0; ch < 16; ch += 4) {
+    if (!pca9685_write_chunk(ch, 4)) return false;
+  }
+  return true;
 }
 
 static bool pca9685_verify_init()
@@ -294,8 +304,9 @@ void loop()
   // Write new PWM values to the PCA9685 if the Python relay sent them.
   // No verify/init check on the hot path — health checks happen at 1 Hz.
   if (g_pwm_dirty) {
-    g_pwm_dirty = false;
-    pca9685_write_all();
+    if (pca9685_write_all()) {
+      g_pwm_dirty = false;
+    }
   }
 
   // Push IMU at 125 Hz (only if sensor was detected)
@@ -318,6 +329,7 @@ void loop()
       ai = pca9685_verify_init();
       if (!ai) {
         ai = pca9685_init() && pca9685_verify_init();
+        if (ai) g_pwm_dirty = true;  // flush RAM state after sleep/wake reset
       }
     }
     g_ai_ok = ai;
