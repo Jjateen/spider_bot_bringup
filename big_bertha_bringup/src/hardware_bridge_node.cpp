@@ -50,9 +50,11 @@ public:
   {
     // ── Parameters ────────────────────────────────────────────────────
 
-    // Where to find the Python relay
-    host_ = declare_parameter<std::string>("host", "127.0.0.1");
-    port_ = declare_parameter<int>("port", 50007);
+    // Where to find the Python relays (servo commands + IMU on separate ports)
+    servo_host_ = declare_parameter<std::string>("servo_host", "127.0.0.1");
+    servo_port_ = declare_parameter<int>("servo_port", 50007);
+    imu_host_ = declare_parameter<std::string>("imu_host", "127.0.0.1");
+    imu_port_ = declare_parameter<int>("imu_port", 50008);
 
     // Servo pulse range (0 to 4095)
     pwm_min_ = declare_parameter<int>("pwm_min", 102);
@@ -103,8 +105,9 @@ public:
     //   6.54 × 0.02 = 0.131 rad/step. We use 0.12 for a 10% safety margin.
     rate_limit_rad_ = declare_parameter<double>("rate_limit_rad", 0.12);
 
-    // ── TCP connect ───────────────────────────────────────────────────
-    connect();
+    // ── TCP connects ──────────────────────────────────────────────────
+    connect_servo();
+    connect_imu();
 
     // ── Publisher ─────────────────────────────────────────────────────
     imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("/imu", rclcpp::SensorDataQoS());
@@ -120,40 +123,58 @@ public:
 
   ~HardwareBridgeNode() override
   {
-    running_ = false;                              // tell the reader thread to stop
+    running_ = false;
     if (reader_thread_.joinable()) {
-      reader_thread_.join();                        // wait for it to finish
+      reader_thread_.join();
     }
-    if (sock_fd_ >= 0) {
-      ::close(sock_fd_);                            // close the TCP connection
+    if (sock_servo_fd_ >= 0) {
+      ::close(sock_servo_fd_);
+    }
+    if (sock_imu_fd_ >= 0) {
+      ::close(sock_imu_fd_);
     }
   }
 
 private:
-  void connect()
+  void connect_servo()
   {
-    // Set up the address we want to connect to
-    struct sockaddr_in addr
-    {
-    };
+    struct sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(port_);
-    inet_pton(AF_INET, host_.c_str(), &addr.sin_addr);
+    addr.sin_port = htons(servo_port_);
+    inet_pton(AF_INET, servo_host_.c_str(), &addr.sin_addr);
 
-    // Open a TCP socket
-    sock_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (sock_fd_ < 0) {
-      RCLCPP_ERROR(get_logger(), "failed to create socket");
+    sock_servo_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_servo_fd_ < 0) {
+      RCLCPP_ERROR(get_logger(), "failed to create servo socket");
       return;
     }
-
-    // Try to reach the Python relay
-    if (::connect(sock_fd_, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-      RCLCPP_WARN(get_logger(), "failed to connect to %s:%d — will retry", host_.c_str(), port_);
-      ::close(sock_fd_);
-      sock_fd_ = -1;          // mark as disconnected, caller will retry
+    if (::connect(sock_servo_fd_, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+      RCLCPP_WARN(get_logger(), "failed to connect servo to %s:%d", servo_host_.c_str(), servo_port_);
+      ::close(sock_servo_fd_);
+      sock_servo_fd_ = -1;
     } else {
-      RCLCPP_INFO(get_logger(), "connected to Python relay at %s:%d", host_.c_str(), port_);
+      RCLCPP_INFO(get_logger(), "connected servo relay at %s:%d", servo_host_.c_str(), servo_port_);
+    }
+  }
+
+  void connect_imu()
+  {
+    struct sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(imu_port_);
+    inet_pton(AF_INET, imu_host_.c_str(), &addr.sin_addr);
+
+    sock_imu_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_imu_fd_ < 0) {
+      RCLCPP_ERROR(get_logger(), "failed to create IMU socket");
+      return;
+    }
+    if (::connect(sock_imu_fd_, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+      RCLCPP_WARN(get_logger(), "failed to connect IMU to %s:%d", imu_host_.c_str(), imu_port_);
+      ::close(sock_imu_fd_);
+      sock_imu_fd_ = -1;
+    } else {
+      RCLCPP_INFO(get_logger(), "connected IMU relay at %s:%d", imu_host_.c_str(), imu_port_);
     }
   }
 
@@ -229,17 +250,21 @@ private:
     json += "]}\n";
 
     {
-      std::lock_guard<std::mutex> lk(sock_mutex_);
-      if (sock_fd_ < 0) return;
-      ssize_t n = ::send(sock_fd_, json.data(), json.size(), MSG_NOSIGNAL);
+      std::lock_guard<std::mutex> lk(sock_servo_mutex_);
+      if (sock_servo_fd_ < 0) {
+        connect_servo();
+        if (sock_servo_fd_ < 0) return;
+      }
+      ssize_t n = ::send(sock_servo_fd_, json.data(), json.size(), MSG_NOSIGNAL);
       if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         std::this_thread::sleep_for(std::chrono::microseconds(500));
-        n = ::send(sock_fd_, json.data(), json.size(), MSG_NOSIGNAL);
+        n = ::send(sock_servo_fd_, json.data(), json.size(), MSG_NOSIGNAL);
       }
       if (n <= 0) {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "socket write error (errno=%d) — reconnecting", errno);
-        ::close(sock_fd_);
-        sock_fd_ = -1;
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000, "servo socket write error (errno=%d) — reconnecting", errno);
+        ::close(sock_servo_fd_);
+        sock_servo_fd_ = -1;
+        connect_servo();
       }
     }
   }
@@ -251,11 +276,11 @@ private:
 
     // Keep trying until both the TCP connection and calibration work
     while (running_) {
-      if (sock_fd_ < 0) {
-        std::lock_guard<std::mutex> lk(sock_mutex_);
-        connect();
+      if (sock_imu_fd_ < 0) {
+        std::lock_guard<std::mutex> lk(sock_imu_mutex_);
+        connect_imu();
       }
-      if (sock_fd_ >= 0 && calibrate_sensors()) {
+      if (sock_imu_fd_ >= 0 && calibrate_sensors()) {
         break;
       }
       std::this_thread::sleep_for(std::chrono::seconds(1));   // wait before retry
@@ -264,11 +289,11 @@ private:
     // ── Main IMU polling loop ────────────────────────────────────
     while (running_) {
       // If the socket died, wait and try to reconnect
-      if (sock_fd_ < 0) {
+      if (sock_imu_fd_ < 0) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
         {
-          std::lock_guard<std::mutex> lk(sock_mutex_);
-          connect();
+          std::lock_guard<std::mutex> lk(sock_imu_mutex_);
+          connect_imu();
         }
         continue;
       }
@@ -315,14 +340,13 @@ private:
 
   bool send_imu_request()
   {
-    std::lock_guard<std::mutex> lk(sock_mutex_);
-    // Send: {"cmd":"imu"}\n
+    std::lock_guard<std::mutex> lk(sock_imu_mutex_);
     const char req[] = R"({"cmd":"imu"})"
                        "\n";
-    ssize_t n = ::send(sock_fd_, req, sizeof(req) - 1, MSG_NOSIGNAL);
+    ssize_t n = ::send(sock_imu_fd_, req, sizeof(req) - 1, MSG_NOSIGNAL);
     if (n <= 0) {
-      ::close(sock_fd_);
-      sock_fd_ = -1;          // socket is dead, mark for reconnect
+      ::close(sock_imu_fd_);
+      sock_imu_fd_ = -1;
       return false;
     }
     return true;
@@ -335,7 +359,7 @@ private:
     // Check what we already have in the buffer before reading more
     auto pos = read_buf_.find('\n');
     while (pos == std::string::npos) {
-      if (!refill_read_buf()) return false;
+      if (!refill_imu_buf()) return false;
       pos = read_buf_.find('\n');
     }
     // Split off everything up to the newline
@@ -344,18 +368,18 @@ private:
     return true;
   }
 
-  // Read up to 4096 bytes from the socket into our buffer
-  bool refill_read_buf()
+  // Read up to 4096 bytes from the IMU socket into our buffer
+  bool refill_imu_buf()
   {
     char buf[4096];
     ssize_t n;
     {
-      std::lock_guard<std::mutex> lk(sock_mutex_);
-      if (sock_fd_ < 0) return false;
-      n = ::read(sock_fd_, buf, sizeof(buf));
+      std::lock_guard<std::mutex> lk(sock_imu_mutex_);
+      if (sock_imu_fd_ < 0) return false;
+      n = ::read(sock_imu_fd_, buf, sizeof(buf));
       if (n <= 0) {
-        ::close(sock_fd_);
-        sock_fd_ = -1;
+        ::close(sock_imu_fd_);
+        sock_imu_fd_ = -1;
         return false;
       }
     }
@@ -363,30 +387,28 @@ private:
     return true;
   }
 
-  // Drain any leftover data from the socket into the buffer.
-  // This prevents the receive buffer from filling up when the Python relay
-  // has queued extras (e.g. during brief thread interleaving).
+  // Drain any leftover data from the IMU socket into the buffer.
   void drain_imu_buf()
   {
     char buf[4096];
     ssize_t n;
     {
-      std::lock_guard<std::mutex> lk(sock_mutex_);
-      if (sock_fd_ < 0) return;
+      std::lock_guard<std::mutex> lk(sock_imu_mutex_);
+      if (sock_imu_fd_ < 0) return;
       fd_set rfds;
       FD_ZERO(&rfds);
-      FD_SET(sock_fd_, &rfds);
+      FD_SET(sock_imu_fd_, &rfds);
       struct timeval tv = {0, 0};
-      if (select(sock_fd_ + 1, &rfds, nullptr, nullptr, &tv) > 0) {
+      if (select(sock_imu_fd_ + 1, &rfds, nullptr, nullptr, &tv) > 0) {
         do {
-          n = ::read(sock_fd_, buf, sizeof(buf));
+          n = ::read(sock_imu_fd_, buf, sizeof(buf));
           if (n > 0) {
             read_buf_.append(buf, n);
           }
         } while (n > 0);
         if (n < 0) {
-          ::close(sock_fd_);
-          sock_fd_ = -1;
+          ::close(sock_imu_fd_);
+          sock_imu_fd_ = -1;
         }
       }
     }
@@ -594,12 +616,16 @@ private:
     }
   }
 
-  // ── TCP ─────────────────────────────────────────────────────────────
-  int sock_fd_{-1};
-  std::mutex sock_mutex_;
-  std::string host_;
-  int port_;
-  std::string read_buf_;  // buffered reads — avoids byte-by-byte syscalls
+  // ── TCP (two ports: servo commands + IMU polling) ──────────────────
+  int sock_servo_fd_{-1};
+  std::mutex sock_servo_mutex_;
+  int sock_imu_fd_{-1};
+  std::mutex sock_imu_mutex_;
+  std::string servo_host_;
+  int servo_port_;
+  std::string imu_host_;
+  int imu_port_;
+  std::string read_buf_;  // buffered reads (IMU socket only)
 
   // ── Servo calibration ───────────────────────────────────────────────
   int pwm_min_;
