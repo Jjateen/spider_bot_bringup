@@ -17,6 +17,13 @@
     # Joint angle limit in radians — final safety clamp before PWM conversion.
     joint_limit: 3.14159
 
+    # Default joint positions in radians (policy output = default + action_scale*action).
+    # These are the training init angles; at these values each servo sits at 90+offset.
+    default_joint_pos:
+      [0.0, 0.0, 0.0, 0.0,
+       -0.32, -0.32, -0.32, -0.32,
+       1.82, 1.82, 1.82, 1.82]
+
     # Per-joint servo parameters in policy output order (Revolute_110..121).
     # Each array has 12 values, one per joint:
     #   servo_lower_limit — physical lower angle limit (deg)
