@@ -61,6 +61,16 @@ static uint32_t g_imu_sample = 0;
 static int g_servo_calls = 0;
 static int g_ping_count = 0;
 
+// ── Diagnostic counters ───────────────────────────────────────────────
+static int g_pwm_write_attempts = 0;   // total write cycles attempted
+static int g_pwm_write_fails = 0;      // cycles where at least one channel failed
+static int g_pwm_write_oks = 0;        // successful channels in last cycle
+static int g_pwm_last_fail_ch = -1;    // last physical channel that failed (-1 = none)
+static int g_pwm_last_fail_code = 0;   // endTransmission() return: 0=ok, 2=NACK-addr, 3=NACK-data
+static int g_set_servo_last_len = 0;   // data.length() from last set_servo_pwms call
+static int g_set_servo_last_idx = 0;   // parsed field count (12 = clean)
+static int g_pwm_readback_ch0 = -1;    // PCA9685 ch0 OFF register readback (-1 = read failed)
+
 // 125 Hz IMU (8 ms) — matches expected rate for the 50 Hz policy controller
 static const unsigned long IMU_INTERVAL = 8;
 static const unsigned long STATUS_INTERVAL = 1000;
@@ -110,6 +120,10 @@ static bool pca9685_write_servos()
   for (int i = 0; i < 12; ++i)
     snapshot[i] = g_pwm[PWM_CHANNEL_MAP[i]];
 
+  ++g_pwm_write_attempts;
+  g_pwm_write_oks = 0;
+  g_pwm_last_fail_ch = -1;
+  g_pwm_last_fail_code = 0;
   for (int i = 0; i < 12; ++i) {
     uint8_t ch = PWM_CHANNEL_MAP[i];
     uint16_t off = snapshot[i];
@@ -120,9 +134,18 @@ static bool pca9685_write_servos()
     Wire.write(0x00);
     Wire.write(off & 0xFF);
     Wire.write((off >> 8) & 0x0F);
-    if (Wire.endTransmission() != 0) return false;
+    int code = Wire.endTransmission();
+    if (code != 0) {
+      ++g_pwm_write_fails;
+      if (g_pwm_last_fail_ch < 0) {
+        g_pwm_last_fail_ch = ch;
+        g_pwm_last_fail_code = code;
+      }
+    } else {
+      ++g_pwm_write_oks;
+    }
   }
-  return true;
+  return g_pwm_write_oks == 12;
 }
 
 static bool pca9685_verify_init()
@@ -220,6 +243,7 @@ void set_servo_pwms(String data)
 
   // Parse comma-separated PWM values (e.g. "307,153,512,...")
   // Single-arg format avoids the Bridge RPC 12-argument limit.
+  g_set_servo_last_len = data.length();
   int vals[12];
   int idx = 0;
   int start = 0;
@@ -230,12 +254,12 @@ void set_servo_pwms(String data)
       start = i + 1;
     }
   }
+  g_set_servo_last_idx = idx;
   if (idx != 12) return;
 
   for (int i = 0; i < 12; ++i)
     g_pwm[PWM_CHANNEL_MAP[i]] = (uint16_t)vals[i];
 
-  // Defer I2C write to loop() — handler stays non-blocking
   g_pwm_dirty = true;
 }
 
@@ -254,6 +278,77 @@ void on_scan_i2c()
       found.push_back(addr);
   }
   Bridge.notify("i2c_scan", found);
+}
+
+// ── Servo diagnostic: write test values, read back, report ────────────
+// Runs synchronously (diagnostic-only, not on hot path).
+void on_servo_diag()
+{
+  // 1. Write known test PWMs to each of the 12 active channels
+  int test_pwms[12];
+  for (int i = 0; i < 12; ++i) {
+    test_pwms[i] = 100 + i * 200;  // 100, 300, 500, ..., 2300
+    uint8_t ch = PWM_CHANNEL_MAP[i];
+    g_pwm[ch] = (uint16_t)test_pwms[i];
+    uint8_t reg = PCA9685_LED0_ON_L + 4 * ch;
+    Wire.beginTransmission(PCA9685_ADDR);
+    Wire.write(reg);
+    Wire.write(0x00);
+    Wire.write(0x00);
+    Wire.write(test_pwms[i] & 0xFF);
+    Wire.write((test_pwms[i] >> 8) & 0x0F);
+    Wire.endTransmission();
+  }
+
+  delay(5);  // settle
+
+  // 2. Read back each channel's OFF register
+  int readback[12];
+  int pass[12];
+  for (int i = 0; i < 12; ++i) {
+    uint8_t ch = PWM_CHANNEL_MAP[i];
+    uint8_t reg = PCA9685_LED0_ON_L + 4 * ch + 2;  // OFF_L
+    uint8_t off_l = 0, off_h = 0;
+    bool ok = i2c_read_bytes(PCA9685_ADDR, reg, &off_l, 1)
+           && i2c_read_bytes(PCA9685_ADDR, reg + 1, &off_h, 1);
+    if (ok) {
+      readback[i] = off_l | ((off_h & 0x0F) << 8);
+    } else {
+      readback[i] = -1;
+    }
+    pass[i] = (ok && abs(readback[i] - test_pwms[i]) <= 2) ? 1 : 0;
+  }
+
+  // 3. Read MODE1 to verify init state
+  uint8_t mode1 = 0;
+  bool mode1_ok = i2c_read_bytes(PCA9685_ADDR, PCA9685_MODE1, &mode1, 1);
+  int mode1_val = mode1_ok ? (int)mode1 : -1;
+
+  // 4. Probe PCA9685 presence
+  bool pca_present = (i2c_scan_devices() & 1) == 0;
+
+  // 5. Build report as JSON string packed into one Bridge RPC arg
+  String report = "{\"pca_present\":";
+  report += pca_present ? "true" : "false";
+  report += ",\"mode1\":"; report += mode1_val;
+  report += ",\"ai_ok\":"; report += (mode1_ok && (mode1 & 0x20)) ? "true" : "false";
+  report += ",\"test_pwms\":[";
+  for (int i = 0; i < 12; ++i) {
+    if (i > 0) report += ",";
+    report += test_pwms[i];
+  }
+  report += "],\"readback\":[";
+  for (int i = 0; i < 12; ++i) {
+    if (i > 0) report += ",";
+    report += readback[i];
+  }
+  report += "],\"pass\":[";
+  for (int i = 0; i < 12; ++i) {
+    if (i > 0) report += ",";
+    report += pass[i];
+  }
+  report += "]}";
+  Bridge.notify("servo_diag_result", report);
 }
 
 // ── Setup & Loop ──────────────────────────────────────────────────────
@@ -285,6 +380,7 @@ void setup()
   Bridge.provide("set_servo_pwms", set_servo_pwms);
   Bridge.provide("scan_i2c", on_scan_i2c);
   Bridge.provide("ping", on_ping);
+  Bridge.provide("servo_diag", on_servo_diag);
 
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
@@ -334,7 +430,20 @@ void loop()
       }
     }
     g_ai_ok = ai;
-    Bridge.notify("hw_status", g_i2c_scan, ai ? 1 : 0, g_servo_calls, g_ping_count);
+
+    // Read back PCA9685 channel 0 OFF register to verify writes
+    uint8_t off_l = 0, off_h = 0;
+    if (i2c_read_bytes(PCA9685_ADDR, PCA9685_LED0_ON_L + 2, &off_l, 1) &&
+        i2c_read_bytes(PCA9685_ADDR, PCA9685_LED0_ON_L + 3, &off_h, 1)) {
+      g_pwm_readback_ch0 = off_l | ((off_h & 0x0F) << 8);
+    } else {
+      g_pwm_readback_ch0 = -1;
+    }
+
+    Bridge.notify("hw_status", g_i2c_scan, ai ? 1 : 0, g_servo_calls, g_ping_count,
+                  g_pwm_write_attempts, g_pwm_write_fails, g_pwm_last_fail_ch,
+                  g_pwm_last_fail_code, g_set_servo_last_len, g_set_servo_last_idx,
+                  g_pwm_readback_ch0);
   }
 
   // LED blink codes (non-blocking)

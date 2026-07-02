@@ -24,6 +24,7 @@ cache = {
     "hw_status": None,   # most recent hardware health check
     "i2c_scan": None,    # None = never scanned, [] = scanned but empty
     "servo_pwms": None,  # latest servo PWM targets, flushed from main thread
+    "servo_diag": None,  # latest servo diagnostic report
 }
 cache_lock = threading.Lock()   # only one thread reads or writes the cache at a time
 scan_count = 0                   # incremented each time on_i2c_scan is called
@@ -129,6 +130,21 @@ def handle_imu_client(conn):
                         scan = {"addrs": sorted(val)}
                         conn.sendall(json.dumps(scan).encode() + b"\n")
 
+                elif cmd == "servo_diag":
+                    cache["servo_diag"] = None
+                    Bridge.notify("servo_diag")
+                    for _ in range(50):
+                        time.sleep(0.1)
+                        with cache_lock:
+                            diag = cache["servo_diag"]
+                        if diag is not None:
+                            conn.sendall(json.dumps(diag).encode() + b"\n")
+                            break
+                    else:
+                        conn.sendall(
+                            json.dumps({"error": "no servo diag result after 5s"}).encode() + b"\n"
+                        )
+
                 else:
                     conn.sendall(
                         json.dumps({"error": "unknown cmd"}).encode() + b"\n"
@@ -186,7 +202,10 @@ def on_imu(ax, ay, az, gx, gy, gz, sample_id=None, timestamp=None):
         }
 
 
-def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0):
+def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0,
+                 pwm_attempts=0, pwm_fails=0, pwm_last_fail_ch=-1,
+                 pwm_last_fail_code=0, set_servo_last_len=0, set_servo_last_idx=0,
+                 pwm_readback_ch0=-1):
     with cache_lock:
         cache["hw_status"] = {
             "i2c_scan": scan,
@@ -195,6 +214,13 @@ def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0):
             "mpu6050_ok": (scan & 2) == 0,
             "servo_calls": servo_calls,
             "ping_count": ping_count,
+            "pwm_write_attempts": pwm_attempts,
+            "pwm_write_fails": pwm_fails,
+            "pwm_last_fail_ch": pwm_last_fail_ch,
+            "pwm_last_fail_code": pwm_last_fail_code,
+            "set_servo_last_len": set_servo_last_len,
+            "set_servo_last_idx": set_servo_last_idx,
+            "pwm_readback_ch0": pwm_readback_ch0,
         }
 
 
@@ -204,6 +230,16 @@ def on_i2c_scan(addrs):
     scan_count += 1
     with cache_lock:
         cache["i2c_scan"] = list(addrs)
+
+
+def on_servo_diag_result(report_str):
+    # STM32 returned a servo diagnostic report (JSON string)
+    try:
+        report = json.loads(report_str)
+    except json.JSONDecodeError:
+        report = {"error": "invalid JSON from MCU", "raw": report_str}
+    with cache_lock:
+        cache["servo_diag"] = report
 
 
 last_pwms = None   # track last sent PWMs to skip duplicates
@@ -225,6 +261,7 @@ def loop():
             )
             if changed:
                 last_pwms = list(pwms)
+                print(f"[bridge] PWM: ch0={pwms[0]} ch11={pwms[11]} full={pwms}")
                 try:
                     Bridge.notify("set_servo_pwms", ",".join(str(p) for p in pwms))  # single string, avoids 12-arg limit
                     notify_errs = 0
@@ -253,6 +290,8 @@ def main():
     print("[bridge] registered hw_status handler")
     Bridge.provide("i2c_scan", on_i2c_scan)
     print("[bridge] registered i2c_scan handler")
+    Bridge.provide("servo_diag_result", on_servo_diag_result)
+    print("[bridge] registered servo_diag_result handler")
 
     t_servo = threading.Thread(target=tcp_servo_server, daemon=True)
     t_servo.start()
