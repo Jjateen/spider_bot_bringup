@@ -17,9 +17,9 @@
 //   - No verify-on-hot-path: pca9685_verify_init() runs only in the
 //     1 Hz status loop, never in the servo write path. Every servo
 //     write is one I2C transaction — no re-init delays.
-//   - 100 kHz I2C clock: up from 50 kHz (which was below spec).
-//     Both PCA9685 and MPU6050 support 400 kHz; 100 kHz is a safe
-//     conservative step that halves all blocking times.
+//   - 50 kHz I2C clock: STM32U585 I2C v2 driver has known TIMEOUT
+//     issues (Zephyr #83550). 50 kHz is below spec but empirically
+//     more reliable on this platform with STOP-START transactions.
 
 #include <Arduino_RouterBridge.h>
 #include <Wire.h>
@@ -74,6 +74,11 @@ static volatile bool g_diag_pending = false;
 static int g_diag_test_pwms[12];
 static unsigned long g_diag_settle_start = 0;
 static int g_diag_phase = 0;
+static unsigned long g_diag_start_ms = 0;    // when phase 1 started, for timeout guard
+
+// I2C error tracking for self-healing
+static int g_i2c_consecutive_fails = 0;       // resets on any success
+static bool g_i2c_busy = false;               // guard for BG-thread vs loop() race
 
 // 125 Hz IMU (8 ms) — matches expected rate for the 50 Hz policy controller
 static const unsigned long IMU_INTERVAL = 8;
@@ -91,14 +96,26 @@ static bool i2c_write_byte(uint8_t dev, uint8_t reg, uint8_t val)
 
 static bool i2c_read_bytes(uint8_t dev, uint8_t reg, uint8_t * buf, size_t len)
 {
-  Wire.beginTransmission(dev);
-  Wire.write(reg);
-  if (Wire.endTransmission() != 0) return false;
-  if (Wire.requestFrom(dev, (uint8_t)len) != len) return false;
-  for (size_t i = 0; i < len; ++i) {
-    buf[i] = Wire.read();
+  g_i2c_busy = true;
+  bool ok = false;
+  for (int attempt = 0; attempt < 3; ++attempt) {
+    Wire.beginTransmission(dev);
+    Wire.write(reg);
+    if (Wire.endTransmission() != 0) { delay(1); continue; }
+    if (Wire.requestFrom(dev, (uint8_t)len) != len) { delay(1); continue; }
+    for (size_t i = 0; i < len; ++i) {
+      buf[i] = Wire.read();
+    }
+    ok = true;
+    break;
   }
-  return true;
+  g_i2c_busy = false;
+  if (ok) {
+    g_i2c_consecutive_fails = 0;
+  } else {
+    ++g_i2c_consecutive_fails;
+  }
+  return ok;
 }
 
 // ── PCA9685 servo controller ─────────────────────────────────────────
@@ -275,6 +292,7 @@ void on_ping()
 
 void on_scan_i2c()
 {
+  if (g_i2c_busy) return;
   std::vector<uint8_t> found;
   for (uint8_t addr = 1; addr < 127; ++addr) {
     Wire.beginTransmission(addr);
@@ -299,7 +317,7 @@ void on_servo_diag()
 void setup()
 {
   Wire.begin();
-  Wire.setClock(100000);  // 100 kHz (was 50 kHz — below I2C spec)
+  Wire.setClock(50000);  // 50 kHz — STM32U585 I2C v2 driver is unreliable above this
 
   g_i2c_scan = i2c_scan_devices();
   g_mpu6050_present = mpu6050_init();
@@ -367,18 +385,26 @@ void loop()
         Wire.endTransmission();
       }
       g_diag_settle_start = millis();
+      g_diag_start_ms = millis();
       g_diag_phase = 1;
-    } else if (g_diag_phase == 1 && millis() - g_diag_settle_start >= 5) {
+    } else if (g_diag_phase == 1) {
+      // Timeout guard: abort if diag takes > 300ms total
+      if (millis() - g_diag_start_ms > 300) {
+        Bridge.notify("servo_diag_result", 0, 0, -1, 0, 0);
+        g_diag_pending = false;
+        g_diag_phase = 0;
+      } else if (millis() - g_diag_settle_start >= 5) {
       // Phase 1: settle elapsed — read back and report
       int readback[12];
       int pass[12];
       for (int i = 0; i < 12; ++i) {
         uint8_t ch = PWM_CHANNEL_MAP[i];
         uint8_t reg = PCA9685_LED0_ON_L + 4 * ch + 2;  // OFF_L
-        uint8_t buf[2] = {0};
-        bool ok = i2c_read_bytes(PCA9685_ADDR, reg, buf, 2);
+        uint8_t off_l = 0, off_h = 0;
+        bool ok = i2c_read_bytes(PCA9685_ADDR, reg, &off_l, 1) &&
+                  i2c_read_bytes(PCA9685_ADDR, reg + 1, &off_h, 1);
         if (ok) {
-          readback[i] = buf[0] | ((buf[1] & 0x0F) << 8);
+          readback[i] = off_l | ((off_h & 0x0F) << 8);
         } else {
           readback[i] = -1;
         }
@@ -416,6 +442,7 @@ void loop()
       g_diag_pending = false;
       g_diag_phase = 0;
     }
+    }
   }
 
   // Push IMU at 125 Hz (only if sensor was detected)
@@ -443,12 +470,19 @@ void loop()
     }
     g_ai_ok = ai;
 
-    // Read back PCA9685 channel 0 OFF register to verify writes
-    uint8_t pair[2] = {0};
-    if (i2c_read_bytes(PCA9685_ADDR, PCA9685_LED0_ON_L + 2, pair, 2)) {
-      g_pwm_readback_ch0 = pair[0] | ((pair[1] & 0x0F) << 8);
+    // Read back PCA9685 channel 0 OFF register (two 1-byte reads for reliability)
+    uint8_t off_l = 0, off_h = 0;
+    if (i2c_read_bytes(PCA9685_ADDR, PCA9685_LED0_ON_L + 2, &off_l, 1) &&
+        i2c_read_bytes(PCA9685_ADDR, PCA9685_LED0_ON_L + 3, &off_h, 1)) {
+      g_pwm_readback_ch0 = off_l | ((off_h & 0x0F) << 8);
     } else {
       g_pwm_readback_ch0 = -1;
+    }
+
+    if (g_i2c_consecutive_fails >= 5) {
+      pca9685_init();
+      g_pwm_dirty = true;
+      g_i2c_consecutive_fails = 0;
     }
 
     Bridge.notify("hw_status", g_i2c_scan, ai ? 1 : 0, g_servo_calls, g_ping_count,
