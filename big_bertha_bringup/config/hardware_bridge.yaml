@@ -4,9 +4,11 @@
 # STM32U585 co-processor via Bridge RPC (arduino-app-cli manages the UART).
 /**:
   ros__parameters:
-    # Python relay TCP address (runs as part of the arduino-app-cli App)
-    host: "127.0.0.1"
-    port: 50007
+    # Python relay TCP addresses (two ports: servo commands + IMU polling)
+    servo_host: "127.0.0.1"
+    servo_port: 50007
+    imu_host: "127.0.0.1"
+    imu_port: 50008
 
     # Servo PWM range (12-bit, 0-4095) corresponding to 500-2500 µs at 50 Hz.
     pwm_min: 102
