@@ -21,6 +21,10 @@ ament_target_dependencies(hardware_bridge_node
 
 install(TARGETS hardware_bridge_node
   DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS firmware/web_control/server.py
+  DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY firmware/web_control/static/
+  DESTINATION share/${PROJECT_NAME}/web_control/static)
 install(DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME})
 

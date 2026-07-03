@@ -76,13 +76,13 @@ public:
       servo_channel_.assign(ch.begin(), ch.end());                                   // which plug on the board each servo uses
     }
     {
-      std::vector<int64_t> def_dir = {1, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+      std::vector<int64_t> def_dir = {1, 1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1};
       auto dir = declare_parameter<std::vector<int64_t>>("servo_direction", def_dir);
       servo_direction_.assign(dir.begin(), dir.end());                               // +1 = keep policy sign, -1 = flip policy sign
     }
-    default_joint_pos_ = declare_parameter<std::vector<double>>(
-      "default_joint_pos",
-      {0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 1.82, 1.82, 1.82, 1.82});
+    policy_center_ = declare_parameter<std::vector<double>>(
+      "policy_center",
+      {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.57, 1.57, 1.57, 1.57});
 
     // IMU noise levels (higher = noisier, lower = trust more)
     orient_cov_ = declare_parameter<std::vector<double>>(
@@ -208,14 +208,13 @@ private:
     last_targets_ = targets;
 
     // Turn each joint angle (in radians) into a PWM value (0 to 4095)
-    // Policy output = default_joint_pos + action, so we subtract the default
-    // first: servo (deg) = 90 + offset + direction * (target_deg - default_deg)
+    // servo(°) = (target_deg - policy_center_deg) * direction + offset + 90
     std::vector<int> pwms(12);
     for (size_t i = 0; i < 12; ++i) {
       double rad = std::clamp(targets[i], -joint_limit_, joint_limit_);    // keep within safe bounds
       double deg = rad * 180.0 / M_PI;                                      // change radians to degrees
-      double default_deg = default_joint_pos_[i] * 180.0 / M_PI;            // default in degrees
-      deg = (deg - default_deg) * servo_direction_[i];                      // remove default → delta, then flip if needed
+      double center_deg = policy_center_[i] * 180.0 / M_PI;                // policy center in degrees
+      deg = (deg - center_deg) * servo_direction_[i];                      // remove center → delta, then flip if needed
       deg = deg + servo_offset_[i];                                          // fix the servo's mounting angle
       deg = deg + 90.0;                                                      // servo middle is at 90 degrees
       double lo = std::min(servo_lower_[i], servo_upper_[i]);
@@ -640,7 +639,7 @@ private:
   std::vector<double> servo_lower_;
   std::vector<double> servo_upper_;
   std::vector<double> servo_offset_;
-  std::vector<double> default_joint_pos_;
+  std::vector<double> policy_center_;
   std::vector<int> servo_channel_;
   std::vector<int> servo_direction_;
 
