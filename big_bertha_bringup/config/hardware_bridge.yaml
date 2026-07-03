@@ -17,12 +17,13 @@
     # Joint angle limit in radians — final safety clamp before PWM conversion.
     joint_limit: 3.14159
 
-    # Default joint positions in radians (policy output = default + action_scale*action).
-    # These are the training init angles; at these values each servo sits at 90+offset.
-    default_joint_pos:
+    # Policy center in radians — the policy output value at which the servo is at its
+    # physical center (0 rad for hips/knees, π/2 rad for ankles). At this value the
+    # servo sits at offset+90 degrees.
+    policy_center:
       [0.0, 0.0, 0.0, 0.0,
-       -0.32, -0.32, -0.32, -0.32,
-       1.82, 1.82, 1.82, 1.82]
+       0.0, 0.0, 0.0, 0.0,
+       1.57, 1.57, 1.57, 1.57]
 
     # Per-joint servo parameters in policy output order (Revolute_110..121).
     # Each array has 12 values, one per joint:
@@ -36,7 +37,7 @@
     servo_upper_limit: [180.0, 150.0, 50.0, 0.0, 0.0, 0.0, 180.0, 180.0, 180.0, 40.0, 0.0, 150.0]      # degrees — largest angle per joint
     servo_offset: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 8.0, 2.0, 5.0]                      # degrees — servo mounting offset
     servo_channel: [14, 10, 2, 6, 13, 9, 1, 5, 12, 8, 0, 4]                                           # which plug on the board each servo uses
-    servo_direction: [1, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]                                   # +1 = keep sign, -1 = flip sign
+    servo_direction: [1, 1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1]                                   # +1 = keep sign, -1 = flip sign
 
     # IMU covariance matrices (9 elements each, row-major).
     # Orientation covariance = [-1] means orientation not estimated.
