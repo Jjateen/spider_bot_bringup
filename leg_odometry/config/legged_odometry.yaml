@@ -7,18 +7,18 @@
 /**:
   ros__parameters:
     joint_names:
-      - "Revolute_110"   # hip leg1 (FL)
-      - "Revolute_113"   # hip leg2 (FR)
-      - "Revolute_116"   # hip leg3 (HL)
-      - "Revolute_119"   # hip leg4 (HR)
-      - "Revolute_111"   # knee leg1
-      - "Revolute_114"   # knee leg2
-      - "Revolute_117"   # knee leg3
-      - "Revolute_120"   # knee leg4
-      - "Revolute_112"   # ankle leg1
-      - "Revolute_115"   # ankle leg2
-      - "Revolute_118"   # ankle leg3
-      - "Revolute_121"   # ankle leg4
+      - "Revolute_110"   # hip leg4 (back-left)
+      - "Revolute_113"   # hip leg1 (front-left)
+      - "Revolute_116"   # hip leg2 (front-right)
+      - "Revolute_119"   # hip leg3 (back-right)
+      - "Revolute_111"   # knee leg4 (back-left)
+      - "Revolute_114"   # knee leg1 (front-left)
+      - "Revolute_117"   # knee leg2 (front-right)
+      - "Revolute_120"   # knee leg3 (back-right)
+      - "Revolute_112"   # ankle leg4 (back-left)
+      - "Revolute_115"   # ankle leg1 (front-left)
+      - "Revolute_118"   # ankle leg2 (front-right)
+      - "Revolute_121"   # ankle leg3 (back-right)
     default_joint_pos:
       [0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 1.82, 1.82, 1.82, 1.82]
     odom_frame: "odom"
