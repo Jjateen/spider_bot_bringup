@@ -73,6 +73,23 @@ Arduino UNO Q (4 GB, ROS 2 Jazzy, **arm64**) · 3D-printed frame · 12× MG995 s
 1× YDLidar X2 · 1× MPU6050 IMU. (Hardware bringup is future work; the arm64 CI leg
 exists because the deploy target is arm64.)
 
+### Physical Params
+| Joint | lower limit | upper_limit | servo center| policy map | channel | direcetion |
+|-----|-----|-----|-----|-----|-----|-----|
+| arm_a_2_1 | 180 | 50 | 90 | 0 | 2 | -1 |
+| arm_b_2_1 | 50 | 180 | 100| 0 | 1 | -1 |
+| arm_c_2_1 | 150 | 0 | 92 | 1.57 | 0 | -1 |
+| arm_a_1_1 | 30 | 150 | 90| 0 | 10 | +1 |
+| arm_b_1_1 | 140 | 0 | 90 | 0 | 9 | -1 |
+| arm_c_1_1 | 180 | 40 | 98| 1.57 | 8 | -1 |
+| arm_a_3_1 | 140 | 0 | 90 | 0 | 6 | -1 |
+| arm_b_3_1 | 50 | 180 | 100| 0 | 5 | -1 |
+| arm_c_3_1 | 0 | 150 | 95 | 1.57 | 4 | -1 |
+| arm_a_4_1 | 45 | 180 | 90 | 0 | 14 | +1 |
+| arm_b_4_1 | 135 | 0 |  90 | 0 | 13 | -1 |
+| arm_c_4_1 | 40 | 180 | 90 | 1.57 | 12 | -1 |
+
+
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE).
