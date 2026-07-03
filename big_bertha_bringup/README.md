@@ -40,6 +40,64 @@ From [PLAN.md §11](../PLAN.md). All runtime nodes are C++.
 > arm64 CI is a hard gate, not a nicety: the deploy target is the arm64 UNO Q,
 > so a green arm64 build proves the stack runs on the real compute module.
 
+## Servo Calibration
+
+The 12 MG995 servos (4 legs × 3 joints) are driven by a PCA9685 PWM controller over I2C. The `hardware_bridge_node` converts policy joint targets (radians) → servo angles (degrees) → PWM pulses using per-joint calibration parameters from `config/hardware_bridge.yaml`.
+
+### Conversion pipeline
+
+```
+policy joint target (rad)
+  → servo_angle(°) = (target_rad × 180/π − policy_center_rad × 180/π) × direction + offset + 90
+  → PWM = round(angle/180 × (pwm_max − pwm_min) + pwm_min)
+  → PCA9685 12-bit duty cycle (0–4095)
+```
+
+### Center mapping
+
+Each servo has a **servo center** — the physically measured angle (in degrees) where the servo horn is centered. This maps to the **policy center** — the radian value the policy outputs when the servo should be at its center.
+
+| Quantity | Relationship |
+|---|---|
+| Servo center (°) | `offset + 90` |
+| Policy center (rad) | `policy_center` from `config/hardware_bridge.yaml` |
+| At `target = policy_center` | `servo_angle = offset + 90 = servo_center` |
+| Offset (°) | `offset = servo_center − 90` — compensates for mounting imperfections |
+
+### Direction convention
+
+`servo_direction` encodes which way the servo moves relative to the policy command:
+
+| direction | policy rad ↓ | policy rad ↑ |
+|---|---|---|
+| **−1** | Servo moves toward **upper** physical limit | Servo moves toward **lower** physical limit |
+| **+1** | Servo moves toward **lower** physical limit | Servo moves toward **upper** physical limit |
+
+The physical range used for clamping is always `[min(lower, upper), max(lower, upper)]`.
+
+### Calibration table
+
+Values are listed in **policy output order** (Isaac articulation: all hips → all knees → all ankles).
+
+| # | Revolute | arm name | range min–max (°) | servo center (°) | policy center (rad) | offset (°) | direction | PCA9685 ch |
+|---|---|---|---|---|---|---|---|---|
+| 0 | 110 | arm_a_4_1 | 45–180 | 90 | 0.00 | 0 | +1 | 14 |
+| 1 | 113 | arm_a_1_1 | 30–150 | 90 | 0.00 | 0 | +1 | 10 |
+| 2 | 116 | arm_a_2_1 | 50–180 | 90 | 0.00 | 0 | +1 | 2 |
+| 3 | 119 | arm_a_3_1 | 0–140 | 90 | 0.00 | 0 | +1 | 6 |
+| 4 | 111 | arm_b_4_1 | 0–135 | 90 | 0.00 | 0 | +1 | 13 |
+| 5 | 114 | arm_b_1_1 | 0–140 | 90 | 0.00 | 0 | +1 | 9 |
+| 6 | 117 | arm_b_2_1 | 50–180 | 100 | 0.00 | 10 | −1 | 1 |
+| 7 | 120 | arm_b_3_1 | 50–180 | 100 | 0.00 | 10 | −1 | 5 |
+| 8 | 112 | arm_c_4_1 | 40–180 | 90 | 1.57 | 0 | −1 | 12 |
+| 9 | 115 | arm_c_1_1 | 40–180 | 98 | 1.57 | 8 | −1 | 8 |
+| 10 | 118 | arm_c_2_1 | 0–150 | 92 | 1.57 | 2 | +1 | 0 |
+| 11 | 121 | arm_c_3_1 | 0–150 | 95 | 1.57 | 5 | +1 | 4 |
+
+### Verification
+
+Use `scripts/servo_diag.py` to test PCA9685 PWM output with readback verification. The single-source-of-truth for all calibration values is `config/hardware_bridge.yaml`.
+
 ## Firmware structure
 
 ```

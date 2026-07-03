@@ -169,9 +169,9 @@ public:
     warmup_sec_ = declare_parameter<double>("warmup_sec", 3.0);
     policy_decimation_ = std::max(1, static_cast<int>(std::round(pd_rate_ / control_rate_)));
     joint_names_ = declare_parameter<std::vector<std::string>>(
-      "joint_names", {"Revolute_110", "Revolute_111", "Revolute_112", "Revolute_113",
-                      "Revolute_114", "Revolute_115", "Revolute_116", "Revolute_117",
-                      "Revolute_118", "Revolute_119", "Revolute_120", "Revolute_121"});
+      "joint_names", {"Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119",
+                      "Revolute_111", "Revolute_114", "Revolute_117", "Revolute_120",
+                      "Revolute_112", "Revolute_115", "Revolute_118", "Revolute_121"});
     auto default_pose = declare_parameter<std::vector<double>>(
       "default_joint_pos", {0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 1.82, 1.82, 1.82, 1.82});
 
