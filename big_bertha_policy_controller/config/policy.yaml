@@ -40,7 +40,9 @@
     # Nav2's commanded yaw rate into a heading setpoint and feeds the policy a
     # corrective yaw = wz + heading_kp*(desired_yaw - odom_yaw).
     heading_hold: true
-    heading_kp: 2.0          # P gain on the (weak) policy yaw command
+    heading_kp: 0.5          # P gain on the (weak) policy yaw command.
+                             # Reduced from 2.0 to avoid combined overshoot with
+                             # hip-bias steering and lateral yaw bias.
     heading_max: 0.5         # final yaw command clamp (trained |yaw| <= 0.6)
     heading_err_clamp: 0.4   # anti-windup: max setpoint lead/lag vs measured
     fwd_slow_err: 0.5        # |err| (rad) for forward throttle (off below)
@@ -48,9 +50,11 @@
     # Hip-bias steering: calibration showed a uniform NEGATIVE hip bias cancels
     # the systematic right drift (b=-0.25 took yaw -0.086 -> +0.002), so all
     # four signs are -1 and steer_cmd = steer_kp*heading_err drives it.
-    steer_kp: 1.8            # rad of hip bias per rad of heading error
-    steer_ki: 0.8            # integral: removes steady heading offset vs drift
+    steer_kp: 1.2            # rad of hip bias per rad of heading error.
+                             # Reduced from 1.8 to lower combined loop gain.
+    steer_ki: 0.4            # integral: reduced from 0.8 to prevent windup overshoot
     steer_max: 0.26          # max |hip bias| (b=-0.24 ~ fully cancels drift)
+    steer_rate_limit: 0.01   # rad/step at 50 Hz (0.5 rad/s) — prevents sudden hip jerks
     hip_steer_sign: [-1.0, -1.0, -1.0, -1.0]
     # Lateral-hold outer loop: closed-loop on the perpendicular offset from the
     # line through the latched start pose along the heading setpoint. Commands
@@ -71,10 +75,9 @@
     # command) pulls the robot back to the line. This is the real cure for the
     # systematic DART south-crab -- it steers the gait's forward walk into the
     # drift ("crab into the wind") and catches it before the robot pins on a wall.
-    lateral_yaw_kp: 0.4     # rad of heading bias per metre of lateral offset.
-                            # Moderate: kp 0.6 over-steered north into obstacles;
-                            # this climbs the robot off the wall and reaches B
-                            # (Nav2 goal success) without the unstable overshoot.
+    lateral_yaw_kp: 0.2     # rad of heading bias per metre of lateral offset.
+                            # Reduced from 0.4 to lower combined loop aggressiveness
+                            # with heading_kp and steer_kp acting on the same error.
     lateral_yaw_max: 0.3    # max |cross-track heading bias| (rad, ~17 deg)
     # Gate the gait off below this forward command so the robot stands still
     # when idle (the policy walks forward even at vx=0, so without this it

@@ -17,6 +17,15 @@
     # Joint angle limit in radians — final safety clamp before PWM conversion.
     joint_limit: 3.14159
 
+    # Rate limiter: per-step change clamp (radians) — prevents commanding speeds
+    # the MG995 servos cannot physically track. MG995 max = 6.54 rad/s. At 200 Hz
+    # (5ms step): 6.54 × 0.005 = 0.0327 rad/step. Default 0.03 for safety margin.
+    rate_limit_rad: 0.03
+
+    # EWMA smoothing alpha on outbound position targets. 0 = no smoothing (passthrough),
+    # 1 = instant step, e.g. 0.3 filters 50 Hz policy steps into smooth servo commands.
+    smoothing_alpha: 0.3
+
     # Policy center in radians — the policy output value at which the servo is at its
     # physical center (0 rad for hips/knees, π/2 rad for ankles). At this value the
     # servo sits at offset+90 degrees.

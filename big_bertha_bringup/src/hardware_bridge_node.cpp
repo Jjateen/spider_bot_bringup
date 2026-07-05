@@ -104,9 +104,13 @@ public:
 
     // Rate limiter: per-step change clamp (radians) — prevents the policy
     // from commanding speeds the MG995 servos cannot physically track.
-    // MG995 max = 375 °/s = 6.54 rad/s. At 50 Hz (20ms step):
-    //   6.54 × 0.02 = 0.131 rad/step. We use 0.12 for a 10% safety margin.
-    rate_limit_rad_ = declare_parameter<double>("rate_limit_rad", 0.12);
+    // MG995 max = 375 °/s = 6.54 rad/s. At 200 Hz (5ms step):
+    //   6.54 × 0.005 = 0.0327 rad/step. We use 0.03 for a 10% safety margin.
+    rate_limit_rad_ = declare_parameter<double>("rate_limit_rad", 0.03);
+
+    // EWMA smoothing alpha on outbound position commands. Filters 50 Hz policy
+    // steps into smooth servo trajectories. 0 = no smoothing, 1 = instant step.
+    smoothing_alpha_ = declare_parameter<double>("smoothing_alpha", 0.3);
 
     // ── TCP connects ──────────────────────────────────────────────────
     connect_servo();
@@ -191,16 +195,30 @@ private:
       return;
     }
 
+    // EWMA smoothing: filter 50 Hz policy steps into smooth trajectories.
+    // Applied before rate limiting so the rate limiter bounds any residual
+    // overshoot (e.g., on first command or after a large setpoint change).
+    std::vector<double> smoothed(12);
+    if (first_cmd_) {
+      for (size_t i = 0; i < 12; ++i) {
+        smoothed[i] = msg->data[i];
+      }
+    } else {
+      for (size_t i = 0; i < 12; ++i) {
+        smoothed[i] = smoothing_alpha_ * msg->data[i] + (1.0 - smoothing_alpha_) * smoothed_targets_[i];
+      }
+    }
+    smoothed_targets_ = smoothed;
+
     // Rate-limit each joint target so servo tracking error never accumulates.
-    // On the first command just copy targets (nothing to limit from yet).
     std::vector<double> targets(12);
     if (first_cmd_) {
-      for (size_t i = 0; i < 12; ++i) targets[i] = msg->data[i];
+      for (size_t i = 0; i < 12; ++i) targets[i] = smoothed[i];
       first_cmd_ = false;
     } else {
       for (size_t i = 0; i < 12; ++i) {
         targets[i] = std::clamp(
-          msg->data[i],
+          smoothed[i],
           last_targets_[i] - rate_limit_rad_,
           last_targets_[i] + rate_limit_rad_);
       }
@@ -664,9 +682,11 @@ private:
   std::chrono::steady_clock::time_point cal_finish_time_;
   double drift_angle_x_{0.0}, drift_angle_y_{0.0}, drift_angle_z_{0.0};
 
-  // ── Rate limiter ───────────────────────────────────────────────────
+  // ── Rate limiter + smoother ───────────────────────────────────────
   double rate_limit_rad_;
+  double smoothing_alpha_;
   std::vector<double> last_targets_{12, 0.0};
+  std::vector<double> smoothed_targets_{12, 0.0};
   bool first_cmd_{true};
 
   // ── Threading ───────────────────────────────────────────────────────
