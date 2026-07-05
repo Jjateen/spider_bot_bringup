@@ -84,6 +84,7 @@ public:
     steer_kp_ = declare_parameter<double>("steer_kp", 0.6);
     steer_ki_ = declare_parameter<double>("steer_ki", 0.5);
     steer_max_ = declare_parameter<double>("steer_max", 0.25);
+    steer_rate_limit_ = declare_parameter<double>("steer_rate_limit", 0.01);
     hip_steer_sign_ =
       declare_parameter<std::vector<double>>("hip_steer_sign", {1.0, 1.0, 1.0, 1.0});
     hip_steer_sign_.resize(4, 0.0);
@@ -624,6 +625,7 @@ private:
   bool heading_init_{false};
   bool station_keep_{true};   // hold heading while gated/idle (anti pre-goal creep)
   bool prev_idle_{false};     // prev-step idle state, for the stop-transition latch
+  bool prev_moving_{false};   // prev-step moving state, for steer_i_ reset on gait start
   bool position_hold_{true};  // return to the stop point when idle (anti post-goal wander)
   bool prev_stale_{false};    // prev-step stale state, for the hold-point latch
   double hold_x_{0.0};        // latched stop point for position-hold
@@ -645,6 +647,8 @@ private:
   double steer_ki_{0.5};
   double steer_i_{0.0};
   double steer_max_{0.25};
+  double steer_rate_limit_{0.01};
+  double last_steer_cmd_{0.0};
   std::vector<double> hip_steer_sign_{1.0, 1.0, 1.0, 1.0};
   double steer_cmd_{0.0};
   std::array<double, 4> debug_hip_bias_{};
