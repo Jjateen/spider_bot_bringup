@@ -14,7 +14,6 @@ import argparse
 import json
 import socket
 import sys
-import time
 
 PCA9685_CHANNELS = [0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14]
 LEG_LABELS = ["FL0", "FL1", "FL2", "FR0", "FR1", "FR2",
@@ -61,14 +60,14 @@ def print_status(status):
         print(f"    Last fail channel:   {last_ch}")
         print(f"    Last fail code:      {last_code} ({code_str.get(last_code, 'UNKNOWN')})")
     else:
-        print(f"    Last fail:           none")
+        print("    Last fail:           none")
     print(f"    Bridge RPC last len: {status.get('set_servo_last_len', 0)} chars")
     print(f"    Bridge RPC last idx: {status.get('set_servo_last_idx', 0)} (12 = clean)")
     readback = status.get('pwm_readback_ch0', -1)
     if readback >= 0:
         print(f"    Ch0 readback:        {readback}")
     else:
-        print(f"    Ch0 readback:        FAIL (I2C read error)")
+        print("    Ch0 readback:        FAIL (I2C read error)")
 
 
 def print_report(report):
