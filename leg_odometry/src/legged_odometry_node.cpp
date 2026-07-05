@@ -29,11 +29,14 @@ public:
     publish_tf_ = declare_parameter<bool>("publish_tf", true);
     velocity_source_ = declare_parameter<std::string>("velocity_source", "imu_dead_reckon");
     drift_damping_ = declare_parameter<double>("drift_damping", 0.98);
+    servo_tau_ = declare_parameter<double>("servo_tau", 0.06);
 
-    RCLCPP_INFO(get_logger(), "velocity source: %s", velocity_source_.c_str());
+    RCLCPP_INFO(
+      get_logger(), "velocity source: %s, servo_tau=%.3f", velocity_source_.c_str(), servo_tau_);
 
     last_cmd_positions_ = default_joint_pos_;
     last_joint_positions_ = default_joint_pos_;
+    filtered_positions_ = default_joint_pos_;
 
     cmd_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       "/position_controller/commands", rclcpp::QoS(1),
@@ -71,20 +74,31 @@ private:
       dt = std::chrono::duration<double>(now_steady - last_cmd_time_).count();
     }
 
+    // 1st-order servo dynamics: EWMA filter simulates MG995's physical lag.
+    // alpha = 1 - exp(-dt / tau) where tau matches the servo's closed-loop
+    // response time (~0.06s for MG995 at 6.54 rad/s max speed). This breaks the
+    // positive-feedback loop caused by feeding commanded positions as "measured"
+    // joint state (see ISSUES.md #15).
+    const double alpha = (dt > 1e-6) ? (1.0 - std::exp(-dt / servo_tau_)) : 1.0;
+
     for (size_t i = 0; i < 12; ++i) {
-      double pos = msg->data[i];
-      js.position.push_back(pos);
+      double cmd_pos = msg->data[i];
+
+      // EWMA: blend commanded position toward filtered position
+      double filt_pos = alpha * cmd_pos + (1.0 - alpha) * filtered_positions_[i];
+      filtered_positions_[i] = filt_pos;
+      js.position.push_back(filt_pos);
 
       if (dt > 1e-6) {
-        double vel = (msg->data[i] - last_cmd_positions_[i]) / dt;
+        double vel = (filt_pos - last_joint_positions_[i]) / dt;
         js.velocity.push_back(vel);
         last_joint_velocities_[i] = vel;
       } else {
         js.velocity.push_back(0.0);
         last_joint_velocities_[i] = 0.0;
       }
-      last_cmd_positions_[i] = msg->data[i];
-      last_joint_positions_[i] = msg->data[i];
+      last_cmd_positions_[i] = cmd_pos;
+      last_joint_positions_[i] = filt_pos;
     }
     last_cmd_time_ = now_steady;
 
@@ -267,6 +281,8 @@ private:
   std::string velocity_source_;
   double drift_damping_;
 
+  double servo_tau_;
+  std::vector<double> filtered_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_cmd_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_joint_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_joint_velocities_{std::vector<double>(12, 0.0)};

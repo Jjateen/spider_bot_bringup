@@ -26,3 +26,7 @@
     publish_tf: true
     velocity_source: "imu_dead_reckon"
     drift_damping: 0.98
+    # Servo dynamics model: EWMA time constant (seconds) matching MG995 response.
+    # tau=0.06 limits filtered position rate to ~6.5 rad/s (servo's max speed),
+    # preventing the positive-feedback loop from synthetic joint states.
+    servo_tau: 0.06
