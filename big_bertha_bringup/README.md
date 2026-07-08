@@ -7,7 +7,7 @@ three-layer bridge between ROS 2 and the Arduino UNO Q hardware:
 |---|---|---|
 | **C++ ROS 2 node** | `src/hardware_bridge_node.cpp` | Subscribes to `/position_controller/commands` (12 joint targets), converts radians → PWM, sends JSON over TCP; background thread polls IMU, publishes `sensor_msgs/Imu` on `/imu` |
 | **Python TCP relay** | `firmware/hardware_bridge_app/python/main.py` | Runs on the UNO Q Linux side, bridges TCP ↔ Bridge RPC to the STM32U585 |
-| **STM32U585 firmware** | `firmware/hardware_bridge_app/sketch/sketch.ino` | I2C driver for PCA9685 (12-ch PWM, 50 Hz) and MPU9250 (6-axis IMU, SI units) |
+| **STM32U585 firmware** | `firmware/hardware_bridge_app/sketch/sketch.ino` | I2C driver for PCA9685 (12-ch PWM, 50 Hz) and MPU6050 (6-axis IMU, SI units) |
 
 The autonomy stack is hardware-agnostic: `state_estimation`, `mapping`,
 `localization`, and `planning` reuse the **same** configs as the sim, just with
@@ -24,11 +24,11 @@ From [PLAN.md §11](../PLAN.md). All runtime nodes are C++.
 | Structure | **3D-printed** frame + leg linkages | — | — |
 | Actuators | **MG995 servos** (4 legs × 3 joints) | 12 | `hardware_bridge_node` → TCP → Bridge RPC → PCA9685 → servos |
 | Lidar | **YDLidar X2** (2D) | 1 | `ydlidar_ros2_driver` → `/scan` |
-| IMU | **MPU9250** | 1 | STM32U585 firmware (I2C) → Bridge RPC → TCP → `hardware_bridge_node` → `/imu` |
+| IMU | **MPU6050** | 1 | STM32U585 firmware (I2C) → Bridge RPC → TCP → `hardware_bridge_node` → `/imu` |
 
 ## Sim → hardware mapping (per module)
 
-- **simulation** → real sensors: the YDLidar X2 driver + the MPU9250 driver
+- **simulation** → real sensors: the YDLidar X2 driver + the MPU6050 driver
   replace `ros_gz_bridge`.
 - **locomotion** → the **same** `policy.onnx` runs on the UNO Q (arm64 ONNX
   Runtime); `/position_controller/commands` is consumed by the MG995 servo
@@ -109,7 +109,7 @@ firmware/hardware_bridge_app/
 │   ├── main.py                 # TCP relay implementation
 │   └── requirements.txt        # Python deps (stdlib only)
 ├── sketch/
-│   ├── sketch.ino              # STM32U585 firmware (PCA9685 + MPU9250)
+│   ├── sketch.ino              # STM32U585 firmware (PCA9685 + MPU6050)
 │   └── sketch.yaml             # Platform config (arduino:zephyr:unoq)
 └── README.md                   # Upload & run instructions
 ```

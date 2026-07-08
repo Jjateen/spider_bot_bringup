@@ -17,7 +17,7 @@ Launch the Big Bertha hardware bridge node.
 
 Subscribes to ``/position_controller/commands`` (12 joint targets in radians),
 converts them to PWM values, and forwards them over UART to the STM32U585
-co-processor which drives the PCA9685 servo driver and reads the MPU9250 IMU.
+co-processor which drives the PCA9685 servo driver and reads the MPU6050 IMU.
 Incoming IMU data is published on ``/imu`` as ``sensor_msgs/Imu``.
 
 Use ``use_sim_time:=false`` (default) for real hardware.
