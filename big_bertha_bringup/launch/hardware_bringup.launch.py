@@ -48,7 +48,7 @@ def generate_launch_description():
 
         Node(
             package='big_bertha_bringup',
-            executable='hw_bridge',
+            executable='hardware_bridge_node',
             name='hardware_bridge',
             output='screen',
             parameters=[

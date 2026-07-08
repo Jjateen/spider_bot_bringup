@@ -84,11 +84,11 @@ def generate_launch_description():
         },
     )
 
-    # ── 2. Hardware bridge (router socket -> STM32 -> servos + IMU) ──
+    # ── 2. Hardware bridge (TCP -> STM32 -> servos + IMU) ─────────────
     bridge_params = os.path.join(bringup_pkg, 'config', 'hardware_bridge.yaml')
     bridge = Node(
         package='big_bertha_bringup',
-        executable='hw_bridge',
+        executable='hardware_bridge_node',
         name='hardware_bridge',
         output='screen',
         parameters=[
