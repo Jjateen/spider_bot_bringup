@@ -13,7 +13,6 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
-# ── Legacy node (TCP → Python relay) ──────────────────────────────────
 add_executable(hardware_bridge_node src/hardware_bridge_node.cpp)
 target_include_directories(hardware_bridge_node PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
@@ -22,22 +21,6 @@ ament_target_dependencies(hardware_bridge_node
 
 install(TARGETS hardware_bridge_node
   DESTINATION lib/${PROJECT_NAME})
-
-# ── hw_bridge — direct router socket node (replaces the above) ─────────
-add_executable(hw_bridge src/hw_bridge.cpp)
-target_include_directories(hw_bridge PRIVATE
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
-ament_target_dependencies(hw_bridge
-  rclcpp std_msgs sensor_msgs)
-
-install(TARGETS hw_bridge
-  DESTINATION lib/${PROJECT_NAME})
-
-# ── PoC benchmark tool (standalone, no ROS deps) ──────────────────────
-add_executable(bridge_poc EXCLUDE_FROM_ALL tools/bridge_poc.cpp)
-target_include_directories(bridge_poc PRIVATE
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>)
-target_link_libraries(bridge_poc pthread)
 install(PROGRAMS firmware/web_control/server.py
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY firmware/web_control/static/
