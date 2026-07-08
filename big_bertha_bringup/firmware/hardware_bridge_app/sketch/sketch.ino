@@ -205,6 +205,15 @@ static bool pca9685_verify_init()
 }
 
 // ── MPU9250 ──────────────────────────────────────────────────────────
+// Gyro offset registers (16-bit signed, same LSB as output)
+static const uint8_t MPU9250_XG_OFFS_USR_H = 0x13;
+static const uint8_t MPU9250_YG_OFFS_USR_H = 0x15;
+static const uint8_t MPU9250_ZG_OFFS_USR_H = 0x17;
+// Accel offset registers (16-bit signed, 1 LSB ≈ 0.98 mg at ±2g)
+static const uint8_t MPU9250_XA_OFFS_H = 0x77;
+static const uint8_t MPU9250_YA_OFFS_H = 0x7A;
+static const uint8_t MPU9250_ZA_OFFS_H = 0x7D;
+
 static bool mpu9250_init()
 {
   Wire.beginTransmission(MPU9250_ADDR);
@@ -212,6 +221,55 @@ static bool mpu9250_init()
   i2c_write_byte(MPU9250_ADDR, 0x6B, 0x00);
   delay(100);
   return true;
+}
+
+// Calibrate gyro and accel offsets using hardware offset registers.
+// Robot must be stationary during calibration (~1 second).
+static void mpu9250_calibrate()
+{
+  const int SAMPLES = 200;
+  int32_t ax_sum = 0, ay_sum = 0, az_sum = 0;
+  int32_t gx_sum = 0, gy_sum = 0, gz_sum = 0;
+
+  delay(50);
+  for (int i = 0; i < SAMPLES; i++) {
+    uint8_t raw[14] = {0};
+    if (i2c_read_bytes(MPU9250_ADDR, 0x3B, raw, 14)) {
+      ax_sum += (int16_t)((raw[0] << 8) | raw[1]);
+      ay_sum += (int16_t)((raw[2] << 8) | raw[3]);
+      az_sum += (int16_t)((raw[4] << 8) | raw[5]);
+      gx_sum += (int16_t)((raw[8] << 8) | raw[9]);
+      gy_sum += (int16_t)((raw[10] << 8) | raw[11]);
+      gz_sum += (int16_t)((raw[12] << 8) | raw[13]);
+    }
+    delay(5);
+  }
+
+  // Gyro: offset is subtracted from output, same LSB scale (131 LSB/°/s)
+  int16_t gx_off = -(gx_sum / SAMPLES);
+  int16_t gy_off = -(gy_sum / SAMPLES);
+  int16_t gz_off = -(gz_sum / SAMPLES);
+  i2c_write_byte(MPU9250_ADDR, MPU9250_XG_OFFS_USR_H,     gx_off >> 8);
+  i2c_write_byte(MPU9250_ADDR, MPU9250_XG_OFFS_USR_H + 1, gx_off & 0xFF);
+  i2c_write_byte(MPU9250_ADDR, MPU9250_YG_OFFS_USR_H,     gy_off >> 8);
+  i2c_write_byte(MPU9250_ADDR, MPU9250_YG_OFFS_USR_H + 1, gy_off & 0xFF);
+  i2c_write_byte(MPU9250_ADDR, MPU9250_ZG_OFFS_USR_H,     gz_off >> 8);
+  i2c_write_byte(MPU9250_ADDR, MPU9250_ZG_OFFS_USR_H + 1, gz_off & 0xFF);
+
+  // Accel: stationary → Z reads +1g (+16384 LSB at ±2g), X/Y ≈ 0
+  int16_t ax_bias = ax_sum / SAMPLES;
+  int16_t ay_bias = ay_sum / SAMPLES;
+  int16_t az_bias = (az_sum / SAMPLES) - 16384;
+  // Accel offset LSB = 0.98 mg ≈ 16 raw LSB at ±2g
+  int16_t ax_off = -(ax_bias / 16);
+  int16_t ay_off = -(ay_bias / 16);
+  int16_t az_off = -(az_bias / 16);
+  i2c_write_byte(MPU9250_ADDR, MPU9250_XA_OFFS_H,     ax_off >> 8);
+  i2c_write_byte(MPU9250_ADDR, MPU9250_XA_OFFS_H + 1, ax_off & 0xFF);
+  i2c_write_byte(MPU9250_ADDR, MPU9250_YA_OFFS_H,     ay_off >> 8);
+  i2c_write_byte(MPU9250_ADDR, MPU9250_YA_OFFS_H + 1, ay_off & 0xFF);
+  i2c_write_byte(MPU9250_ADDR, MPU9250_ZA_OFFS_H,     az_off >> 8);
+  i2c_write_byte(MPU9250_ADDR, MPU9250_ZA_OFFS_H + 1, az_off & 0xFF);
 }
 
 static bool mpu9250_read(
@@ -408,6 +466,7 @@ void setup()
 
   g_i2c_scan = i2c_scan_devices();
   g_mpu9250_present = mpu9250_init();
+  if (g_mpu9250_present) mpu9250_calibrate();
   g_ai_ok = pca9685_init() && pca9685_verify_init();
 
   Bridge.begin(460800);
