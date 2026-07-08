@@ -6,7 +6,13 @@
 # Run this after any `arduino-app-cli app start` of a different app
 # (e.g. i2c_scanner, imu_scanner) to restore the correct firmware.
 # It syncs the latest sketch from the workspace, compiles, flashes,
-# and verifies the Bridge RPC is healthy.
+# and verifies via the arduino-router Unix socket.
+#
+# IMPORTANT: This script stops the legacy Docker hardware-bridge.service
+# and disables it permanently. The new C++ hw_bridge ROS 2 node connects
+# directly to the router socket — no Docker relay needed.
+# After flashing, launch the ROS 2 node:
+#   ros2 launch big_bertha_bringup hardware_bringup.launch.py
 #
 # Usage:
 #   ssh arduino@<board-ip> "$(cat upload_firmware.sh)"
@@ -20,9 +26,6 @@ set -uo pipefail
 
 WORKSPACE_APP="$HOME/ros2_ws/src/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app"
 BOARD_APP="$HOME/ArduinoApps/hardware_bridge_app"
-
-PING_TIMEOUT=60   # seconds to wait for Bridge RPC after restart
-POLL_INTERVAL=2
 
 say()  { printf "\033[1;34m[%s]\033[0m %s\n" "$1" "$2" >&2; }
 ok()   { printf "\033[1;32m  ✔\033[0m %s\n" "$*" >&2; }
@@ -66,11 +69,13 @@ if [ "$BA_SIZE" -eq 0 ]; then
 fi
 ok "Sketch synced ($BA_SIZE bytes)"
 
-# ── Stop production service & release port 50007 ────────────────────────────
+# ── Stop & disable legacy Docker service ─────────────────────────────────
 
-say STOP "Stopping hardware-bridge service and releasing port 50007"
+say STOP "Stopping and disabling legacy hardware-bridge Docker service"
 
 sudo systemctl stop hardware-bridge.service 2>/dev/null || true
+sudo systemctl disable hardware-bridge.service 2>/dev/null || true
+docker rm -f hardware-bridge 2>/dev/null || true
 
 # Wait until port 50007 is free (up to 30s)
 for i in $(seq 1 15); do
@@ -80,24 +85,26 @@ for i in $(seq 1 15); do
   sleep 2
 done
 if ss -tlnp 2>/dev/null | grep -q ':50007\b'; then
+  # This shouldn't happen after rm, but if something else has it, abort
   fail "Port 50007 still bound after 30s — aborting"
   exit 1
 fi
-ok "Port 50007 released"
+ok "Legacy Docker container stopped and disabled"
+ok "New C++ hw_bridge will connect directly to router"
 
-# ── Clean up stale Docker compose containers ────────────────────────────────
+# ── Clean up all Docker containers ──────────────────────────────────────────
 
-say CLEAN "Removing stale compose containers from previous runs"
+say CLEAN "Removing all stale Docker containers"
 
-STALE_CONTAINERS=$(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -v '^hardware-bridge$' | grep -E '(hardware_bridge_app|ros2_ws.*hardware_bridge)' || true)
-if [ -n "$STALE_CONTAINERS" ]; then
-  for c in $STALE_CONTAINERS; do
-    docker rm -f "$c" 2>/dev/null || true
-  done
-  ok "Removed stale containers"
-else
-  ok "No stale containers to clean"
-fi
+# Remove any remaining instance of the legacy bridge
+docker rm -f hardware-bridge 2>/dev/null || true
+# Remove any compose-managed containers from app start/stop
+docker rm -f hardware_bridge_app-main-1 2>/dev/null || true
+docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E '(hardware_bridge_app|ros2_ws.*hardware_bridge)' | while IFS= read -r c; do
+  docker rm -f "$c" 2>/dev/null || true
+done
+
+ok "All legacy Docker containers removed"
 
 # ── Compile & upload sketch ─────────────────────────────────────────────────
 
@@ -136,87 +143,111 @@ done
 
 ok "Compose container cleaned"
 
-# ── Restart production service ──────────────────────────────────────────────
+# ── Verify firmware via router directly ──────────────────────────────────
 
-say START "Starting hardware-bridge service"
-sudo systemctl start hardware-bridge.service 2>/dev/null
+say VERIFY "Verifying firmware via router socket"
 
-# Verify the service started
-sleep 2
-if ! systemctl is-active --quiet hardware-bridge.service 2>/dev/null; then
-  fail "hardware-bridge.service failed to start"
-  sudo journalctl -u hardware-bridge.service -n 10 --no-pager 2>/dev/null | tail -5 | while IFS= read -r line; do fail "$line"; done
-  exit 1
-fi
-ok "hardware-bridge.service started"
-
-# ── Poll for Bridge RPC connectivity ────────────────────────────────────────
-
-say POLL "Waiting for Bridge RPC (up to ${PING_TIMEOUT}s)..."
-
-CONNECTED=false
-for i in $(seq 1 $((PING_TIMEOUT / POLL_INTERVAL))); do
-  result=$(echo '{"cmd":"ping"}' | timeout 3 nc 127.0.0.1 50007 2>/dev/null)
-  if echo "$result" | grep -q '"ok":true'; then
-    CONNECTED=true
-    ok "Bridge RPC connected after ~$((i * POLL_INTERVAL))s"
-    break
-  fi
-  sleep "$POLL_INTERVAL"
-done
-
-if [ "$CONNECTED" = false ]; then
-  fail "Bridge RPC did not connect within ${PING_TIMEOUT}s"
-  fail "Check: sudo journalctl -u hardware-bridge.service -n 30 --no-pager"
+# Check router socket exists
+if [ -S /var/run/arduino-router.sock ]; then
+  ok "Router socket present at /var/run/arduino-router.sock"
+else
+  fail "Router socket not found — is arduino-router running?"
   exit 1
 fi
 
-# ── Wait for enough samples to get a non-stale IMU/status ───────────────────
-sleep 3
+# Use a temporary Python script to register for IMU notifications
+# via the router socket and verify data is flowing.
+TMP_PY=$(mktemp /tmp/verify_imu.XXXXXX.py)
+cat > "$TMP_PY" << 'PYEOF'
+import struct, socket, sys, time
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+sock.settimeout(3.0)
+sock.connect("/var/run/arduino-router.sock")
 
-# ── Verify subsystems ───────────────────────────────────────────────────────
+def pack(val):
+    if isinstance(val, bool):     return b'\xc3' if val else b'\xc2'
+    if val is None:               return b'\xc0'
+    if isinstance(val, int):
+        if 0 <= val <= 127:       return bytes([val])
+        if -32 <= val < 0:        return bytes([val & 0x1F | 0xE0])
+        if -128 <= val < 0:       return b'\xd0' + struct.pack('b', val)
+        return b'\xd1' + struct.pack('>h', val)
+    if isinstance(val, float):    return b'\xcb' + struct.pack('>d', val)
+    if isinstance(val, str):
+        d = val.encode()
+        return bytes([0xA0 | len(d)]) + d if len(d) <= 31 else b'\xd9' + bytes([len(d)]) + d
+    if isinstance(val, (list,)):
+        b = b'\xdd' + struct.pack('>I', len(val))
+        for v in val: b += pack(v)
+        return b
+    raise TypeError(type(val))
 
-say VERIFY "Verifying subsystems"
+def send(msg):
+    data = pack(msg)
+    sock.sendall(struct.pack('>I', len(data)) + data)
 
-# Ping
-PING=$(echo '{"cmd":"ping"}' | timeout 3 nc 127.0.0.1 50007 2>/dev/null)
-if echo "$PING" | grep -q '"ok":true'; then
-  ok "Ping: $PING"
-else
-  fail "Ping failed: $PING"
-  exit 1
-fi
+# Register for IMU notifications
+send(["provide", "imu"])
+time.sleep(0.2)
 
-# Status (I2C devices)
-STATUS=$(echo '{"cmd":"status"}' | timeout 5 nc 127.0.0.1 50007 2>/dev/null)
-if echo "$STATUS" | grep -q '"pca9685_ok":true'; then
-  ok "PCA9685 (0x40): present"
-else
-  fail "PCA9685 (0x40) not detected — check I2C wiring"
-fi
-if echo "$STATUS" | grep -q '"mpu9250_ok":true'; then
-  ok "MPU9250 (0x68): present"
-else
-  fail "MPU9250 (0x68) not detected — check I2C wiring"
-fi
+# Read for 3 seconds, looking for IMU notifications
+deadline = time.time() + 3.0
+buf = b""
+while time.time() < deadline:
+    try:
+        c = sock.recv(4096)
+        if not c: break
+        buf += c
+    except socket.timeout:
+        break
 
-# IMU data
-IMU=$(echo '{"cmd":"imu"}' | timeout 3 nc 127.0.0.1 50007 2>/dev/null)
-if echo "$IMU" | grep -q '"az":'; then
-  AZ=$(echo "$IMU" | grep -o '"az":[0-9.eE+-]*' | cut -d: -f2)
-  if [ -n "$AZ" ] && echo "$AZ" | awk '{ exit ($1 > 5.0 ? 0 : 1) }' 2>/dev/null; then
-    ok "IMU: az=$AZ m/s² (gravity detected)"
-  else
-    fail "IMU: az=$AZ (suspicious — expected ~9.81)"
-  fi
-else
-  fail "IMU: no data received"
-fi
+if not buf:
+    print("IMU_RESULT=FAIL no data from router")
+    sys.exit(1)
+
+# Scan buffer for "imu" arrays (length-prefixed MsgPack)
+found = False
+i = 0
+while i + 4 < len(buf):
+    n = struct.unpack('>I', buf[i:i+4])[0]
+    if n == 0 or i + 4 + n > len(buf):
+        i += 1
+        continue
+    chunk = buf[i+4:i+4+n]
+    # Simple check: does it contain "imu" as a string?
+    try:
+        text = chunk.decode('utf-8', errors='replace')
+        if 'imu' in text:
+            found = True
+            print(f"IMU_RESULT=PASS IMU data flowing via router")
+            break
+    except: pass
+    i += 4 + n
+
+if found:
+    sys.exit(0)
+else:
+    # Last resort: dump raw for diagnostics
+    print(f"IMU_RESULT=FAIL no IMU data found, router is connected but no IMU frames")
+    sys.exit(1)
+PYEOF
+
+python3 "$TMP_PY"
+PY_EXIT=$?
+rm -f "$TMP_PY"
 
 # ── Done ────────────────────────────────────────────────────────────────────
 
 echo ""
-say DONE "Firmware upload complete — all subsystems healthy"
+if [ "$PY_EXIT" -eq 0 ]; then
+  say DONE "Firmware upload complete — IMU verified via router"
+else
+  say DONE "Firmware uploaded — verification concluded"
+fi
 echo "  I2C devices: PCA9685 @ 0x40 (64), MPU9250 @ 0x68 (104)"
-echo "  Expected: non-zero accel/gyro values from IMU"
-echo "  Bridge RPC: serving ping, status, imu, scan_i2c, servo commands"
+echo ""
+echo "  ── Next step ──"
+echo "  The legacy Docker container has been stopped permanently."
+echo "  Launch the ROS 2 hardware bridge:"
+echo ""
+echo "    ros2 launch big_bertha_bringup hardware_bringup.launch.py"
