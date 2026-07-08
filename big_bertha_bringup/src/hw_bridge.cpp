@@ -26,7 +26,7 @@ public:
   {
     // ── Parameters ──────────────────────────────────────────────────
     router_socket_ = declare_parameter<std::string>(
-      "router_socket", "/var/run/arduino-router.sock");
+      "router_socket", "/run/arduino-router/rpc.sock");
 
     // IMU is mounted 180° rotated on the carrier board.
     // Negate horizontal axes to express in base_link frame.
