@@ -48,7 +48,7 @@ def print_header(title):
 def print_status(status):
     print("  Continuous Health:")
     print(f"    PCA9685 present:     {'YES' if status.get('pca9685_ok') else 'NO'}")
-    print(f"    MPU9250 present:     {'YES' if status.get('mpu9250_ok') else 'NO'}")
+    print(f"    MPU6050 present:     {'YES' if status.get('mpu6050_ok') else 'NO'}")
     print(f"    AI bit (MODE1):     {'OK' if status.get('ai_ok') else 'FAIL'}")
     print(f"    Servo calls:         {status.get('servo_calls', 0)}")
     print(f"    Write attempts:      {status.get('pwm_write_attempts', 0)}")

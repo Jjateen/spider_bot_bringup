@@ -7,7 +7,7 @@
     - a gz_ros2_control system plugin,
     - a 12-joint position ros2_control block,
     - a gz 2D lidar sensor on lidar_link (YDLidar X2),
-    - a gz IMU sensor on imu_link (MPU9250),
+    - a gz IMU sensor on imu_link (MPU6050),
     - gz friction/material surface properties.
 
   Joints Revolute_110 .. Revolute_121 (4 legs x 3 joints) are position
@@ -99,7 +99,7 @@
     </visual>
   </link>
 
-  <!-- IMU frame (MPU9250 on the body). No mesh; small massless frame. -->
+  <!-- IMU frame (MPU6050 on the body). No mesh; small massless frame. -->
   <link name="imu_link">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>

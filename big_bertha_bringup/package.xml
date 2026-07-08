@@ -5,9 +5,9 @@
   <version>0.1.0</version>
   <description>
     Hardware bringup for the physical Big Bertha quadruped (Arduino UNO Q,
-    MG995 servos, YDLidar X2, MPU9250). Contains the TCP bridge ROS 2 node
+    MG995 servos, YDLidar X2, MPU6050). Contains the TCP bridge ROS 2 node
     (hardware_bridge_node) and the UNO Q firmware app (sketch + Python relay)
-    that drives the PCA9685 servo controller and reads the MPU9250 IMU.
+    that drives the PCA9685 servo controller and reads the MPU6050 IMU.
     The autonomy stack (state_estimation, mapping, localization, planning) is
     hardware-agnostic and reused with use_sim_time:=false; only the sensor
     drivers and the servo bridge replace the simulation layer.

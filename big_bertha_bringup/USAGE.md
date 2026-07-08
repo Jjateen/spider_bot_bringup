@@ -36,7 +36,7 @@ Policy Controller        ──→  /position_controller/commands  (12 rad @ 50 
 │  Per-joint calibration table                 │
 │  Watchdog (150 ms → safe crouch)             │
 │  IMU @ 200 Hz with sample + micros()         │
-│  I2C: PCA9685 (servos) + MPU9250 (IMU)       │
+│  I2C: PCA9685 (servos) + MPU6050 (IMU)       │
 └──────────────────────────────────────────────┘
 ```
 
@@ -264,7 +264,7 @@ hardware_bridge_node.cpp → TCP :50007 → Python relay (Docker) → Bridge RPC
 ### No IMU data on `/imu`
 
 - Check the sketch is flashed and the STM32 is running (LED blink codes)
-- Check the MPU9250 I2C wiring and power (3.3 V)
+- Check the MPU6050 I2C wiring and power (3.3 V)
 - Run diagnostics: `ros2 topic echo /diagnostics` (if configured)
 - The firmware prints `"IMU reading all zeros"` on the serial monitor if
   the sensor is missing or I2C is broken.

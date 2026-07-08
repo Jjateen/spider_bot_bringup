@@ -10,7 +10,7 @@ from arduino.app_utils import App, Bridge
 import time
 
 BUS_LABELS = {0: "Wire (D20/D21)", 1: "Wire1 (Qwiic)", 2: "Wire2 (A4/A5)"}
-DEVICE_NAMES = {0x40: "PCA9685", 0x68: "MPU9250"}
+DEVICE_NAMES = {0x40: "PCA9685", 0x68: "MPU6050"}
 
 bus_scans = {}
 buses_done = set()

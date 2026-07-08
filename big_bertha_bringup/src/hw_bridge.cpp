@@ -57,7 +57,7 @@ public:
       msg.header.stamp = now();
       msg.header.frame_id = "imu_link";
 
-      // Raw MCU values (MPU9250 in its own frame)
+      // Raw MCU values (MPU6050 in its own frame)
       double ax = params[0], ay = params[1], az = params[2];
       double gx = params[3], gy = params[4], gz = params[5];
 

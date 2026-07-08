@@ -105,9 +105,9 @@ WantedBy=multi-user.target
 | `hardware-bridge.service` | `active (running)` since boot, `Restart=always` |
 | Port 50007 | Listening on `0.0.0.0:50007` |
 | `{"cmd":"ping"}` | `{"ok":true}` |
-| `{"cmd":"imu"}` | Returns real MPU9250 data with `lin_acc_*` fields |
-| `{"cmd":"status"}` | `pca9685_ok: true, mpu9250_ok: true` |
-| `{"cmd":"scan_i2c"}` | `{"addrs": [64, 104]}` (PCA9685 @ 0x40, MPU9250 @ 0x68) |
+| `{"cmd":"imu"}` | Returns real MPU6050 data with `lin_acc_*` fields |
+| `{"cmd":"status"}` | `pca9685_ok: true, mpu6050_ok: true` |
+| `{"cmd":"scan_i2c"}` | `{"addrs": [64, 104]}` (PCA9685 @ 0x40, MPU6050 @ 0x68) |
 | `{"cmd":"servo","pwms":[...]}` | `{"ok":true}` |
 | Docker container name | `hardware-bridge` (not `hardware_bridge_app-main-1`) |
 | Stale containers | All old `*_main-1` containers removed |
