@@ -70,7 +70,7 @@ Configs live under `big_bertha_sim_bringup/config/{rviz,plotjuggler}/`.
 ## Hardware target
 
 Arduino UNO Q (4 GB, ROS 2 Jazzy, **arm64**) · 3D-printed frame · 12× MG995 servos ·
-1× YDLidar X2 · 1× MPU9250 IMU. (Hardware bringup is future work; the arm64 CI leg
+1× YDLidar X2 · 1× MPU6050 IMU. (Hardware bringup is future work; the arm64 CI leg
 exists because the deploy target is arm64.)
 
 ### Physical Params
