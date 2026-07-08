@@ -1,7 +1,7 @@
 // sketch.ino  —  IMU Scanner (standalone diagnostic app for the UNO Q)
 //
 // Registers a Bridge RPC handler ("read_imu") callable from the Python
-// side. On each call it probes the MPU6050 at I2C address 0x68, reads
+// side. On each call it probes the MPU9250 at I2C address 0x68, reads
 // the 14-byte register block (ACCEL_XOUT_H..GYRO_ZOUT), converts to SI
 // units, and pushes the result back via Bridge.notify("imu_result", ...).
 //
@@ -14,7 +14,7 @@
 
 #include <vector>
 
-static const uint8_t MPU6050_ADDR = 0x68;
+static const uint8_t MPU9250_ADDR = 0x68;
 static const uint8_t PCA9685_ADDR = 0x40;
 
 // PCA9685 register map (for diagnostics)
@@ -41,15 +41,15 @@ static bool i2c_read_bytes(uint8_t dev, uint8_t reg, uint8_t * buf, size_t len)
   return true;
 }
 
-// ── MPU6050 read ────────────────────────────────────────────────────────
+// ── MPU9250 read ───────────────────────────────────────────────────────
 
-static bool mpu6050_read(float & ax, float & ay, float & az, float & gx, float & gy, float & gz)
+static bool mpu9250_read(float & ax, float & ay, float & az, float & gx, float & gy, float & gz)
 {
-  if (!i2c_probe(MPU6050_ADDR)) {
+  if (!i2c_probe(MPU9250_ADDR)) {
     return false;
   }
   uint8_t raw[14] = {0};
-  if (!i2c_read_bytes(MPU6050_ADDR, 0x3B, raw, 14)) {
+  if (!i2c_read_bytes(MPU9250_ADDR, 0x3B, raw, 14)) {
     return false;
   }
   int16_t raw_ax = (raw[0] << 8) | raw[1];
@@ -124,11 +124,11 @@ void on_servo_test(uint8_t ch, uint16_t pwm)
 // ── Bridge RPC handlers ─────────────────────────────────────────────────
 
 // Called from Python via Bridge.notify("read_imu").
-// Probes the MPU6050, reads it if present, and pushes the result.
+// Probes the MPU9250, reads it if present, and pushes the result.
 void on_read_imu()
 {
   float ax, ay, az, gx, gy, gz;
-  if (mpu6050_read(ax, ay, az, gx, gy, gz)) {
+  if (mpu9250_read(ax, ay, az, gx, gy, gz)) {
     Bridge.notify("imu_result", 1, ax, ay, az, gx, gy, gz);
   } else {
     Bridge.notify("imu_result", 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);

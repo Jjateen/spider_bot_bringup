@@ -26,7 +26,7 @@
 #include <vector>
 
 // ── I2C device addresses ──────────────────────────────────────────────
-static const uint8_t MPU6050_ADDR = 0x68;
+static const uint8_t MPU9250_ADDR = 0x68;
 static const uint8_t PCA9685_ADDR = 0x40;
 
 // ── PCA9685 register map ──────────────────────────────────────────────
@@ -81,7 +81,7 @@ static const uint16_t CROUCH_PWM[12] = {
 // ── Diagnostic state ──────────────────────────────────────────────────
 static int g_i2c_scan = 0;
 static bool g_ai_ok = false;
-static bool g_mpu6050_present = false;
+static bool g_mpu9250_present = false;
 
 // Current PWM off-counts for all 16 channels
 static uint16_t g_pwm[16] = {0};
@@ -204,22 +204,22 @@ static bool pca9685_verify_init()
   return (mode1 & 0x20) != 0 && (mode1 & 0x10) == 0;
 }
 
-// ── MPU6050 ───────────────────────────────────────────────────────────
-static bool mpu6050_init()
+// ── MPU9250 ──────────────────────────────────────────────────────────
+static bool mpu9250_init()
 {
-  Wire.beginTransmission(MPU6050_ADDR);
+  Wire.beginTransmission(MPU9250_ADDR);
   if (Wire.endTransmission() != 0) return false;
-  i2c_write_byte(MPU6050_ADDR, 0x6B, 0x00);
+  i2c_write_byte(MPU9250_ADDR, 0x6B, 0x00);
   delay(100);
   return true;
 }
 
-static bool mpu6050_read(
+static bool mpu9250_read(
   float & ax, float & ay, float & az,
   float & gx, float & gy, float & gz)
 {
   uint8_t raw[14] = {0};
-  if (!i2c_read_bytes(MPU6050_ADDR, 0x3B, raw, 14)) {
+  if (!i2c_read_bytes(MPU9250_ADDR, 0x3B, raw, 14)) {
     ax = ay = az = gx = gy = gz = 0.0f;
     return false;
   }
@@ -244,7 +244,7 @@ static int i2c_scan_devices()
   int missing = 0;
   Wire.beginTransmission(PCA9685_ADDR);
   if (Wire.endTransmission() != 0) missing |= 1;
-  Wire.beginTransmission(MPU6050_ADDR);
+  Wire.beginTransmission(MPU9250_ADDR);
   if (Wire.endTransmission() != 0) missing |= 2;
   return missing;
 }
@@ -407,7 +407,7 @@ void setup()
   Wire.setClock(50000);
 
   g_i2c_scan = i2c_scan_devices();
-  g_mpu6050_present = mpu6050_init();
+  g_mpu9250_present = mpu9250_init();
   g_ai_ok = pca9685_init() && pca9685_verify_init();
 
   Bridge.begin(460800);
@@ -509,10 +509,10 @@ void loop()
   }
 
   // ── Push IMU at 200 Hz ────────────────────────────────────────────
-  if (g_mpu6050_present && now - g_last_imu_push >= IMU_INTERVAL) {
+  if (g_mpu9250_present && now - g_last_imu_push >= IMU_INTERVAL) {
     g_last_imu_push = now;
     float ax, ay, az, gx, gy, gz;
-    if (mpu6050_read(ax, ay, az, gx, gy, gz)) {
+    if (mpu9250_read(ax, ay, az, gx, gy, gz)) {
       Bridge.notify("imu", ax, ay, az, gx, gy, gz,
                     (float)g_imu_sample++, (float)micros());
     }
@@ -522,7 +522,7 @@ void loop()
   if (now - g_last_status_push >= STATUS_INTERVAL) {
     g_last_status_push = now;
     g_i2c_scan = i2c_scan_devices();
-    g_mpu6050_present = (g_i2c_scan & 2) == 0;
+    g_mpu9250_present = (g_i2c_scan & 2) == 0;
     bool ai = false;
     if (!(g_i2c_scan & 1)) {
       ai = pca9685_verify_init();

@@ -194,10 +194,10 @@ if echo "$STATUS" | grep -q '"pca9685_ok":true'; then
 else
   fail "PCA9685 (0x40) not detected — check I2C wiring"
 fi
-if echo "$STATUS" | grep -q '"mpu6050_ok":true'; then
-  ok "MPU6050 (0x68): present"
+if echo "$STATUS" | grep -q '"mpu9250_ok":true'; then
+  ok "MPU9250 (0x68): present"
 else
-  fail "MPU6050 (0x68) not detected — check I2C wiring"
+  fail "MPU9250 (0x68) not detected — check I2C wiring"
 fi
 
 # IMU data
@@ -217,6 +217,6 @@ fi
 
 echo ""
 say DONE "Firmware upload complete — all subsystems healthy"
-echo "  I2C devices: PCA9685 @ 0x40 (64), MPU6050 @ 0x68 (104)"
+echo "  I2C devices: PCA9685 @ 0x40 (64), MPU9250 @ 0x68 (104)"
 echo "  Expected: non-zero accel/gyro values from IMU"
 echo "  Bridge RPC: serving ping, status, imu, scan_i2c, servo commands"

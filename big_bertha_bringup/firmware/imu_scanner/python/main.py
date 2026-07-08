@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # IMU Scanner — standalone diagnostic tool for the Big Bertha UNO Q.
 #
-# Probes the MPU6050 and PCA9685 on the M33's I2C bus via Bridge RPC.
+# Probes the MPU9250 and PCA9685 on the M33's I2C bus via Bridge RPC.
 # Runs in continuous polling mode — output goes to logs (no stdin).
 #
 # Run:
@@ -73,7 +73,7 @@ def log_bus():
     if not bus_scan:
         print("[bus] No I2C devices found — bus may be locked")
         return
-    names = {0x40: "PCA9685", 0x68: "MPU6050"}
+    names = {0x40: "PCA9685", 0x68: "MPU9250"}
     for addr in sorted(bus_scan):
         label = names.get(addr, "")
         line = f"[bus] 0x{addr:02X}"
