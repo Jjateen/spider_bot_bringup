@@ -66,8 +66,8 @@ jobs:
               m = re.match(r'static const uint8_t (\w+)\s*=\s*(0x[0-9A-Fa-f]+)', line)
               if m: addrs[m.group(1)] = m.group(2)
           assert addrs.get('PCA9685_ADDR') == '0x40', f'PCA9685_ADDR is {addrs.get(\"PCA9685_ADDR\")}, expected 0x40'
-          assert addrs.get('MPU6050_ADDR') == '0x68', f'MPU6050_ADDR is {addrs.get(\"MPU6050_ADDR\")}, expected 0x68'
-          print('OK — PCA9685 @ 0x40, MPU6050 @ 0x68')
+          assert addrs.get('MPU9250_ADDR') == '0x68', f'MPU9250_ADDR is {addrs.get(\"MPU9250_ADDR\")}, expected 0x68'
+          print('OK — PCA9685 @ 0x40, MPU9250 @ 0x68')
           "
 
       - name: Default position integrity
