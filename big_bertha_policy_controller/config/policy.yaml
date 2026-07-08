@@ -20,7 +20,7 @@
     # PD lives in JointEffortPdController (ros2_control.yaml): synchronous,
     # zero-latency q/qd. PD here over a topic damps stale velocity -> jitter.
     use_effort: false        # publish position targets, controller does the PD
-    pd_rate: 200.0           # Hz; target publish rate (policy decimated to 50)
+    pd_rate: 50.0            # Hz; timer/publish rate, matches control_rate_ since use_effort=false
     action_clip: 1.0         # raw policy action clamp (matches env)
     # Trained command envelope. max_yaw_rate must stay at heading_max (0.5):
     # 0.35 was tested and FAILED (turn fell 0.279 -> 0.114 rad/s) -- the plant,
