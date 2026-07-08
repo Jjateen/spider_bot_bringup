@@ -9,7 +9,7 @@
 /**:
   ros__parameters:
     # arduino-router Unix socket path.
-    router_socket: "/var/run/arduino-router.sock"
+    router_socket: "/run/arduino-router/rpc.sock"
 
     # IMU covariance matrices (9 elements each, row-major).
     # Orientation covariance = -1 means orientation not estimated.
