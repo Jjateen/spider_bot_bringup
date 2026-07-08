@@ -20,7 +20,7 @@
     control_rate: 50.0       # Hz
     start_enabled: true
     cmd_vel_timeout: 0.5     # s; stale /cmd_vel -> command zeroed (safe stop)
-    joint_limit: 1.5708      # rad; clamp joint targets to MG995 180deg hardware travel
+    joint_limit: 3.14159     # rad; full ±180deg for MG995, raised from 1.57 to not clip training ankle default (2.00 rad)
     # The node publishes 12 joint POSITION TARGETS; the effort-PD that emulates
     # Isaac's ImplicitActuatorCfg now lives in JointEffortPdController (see
     # big_bertha_description/config/ros2_control.yaml), where it runs
@@ -105,4 +105,4 @@
     default_joint_pos:
       [0.0, 0.0, 0.0, 0.0,
         -0.32, -0.32, -0.32, -0.32,
-        1.82, 1.82, 1.82, 1.82]
+        2.00, 2.00, 2.00, 2.00]

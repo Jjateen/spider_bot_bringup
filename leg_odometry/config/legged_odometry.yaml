@@ -20,7 +20,7 @@
       - "Revolute_118"   # ankle leg2 (front-right)
       - "Revolute_121"   # ankle leg3 (back-right)
     default_joint_pos:
-      [0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 1.82, 1.82, 1.82, 1.82]
+      [0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 2.00, 2.00, 2.00, 2.00]
     odom_frame: "odom"
     base_frame: "base_link"
     publish_tf: true

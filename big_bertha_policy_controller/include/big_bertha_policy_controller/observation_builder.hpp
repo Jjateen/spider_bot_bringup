@@ -48,7 +48,7 @@ struct ObservationBuilder
   // The policy controller node overrides this from policy.yaml; this hardcoded
   // value is the fallback if the parameter is missing.
   std::array<double, kNumJoints> default_joint_pos{0.0, 0.0, 0.0, 0.0, -0.32, -0.32,
-                                                    -0.32, -0.32, 1.82, 1.82, 1.82, 1.82};
+                                                    -0.32, -0.32, 2.00, 2.00, 2.00, 2.00};
 
   // Cached inputs (updated by subscription callbacks).
   std::array<double, 3> root_lin_vel_b{0.0, 0.0, 0.0};

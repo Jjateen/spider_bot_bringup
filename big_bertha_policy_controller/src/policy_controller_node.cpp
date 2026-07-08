@@ -174,7 +174,7 @@ public:
                       "Revolute_111", "Revolute_114", "Revolute_117", "Revolute_120",
                       "Revolute_112", "Revolute_115", "Revolute_118", "Revolute_121"});
     auto default_pose = declare_parameter<std::vector<double>>(
-      "default_joint_pos", {0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 1.82, 1.82, 1.82, 1.82});
+      "default_joint_pos", {0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 2.00, 2.00, 2.00, 2.00});
 
     for (int i = 0; i < bbpc::kNumJoints && i < static_cast<int>(default_pose.size()); ++i) {
       obs_.default_joint_pos[i] = default_pose[i];
@@ -196,7 +196,7 @@ public:
     status_pub_ = create_publisher<spider_msgs::msg::PolicyStatus>("policy_status", rclcpp::QoS(1));
 
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-      "/odom", rclcpp::SensorDataQoS(),
+      "/odom", rclcpp::QoS(1),
       std::bind(&PolicyControllerNode::on_odom, this, std::placeholders::_1));
     imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
       "/imu", rclcpp::SensorDataQoS(),
