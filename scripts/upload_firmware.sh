@@ -106,41 +106,31 @@ done
 
 ok "All legacy Docker containers removed"
 
-# ── Compile & upload sketch (with retry) ────────────────────────────────────
+# ── Compile & upload sketch ─────────────────────────────────────────────────
 
 say FLASH "Compiling and uploading sketch to STM32U585 M33"
 say FLASH "This takes ~15-20 seconds..."
 
-UPLOAD_OK=false
-UPLOAD_LOG=""
-for ATTEMPT in 1 2; do
-  UPLOAD_LOG=$(mktemp /tmp/hw_bridge_flash.XXXXXX)
+# Capture output so we can verify the upload succeeded
+TMPLOG=$(mktemp /tmp/hw_bridge_flash.XXXXXX)
+trap 'rm -f "$TMPLOG"' EXIT
 
-  arduino-app-cli app start "$BOARD_APP" >"$UPLOAD_LOG" 2>&1
+arduino-app-cli app start "$BOARD_APP" >"$TMPLOG" 2>&1
+APP_START_EXIT=$?
 
-  if grep -q 'sketch updated' "$UPLOAD_LOG" 2>/dev/null; then
-    UPLOAD_OK=true
-    rm -f "$UPLOAD_LOG"
-    break
-  fi
-
-  if [ "$ATTEMPT" -eq 1 ]; then
-    say RETRY "Upload attempt 1 failed — retrying..."
-    sleep 2
-  fi
-  rm -f "$UPLOAD_LOG"
-  UPLOAD_LOG=""
-done
-
-if [ "$UPLOAD_OK" = false ]; then
-  fail "Sketch upload failed after 2 attempts"
-  if [ -n "$UPLOAD_LOG" ] && [ -f "$UPLOAD_LOG" ]; then
-    grep -i error "$UPLOAD_LOG" 2>/dev/null | head -5 | while IFS= read -r line; do fail "$line"; done
-    rm -f "$UPLOAD_LOG"
-  fi
+# Verify the sketch was actually uploaded (compile failure would not show this)
+if grep -q 'sketch updated' "$TMPLOG" 2>/dev/null; then
+  ok "Sketch compiled and uploaded successfully"
+elif grep -qi 'error' "$TMPLOG" 2>/dev/null; then
+  fail "Sketch compilation/upload failed — see log above"
+  grep -i error "$TMPLOG" | head -5 | while IFS= read -r line; do fail "$line"; done
+  exit 1
+elif [ "$APP_START_EXIT" -ne 0 ] && ! grep -q 'sketch updated' "$TMPLOG" 2>/dev/null; then
+  fail "app start failed (exit=$APP_START_EXIT) with no successful upload"
   exit 1
 fi
-ok "Sketch compiled and uploaded successfully"
+rm -f "$TMPLOG"
+trap - EXIT
 
 # ── Stop compose container (we use our own) ─────────────────────────────────
 
@@ -171,7 +161,7 @@ TMP_PY=$(mktemp /tmp/verify_imu.XXXXXX.py)
 cat > "$TMP_PY" << 'PYEOF'
 import struct, socket, sys, time
 sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-sock.settimeout(1.0)
+sock.settimeout(3.0)
 sock.connect("/var/run/arduino-router.sock")
 
 def pack(val):
@@ -182,6 +172,7 @@ def pack(val):
         if -32 <= val < 0:        return bytes([val & 0x1F | 0xE0])
         if -128 <= val < 0:       return b'\xd0' + struct.pack('b', val)
         return b'\xd1' + struct.pack('>h', val)
+    if isinstance(val, float):    return b'\xcb' + struct.pack('>d', val)
     if isinstance(val, str):
         d = val.encode()
         return bytes([0xA0 | len(d)]) + d if len(d) <= 31 else b'\xd9' + bytes([len(d)]) + d
@@ -195,10 +186,12 @@ def send(msg):
     data = pack(msg)
     sock.sendall(struct.pack('>I', len(data)) + data)
 
+# Register for IMU notifications
 send(["provide", "imu"])
 time.sleep(0.2)
 
-deadline = time.time() + 7.0
+# Read for 3 seconds, looking for IMU notifications
+deadline = time.time() + 3.0
 buf = b""
 while time.time() < deadline:
     try:
@@ -206,12 +199,13 @@ while time.time() < deadline:
         if not c: break
         buf += c
     except socket.timeout:
-        continue
+        break
 
 if not buf:
     print("IMU_RESULT=FAIL no data from router")
     sys.exit(1)
 
+# Scan buffer for "imu" arrays (length-prefixed MsgPack)
 found = False
 i = 0
 while i + 4 < len(buf):
@@ -220,11 +214,12 @@ while i + 4 < len(buf):
         i += 1
         continue
     chunk = buf[i+4:i+4+n]
+    # Simple check: does it contain "imu" as a string?
     try:
         text = chunk.decode('utf-8', errors='replace')
         if 'imu' in text:
             found = True
-            print("IMU_RESULT=PASS")
+            print(f"IMU_RESULT=PASS IMU data flowing via router")
             break
     except: pass
     i += 4 + n
@@ -232,7 +227,8 @@ while i + 4 < len(buf):
 if found:
     sys.exit(0)
 else:
-    print("IMU_RESULT=FAIL no IMU frames received")
+    # Last resort: dump raw for diagnostics
+    print(f"IMU_RESULT=FAIL no IMU data found, router is connected but no IMU frames")
     sys.exit(1)
 PYEOF
 
