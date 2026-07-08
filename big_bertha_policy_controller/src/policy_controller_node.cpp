@@ -162,11 +162,11 @@ public:
     // clamps tau to [-1, 1], so the policy is trained against torque bounded
     // at 1 Nm. Giving the legs more authority (e.g. 12) makes them overshoot.
     effort_limit_ = declare_parameter<double>("effort_limit", 1.0);
-    // The PD torque is evaluated at pd_rate_ (200 Hz) while the policy only
-    // runs every policy_decimation_ ticks, so its effective rate matches
-    // training (control_rate_ = 50 Hz, decimation 4). Evaluating the PD at the
-    // policy rate (50 Hz) under-damps and oscillates -> the in-place jitter.
-    pd_rate_ = declare_parameter<double>("pd_rate", 200.0);
+    // Timer fires at pd_rate_ (equals control_rate_ now since use_effort=false).
+    // The PD evaluation has been moved to the separate JointEffortPdController
+    // in the ros2_control layer, so there is no need for a higher-rate PD loop
+    // here. Policy runs every tick (decimation = 1) at the full rate.
+    pd_rate_ = declare_parameter<double>("pd_rate", 50.0);
     warmup_sec_ = declare_parameter<double>("warmup_sec", 3.0);
     policy_decimation_ = std::max(1, static_cast<int>(std::round(pd_rate_ / control_rate_)));
     joint_names_ = declare_parameter<std::vector<std::string>>(

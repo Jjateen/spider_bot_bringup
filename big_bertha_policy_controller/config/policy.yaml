@@ -28,7 +28,7 @@
     # latency. Doing the PD in this node and shipping torque over a topic damps
     # against stale velocity -> jitter; hence use_effort=false here.
     use_effort: false        # publish position targets, controller does the PD
-    pd_rate: 200.0           # Hz; target publish rate (policy decimated to 50)
+    pd_rate: 50.0            # Hz; timer/publish rate, matches control_rate_ since use_effort=false
     action_clip: 1.0         # raw policy action clamp (matches env)
     # Command envelope sent to the policy (trained ranges). Yaw is widened from
     # the old 0.15 so the heading-hold loop has real turn authority.
