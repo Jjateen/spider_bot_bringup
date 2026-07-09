@@ -1,6 +1,7 @@
 #include <chrono>
 #include <cmath>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -31,10 +32,13 @@ public:
     drift_damping_ = declare_parameter<double>("drift_damping", 0.98);
     servo_tau_ = declare_parameter<double>("servo_tau", 0.06);
 
+    if (velocity_source_ == "leg_kinematics") {
+      RCLCPP_WARN(
+        get_logger(), "leg_kinematics mode is a stub — velocity estimates will be inaccurate");
+    }
     RCLCPP_INFO(
       get_logger(), "velocity source: %s, servo_tau=%.3f", velocity_source_.c_str(), servo_tau_);
 
-    last_cmd_positions_ = default_joint_pos_;
     last_joint_positions_ = default_joint_pos_;
     filtered_positions_ = default_joint_pos_;
 
@@ -46,8 +50,8 @@ public:
       "/imu", rclcpp::SensorDataQoS(),
       std::bind(&LeggedOdometryNode::on_imu, this, std::placeholders::_1));
 
-    joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>("/joint_states", 1);
-    odom_pub_ = create_publisher<nav_msgs::msg::Odometry>("/odom", 1);
+    joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(1));
+    odom_pub_ = create_publisher<nav_msgs::msg::Odometry>("/odom", rclcpp::QoS(1));
 
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
@@ -61,6 +65,8 @@ private:
   void on_cmd(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
   {
     if (msg->data.size() != 12) return;
+
+    std::lock_guard<std::mutex> lk(joint_mutex_);
 
     auto now = this->now();
     auto now_steady = std::chrono::steady_clock::now();
@@ -97,7 +103,6 @@ private:
         js.velocity.push_back(0.0);
         last_joint_velocities_[i] = 0.0;
       }
-      last_cmd_positions_[i] = cmd_pos;
       last_joint_positions_[i] = filt_pos;
     }
     last_cmd_time_ = now_steady;
@@ -191,6 +196,8 @@ private:
 
   void publish_joint_states()
   {
+    std::lock_guard<std::mutex> lk(joint_mutex_);
+
     auto js = sensor_msgs::msg::JointState();
     js.header.stamp = now();
     js.name = joint_names_;
@@ -283,10 +290,10 @@ private:
 
   double servo_tau_;
   std::vector<double> filtered_positions_{std::vector<double>(12, 0.0)};
-  std::vector<double> last_cmd_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_joint_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_joint_velocities_{std::vector<double>(12, 0.0)};
   std::chrono::steady_clock::time_point last_cmd_time_;
+  std::mutex joint_mutex_;
 
   std::chrono::steady_clock::time_point last_imu_time_;
   tf2::Quaternion last_orientation_;

@@ -666,7 +666,7 @@ private:
   double control_rate_{50.0};
   double cmd_timeout_{0.5};
   double joint_limit_{3.14159};
-  bool use_effort_{true};
+  bool use_effort_{false};
   double kp_{20.0};
   double kd_{2.0};
   double effort_limit_{1.0};
