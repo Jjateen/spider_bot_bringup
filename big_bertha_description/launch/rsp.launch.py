@@ -65,6 +65,11 @@ def generate_launch_description():
          'config', 'ros2_control.yaml']
     )
 
+    jsp_config = PathJoinSubstitution(
+        [FindPackageShare('big_bertha_description'),
+         'config', 'joint_state_publisher.yaml']
+    )
+
     robot_description = ParameterValue(
         Command([
             'xacro ', xacro_file,
@@ -113,7 +118,7 @@ def generate_launch_description():
             executable='joint_state_publisher',
             name='joint_state_publisher',
             output='screen',
-            parameters=[{'use_sim_time': use_sim_time}],
+            parameters=[jsp_config, {'use_sim_time': use_sim_time}],
             condition=IfCondition(publish_jsp),
         ),
     ])
