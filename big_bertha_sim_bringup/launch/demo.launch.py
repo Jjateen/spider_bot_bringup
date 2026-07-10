@@ -158,7 +158,7 @@ def generate_launch_description():
                         'A=(-3.5,-3.5) facing +x; B=(3.5,-3.5) is a straight '
                         'East traverse of the clear bottom corridor.'),
         DeclareLaunchArgument(
-            'goal_y', default_value='3.5',
+            'goal_y', default_value='-3.5',
             description='Goal B y in the map frame (world B = -3.5)'),
         DeclareLaunchArgument(
             'goal_delay', default_value='20.0',

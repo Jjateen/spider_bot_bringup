@@ -18,6 +18,10 @@
   <depend>rclcpp</depend>
   <depend>sensor_msgs</depend>
 
+  <!-- map_to_odom_publisher C++ node (periodic identity map->odom tf). -->
+  <depend>tf2_ros</depend>
+  <depend>geometry_msgs</depend>
+
   <exec_depend>big_bertha_description</exec_depend>
   <exec_depend>big_bertha_policy_controller</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>
@@ -38,11 +42,10 @@
   <exec_depend>nav2_behaviors</exec_depend>
   <exec_depend>nav2_bt_navigator</exec_depend>
   <exec_depend>nav2_regulated_pure_pursuit_controller</exec_depend>
+  <exec_depend>nav2_navfn_planner</exec_depend>
   <exec_depend>rviz2</exec_depend>
   <exec_depend>nav2_rviz_plugins</exec_depend>
   <exec_depend>plotjuggler</exec_depend>
-  <exec_depend>tf2_ros</exec_depend>
-
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

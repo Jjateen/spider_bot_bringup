@@ -1,0 +1,19 @@
+imu_topic: "/imu"
+window:
+  width: 1280
+  height: 720
+  name: "AHRS Visualizer"
+framerate: 60
+grid:
+  size: 10
+  divisions: 20
+camera:
+  position: [3.0, 3.0, 3.0]
+  look_at: [0.0, 0.0, 0.0]
+background_color: [0.12, 0.12, 0.12]
+robot:
+  model_path: ""
+  cube_size: 0.3
+  urdf_path: ""
+  mesh_dir: ""
+  joint_state_topic: "/joint_states"

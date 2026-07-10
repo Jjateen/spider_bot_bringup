@@ -32,3 +32,11 @@ verification_artifacts/
 PLAN.md
 ISSUES.md
 Big_Bertha_Hardware_Bridge_Guide.pdf
+AUDIT_REPORT.md
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+scripts/docker_build.sh
+scripts/docker_run.sh

@@ -1,43 +1,3 @@
-amcl:
-  ros__parameters:
-    alpha1: 0.2
-    alpha2: 0.2
-    alpha3: 0.2
-    alpha4: 0.2
-    alpha5: 0.2
-    base_frame_id: "base_link"
-    beam_skip_distance: 0.5
-    beam_skip_error_threshold: 0.9
-    beam_skip_threshold: 0.3
-    do_beamskip: false
-    global_frame_id: "map"
-    lambda_short: 0.1
-    laser_likelihood_max_dist: 2.0
-    laser_max_range: 8.0
-    laser_min_range: 0.12
-    laser_model_type: "likelihood_field"
-    max_beams: 60
-    max_particles: 2000
-    min_particles: 500
-    odom_frame_id: "odom"
-    pf_err: 0.05
-    pf_z: 0.99
-    recovery_alpha_fast: 0.0
-    recovery_alpha_slow: 0.0
-    resample_interval: 1
-    robot_model_type: "nav2_amcl::DifferentialMotionModel"
-    save_pose_rate: 0.5
-    sigma_hit: 0.2
-    tf_broadcast: true
-    transform_tolerance: 1.0
-    update_min_a: 0.2
-    update_min_d: 0.25
-    z_hit: 0.5
-    z_max: 0.05
-    z_rand: 0.5
-    z_short: 0.05
-    scan_topic: scan
-
 bt_navigator:
   ros__parameters:
     global_frame: map
@@ -203,9 +163,6 @@ local_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
-      static_layer:
-        plugin: "nav2_costmap_2d::StaticLayer"
-        map_subscribe_transient_local: True
       always_send_full_costmap: True
 
 global_costmap:
@@ -218,25 +175,10 @@ global_costmap:
       robot_base_frame: base_link
       robot_radius: 0.18
       resolution: 0.05
-      # Rolling window large enough to always contain both the robot and the
-      # A->B goal (~10 m diagonal in a 10x10 arena). A static global costmap is
-      # sized to the live slam_toolbox map, which at goal-send time only covers
-      # the explored patch near spawn -> the far goal falls OUTSIDE the costmap
-      # and NavfnPlanner returns "failed to create plan". A 24 m rolling window
-      # centred on the robot keeps the goal in-bounds the whole way; obstacles
-      # are marked by the lidar (obstacle_layer) so the planner routes around
-      # what it has seen and treats the rest as free.
       rolling_window: true
       width: 24
       height: 24
-      # Treat never-observed cells as free so the planner can route through
-      # not-yet-mapped open space instead of refusing to plan.
       track_unknown_space: false
-      # NOTE: no static_layer here. A StaticLayer fights a rolling_window grid
-      # (it wants to resize/anchor the costmap to the incoming /map), which left
-      # the global costmap unplannable even for an in-bounds, obstacle-free
-      # goal. The lidar obstacle_layer + a rolling window is the standard combo
-      # for navigating with a live, partial map.
       plugins: ["obstacle_layer", "inflation_layer"]
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -252,12 +194,6 @@ global_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
-      static_layer:
-        plugin: "nav2_costmap_2d::StaticLayer"
-        map_subscribe_transient_local: True
-        # Treat the saved map's unknown (-1) cells as free space so the
-        # partially explored map does not wall the planner in.
-        track_unknown_space: false
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
@@ -325,165 +261,4 @@ behavior_server:
     min_rotational_vel: 0.4
     rotational_acc_lim: 3.2
 
-waypoint_follower:
-  ros__parameters:
-    loop_rate: 20
-    stop_on_failure: false
-    action_server_result_timeout: 900.0
-    waypoint_task_executor_plugin: "wait_at_waypoint"
-    wait_at_waypoint:
-      plugin: "nav2_waypoint_follower::WaitAtWaypoint"
-      enabled: True
-      waypoint_pause_duration: 200
 
-route_server:
-  ros__parameters:
-    # The graph_filepath does not need to be specified since it going to be set by defaults in launch.
-    # If you'd rather set it in the yaml, remove the default "graph" value in the launch file(s).
-    # file & provide full path to map below. If graph config or launch default is provided, it is used
-    # graph_filepath: $(find-pkg-share nav2_route)/graphs/aws_graph.geojson
-    boundary_radius_to_achieve_node: 1.0
-    radius_to_achieve_node: 2.0
-    smooth_corners: true
-    operations: ["AdjustSpeedLimit", "ReroutingService", "CollisionMonitor"]
-    ReroutingService:
-      plugin: "nav2_route::ReroutingService"
-    AdjustSpeedLimit:
-      plugin: "nav2_route::AdjustSpeedLimit"
-    CollisionMonitor:
-      plugin: "nav2_route::CollisionMonitor"
-      max_collision_dist: 3.0
-    edge_cost_functions: ["DistanceScorer", "CostmapScorer"]
-    DistanceScorer:
-      plugin: "nav2_route::DistanceScorer"
-    CostmapScorer:
-      plugin: "nav2_route::CostmapScorer"
-
-velocity_smoother:
-  ros__parameters:
-    smoothing_frequency: 20.0
-    stamp_smoothed_velocity_with_smoothing_time: False
-    scale_velocities: False
-    feedback: "OPEN_LOOP"
-    max_velocity: [0.4, 0.0, 0.15]
-    min_velocity: [-0.1, 0.0, -0.15]
-    max_accel: [2.5, 0.0, 3.2]
-    max_decel: [-2.5, 0.0, -3.2]
-    odom_topic: "odom"
-    odom_duration: 0.1
-    deadband_velocity: [0.0, 0.0, 0.0]
-    velocity_timeout: 1.0
-
-collision_monitor:
-  ros__parameters:
-    base_frame_id: "base_link"
-    odom_frame_id: "odom"
-    cmd_vel_in_topic: "cmd_vel_smoothed"
-    cmd_vel_out_topic: "cmd_vel"
-    state_topic: "collision_monitor_state"
-    transform_tolerance: 0.2
-    source_timeout: 1.0
-    base_shift_correction: True
-    stop_pub_timeout: 2.0
-    # Polygons represent zone around the robot for "stop", "slowdown" and "limit" action types,
-    # and robot footprint for "approach" action type.
-    polygons: ["PolygonStop", "FootprintApproach"]
-    # Hard stop backstop: if >=4 scan points (a wall/obstacle) enter this fixed
-    # box around the robot, force cmd_vel to zero (the gait then gates and holds).
-    # This guarantees zero wall collisions regardless of why the robot is moving
-    # -- including the post-goal idle creep that no cmd_vel change would stop. The
-    # +/-0.35 x +/-0.30 m box sits well inside the ~0.87 m clearance the planner
-    # keeps during navigation, so it never false-triggers on the planned path.
-    PolygonStop:
-      type: "polygon"
-      action_type: "stop"
-      points: "[[0.35, 0.30], [0.35, -0.30], [-0.35, -0.30], [-0.35, 0.30]]"
-      min_points: 4
-      visualize: True
-      enabled: True
-    FootprintApproach:
-      type: "polygon"
-      action_type: "approach"
-      footprint_topic: "/local_costmap/published_footprint"
-      # 1.2 -> 1.8: project the footprint further ahead along the velocity so the
-      # monitor scales the speed toward 0 earlier -- a wider safety margin for the
-      # zero-collision goal (the slow crawl still has room to keep moving).
-      time_before_collision: 1.8
-      simulation_time_step: 0.1
-      min_points: 6
-      visualize: False
-      enabled: True
-    observation_sources: ["scan"]
-    scan:
-      type: "scan"
-      topic: "scan_filtered"
-      min_height: 0.15
-      max_height: 2.0
-      enabled: True
-
-docking_server:
-  ros__parameters:
-    controller_frequency: 50.0
-    initial_perception_timeout: 5.0
-    wait_charge_timeout: 5.0
-    dock_approach_timeout: 30.0
-    undock_linear_tolerance: 0.05
-    undock_angular_tolerance: 0.1
-    max_retries: 3
-    base_frame: "base_link"
-    fixed_frame: "odom"
-    dock_backwards: false
-    dock_prestaging_tolerance: 0.5
-
-    # Types of docks
-    dock_plugins: ['simple_charging_dock']
-    simple_charging_dock:
-      plugin: 'opennav_docking::SimpleChargingDock'
-      docking_threshold: 0.05
-      staging_x_offset: -0.7
-      use_external_detection_pose: true
-      use_battery_status: false # true
-      use_stall_detection: false # true
-
-      external_detection_timeout: 1.0
-      external_detection_translation_x: -0.18
-      external_detection_translation_y: 0.0
-      external_detection_rotation_roll: -1.57
-      external_detection_rotation_pitch: -1.57
-      external_detection_rotation_yaw: 0.0
-      filter_coef: 0.1
-
-    # Dock instances
-    # The following example illustrates configuring dock instances.
-    # docks: ['home_dock']  # Input your docks here
-    # home_dock:
-    #   type: 'simple_charging_dock'
-    #   frame: map
-    #   pose: [0.0, 0.0, 0.0]
-
-    controller:
-      k_phi: 3.0
-      k_delta: 2.0
-      v_linear_min: 0.15
-      v_linear_max: 0.15
-      use_collision_detection: true
-      costmap_topic: "local_costmap/costmap_raw"
-      footprint_topic: "local_costmap/published_footprint"
-      transform_tolerance: 0.1
-      projection_time: 5.0
-      simulation_step: 0.1
-      dock_collision_threshold: 0.3
-
-loopback_simulator:
-  ros__parameters:
-    base_frame_id: "base_footprint"
-    odom_frame_id: "odom"
-    map_frame_id: "map"
-    scan_frame_id: "base_scan"  # tb4_loopback_simulator.launch.py remaps to 'rplidar_link'
-    update_duration: 0.02
-    scan_range_min: 0.05
-    scan_range_max: 30.0
-    scan_angle_min: -3.1415
-    scan_angle_max: 3.1415
-    scan_angle_increment: 0.02617
-    scan_use_inf: true

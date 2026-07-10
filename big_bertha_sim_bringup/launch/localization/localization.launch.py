@@ -70,10 +70,10 @@ def generate_launch_description():
         executable='map_server',
         name='map_server',
         output='screen',
-        parameters=[
-            amcl_config,
-            {'use_sim_time': use_sim_time, 'yaml_filename': map_yaml},
-        ],
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'yaml_filename': map_yaml,
+        }],
     )
 
     amcl = Node(
@@ -95,16 +95,11 @@ def generate_launch_description():
     # map->odom. (A spawn-pose offset here double-counts and puts the robot off
     # the map, which is what broke Nav2.) sx/sy/syaw are accepted but unused.
     static_map_odom = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
+        package='big_bertha_sim_bringup',
+        executable='map_to_odom_publisher',
         name='map_to_odom_ground_truth',
         output='screen',
         condition=use_gt,
-        arguments=[
-            '--x', '0.0', '--y', '0.0', '--z', '0.0',
-            '--yaw', '0.0', '--pitch', '0.0', '--roll', '0.0',
-            '--frame-id', 'map', '--child-frame-id', 'odom',
-        ],
         parameters=[{'use_sim_time': use_sim_time}],
     )
 
@@ -144,9 +139,6 @@ def generate_launch_description():
             'localization', default_value='ground_truth',
             description="map->odom provider: 'ground_truth' (static, demo "
                         "default) or 'amcl' (scan-match localization)"),
-        DeclareLaunchArgument('x', default_value='-3.5'),
-        DeclareLaunchArgument('y', default_value='-3.5'),
-        DeclareLaunchArgument('yaw', default_value='0.0'),
 
         map_server,
         amcl,

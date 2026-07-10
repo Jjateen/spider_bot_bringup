@@ -8,11 +8,15 @@
     - a ~10 m x 10 m room bounded by 4 perimeter walls (gives slam_toolbox
       loop-closure geometry),
     - interior obstacles (3 boxes + 2 cylindrical pillars) arranged so the
-      straight line from A (-3.5, -3.5) to B (3.5, 3.5) is blocked -> the
-      planner must route around them.
+      straight line from A (-3.5, -3.5) to the far NE corner (3.5, 3.5) is
+      blocked -> the planner must route around them. The default A->B demo
+      goes due East to (3.5, -3.5), a clear path below all obstacles.
 
   Demo coordinates (documented in the package README):
-    A (spawn) = (-3.5, -3.5, 0.12)   B (goal) = ( 3.5,  3.5)
+    A (spawn) = (-3.5, -3.5, 0.12)
+    The default A->B demo targets (3.5, -3.5), a straight East traverse of
+    the obstacle-free bottom corridor.  The diagonal to (3.5, 3.5) is blocked
+    by box_1/pillar_1/box_2 and is used only when goal_y is overridden.
 
   The world loads the gz systems required by the rest of the stack:
     Physics, UserCommands, SceneBroadcaster, Sensors (lidar), Imu, Contact.

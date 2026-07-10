@@ -4,6 +4,8 @@ project(big_bertha_sim_bringup)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 # Install all bringup assets into the package share directory. RViz +
 # PlotJuggler configs live under config/ (config/rviz, config/plotjuggler).
@@ -17,6 +19,16 @@ add_executable(scan_ground_filter src/scan_ground_filter.cpp)
 ament_target_dependencies(scan_ground_filter rclcpp sensor_msgs)
 install(
   TARGETS scan_ground_filter
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# Periodic identity map->odom tf publisher (ground-truth localisation mode).
+# Re-publishes every 10 s so the transform survives tf2_ros::Buffer clock-
+# activation clears that destroy the one-shot static_transform_publisher output.
+add_executable(map_to_odom_publisher src/map_to_odom_publisher.cpp)
+ament_target_dependencies(map_to_odom_publisher rclcpp tf2_ros geometry_msgs)
+install(
+  TARGETS map_to_odom_publisher
   DESTINATION lib/${PROJECT_NAME}
 )
 
