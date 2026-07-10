@@ -603,15 +603,12 @@ private:
     double gy_corr = gy - gyro_bias_y_;
     double gz_corr = gz - gyro_bias_z_;
 
-    // IMU is physically mounted 180° rotated on the carrier board (URDF
-    // imu_joint rpy="0 0 pi"). Negate horizontal axes to express the
-    // measurement in the base_link frame.
-    msg.linear_acceleration.x = -ax_corr;
-    msg.linear_acceleration.y = -ay_corr;
+    msg.linear_acceleration.x = ax_corr;
+    msg.linear_acceleration.y = ay_corr;
     msg.linear_acceleration.z = az_corr;
 
-    msg.angular_velocity.x = -gx_corr;
-    msg.angular_velocity.y = -gy_corr;
+    msg.angular_velocity.x = gx_corr;
+    msg.angular_velocity.y = gy_corr;
     msg.angular_velocity.z = gz_corr;
 
     // Fill in the noise levels (covariance matrices)
