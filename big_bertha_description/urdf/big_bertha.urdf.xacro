@@ -22,23 +22,15 @@
 -->
 <robot name="big_bertha" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- ============================ Arguments ============================ -->
-  <!-- Use ros2_control + gz sensors when running in Gazebo; disable for a
-       pure visualisation / check_urdf pass. -->
   <xacro:arg name="use_gz" default="true"/>
-  <!-- ros2_control.yaml passed to the gz_ros2_control plugin. -->
   <xacro:arg name="ros2_control_config"
              default="$(find big_bertha_description)/config/ros2_control.yaml"/>
-  <!-- Forwarded to the gz OdometryPublisher in big_bertha.gazebo.xacro. -->
   <xacro:arg name="publish_odom" default="true"/>
-  <!-- When false, the EKF (state_estimation) owns the odom->base_link tf. -->
   <xacro:arg name="odom_tf" default="true"/>
-  <!-- Sim-only kinematic drive (gz VelocityControl) for verification gates. -->
   <xacro:arg name="sim_drive" default="false"/>
 
   <xacro:property name="use_gz" value="$(arg use_gz)"/>
 
-  <!-- ============================ Materials ============================ -->
   <material name="silver">
     <color rgba="0.700 0.700 0.700 1.000"/>
   </material>
@@ -46,10 +38,10 @@
     <color rgba="0.200 0.200 0.200 1.000"/>
   </material>
 
-  <!-- ======================= Convenience macros ======================= -->
   <xacro:property name="mesh_pkg" value="package://big_bertha_description/meshes"/>
 
   <!-- ============================== Links ============================== -->
+
   <link name="base_link">
     <inertial>
       <origin xyz="0.06489606 -0.06499993 0.02039469" rpy="0 0 0"/>
@@ -560,14 +552,12 @@
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0"/>
-      <geometry>
-        <box size="0.012 0.016 0.003"/>
-      </geometry>
+      <geometry><box size="0.012 0.016 0.003"/></geometry>
       <material name="dark_grey"/>
     </visual>
   </link>
 
-  <link name="arm_a_4_1">
+  <link name="battery_link">
     <inertial>
       <origin xyz="-0.00051903 -0.01742240 -0.04805902" rpy="0 0 0"/>
       <mass value="0.061703"/>
@@ -670,6 +660,7 @@
     </collision>
   </link>
 
+  <!-- arm_a_1_1 (front-left, leg 1) -->
   <link name="arm_a_1_1">
     <inertial>
       <origin xyz="-0.00089507 -0.01742240 -0.05050470" rpy="0 0 0"/>
@@ -765,6 +756,7 @@
     </collision>
   </link>
 
+  <!-- arm_a_2_1 (front-right, leg 2) -->
   <link name="arm_a_2_1">
     <inertial>
       <origin xyz="0.00261850 -0.01742175 -0.04806032" rpy="0 0 0"/>
@@ -851,6 +843,7 @@
     </collision>
   </link>
 
+  <!-- arm_a_3_1 (back-right, leg 3) -->
   <link name="arm_a_3_1">
     <inertial>
       <origin xyz="0.00261850 -0.01742175 -0.04806032" rpy="0 0 0"/>
@@ -1102,7 +1095,6 @@
     <child link="imu_link"/>
   </joint>
 
-  <!-- =================== ros2_control + Gazebo plugins ================= -->
   <xacro:if value="${use_gz}">
     <xacro:include filename="$(find big_bertha_description)/urdf/big_bertha.ros2_control.xacro"/>
     <xacro:include filename="$(find big_bertha_description)/urdf/big_bertha.gazebo.xacro"/>
