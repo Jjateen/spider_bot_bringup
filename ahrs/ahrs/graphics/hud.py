@@ -61,8 +61,8 @@ class Hud:
         self._text.set_color(color)
         self._fig.canvas.draw()
         w, h = self._fig.canvas.get_width_height()
-        buf = self._fig.canvas.tostring_rgb()
-        arr = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 3)
+        buf = self._fig.canvas.tostring_argb()
+        arr = np.frombuffer(buf, dtype=np.uint8).reshape(h, w, 4)[:, :, 1:].copy()
         self._texture = o3d.geometry.Image(arr)
         self._mesh.textures = [self._texture]
 
