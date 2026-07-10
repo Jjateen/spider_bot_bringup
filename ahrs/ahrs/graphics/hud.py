@@ -79,7 +79,7 @@ class Hud:
             [cx - panel_width / 2, cy - panel_height / 2, cz],
         ], dtype=np.float64)
 
-        tris = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int32)
+        tris = np.array([[0, 2, 1], [0, 3, 2]], dtype=np.int32)
         uvs = np.array([
             [0, 0], [1, 0], [1, 1],
             [0, 0], [1, 1], [0, 1],
@@ -91,6 +91,7 @@ class Hud:
         mesh.triangle_uvs = o3d.utility.Vector2dVector(uvs)
         mesh.triangle_material_ids = o3d.utility.IntVector([0, 0])
         mesh.textures = [self._texture]
+        mesh.compute_vertex_normals()
         return mesh
 
     @property

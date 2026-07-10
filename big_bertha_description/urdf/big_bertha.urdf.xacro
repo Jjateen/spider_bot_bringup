@@ -659,7 +659,7 @@
     <parent link="base_link"/>
     <child link="arm_a_4_1"/>
     <axis xyz="0 1.0 0"/>
-    <limit lower="-1.57" upper="1.57"/>
+    <limit lower="-1.57" upper="1.57" effort="1.0" velocity="6.28"/>
     <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
@@ -668,7 +668,7 @@
     <parent link="arm_a_4_1"/>
     <child link="arm_b_4_1"/>
     <axis xyz="0 1.0 0"/>
-    <limit lower="-1.57" upper="0.96"/>
+    <limit lower="-1.57" upper="0.96" effort="1.0" velocity="6.28"/>
     <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
@@ -677,7 +677,7 @@
     <parent link="arm_b_4_1"/>
     <child link="arm_c_4_1"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="2.355"/>
+    <limit lower="0" upper="2.355" effort="1.0" velocity="6.28"/>
     <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
@@ -687,7 +687,7 @@
     <parent link="base_link"/>
     <child link="arm_a_1_1"/>
     <axis xyz="0 1.0 0"/>
-    <limit lower="-1.57" upper="1.57"/>
+    <limit lower="-1.57" upper="1.57" effort="1.0" velocity="6.28"/>
     <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
@@ -696,7 +696,7 @@
     <parent link="arm_a_1_1"/>
     <child link="arm_b_1_1"/>
     <axis xyz="0 1.0 0"/>
-    <limit lower="-1.57" upper="0.96"/>
+    <limit lower="-1.57" upper="0.96" effort="1.0" velocity="6.28"/>
     <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
@@ -705,7 +705,7 @@
     <parent link="arm_b_1_1"/>
     <child link="arm_c_1_1"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="2.355"/>
+    <limit lower="0" upper="2.355" effort="1.0" velocity="6.28"/>
     <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
@@ -715,7 +715,7 @@
     <parent link="base_link"/>
     <child link="arm_a_2_1"/>
     <axis xyz="0 1.0 0"/>
-    <limit lower="-1.57" upper="1.57"/>
+    <limit lower="-1.57" upper="1.57" effort="1.0" velocity="6.28"/>
     <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
@@ -724,7 +724,7 @@
     <parent link="arm_a_2_1"/>
     <child link="arm_b_2_1"/>
     <axis xyz="0 1.0 0"/>
-    <limit lower="-1.57" upper="0.96"/>
+    <limit lower="-1.57" upper="0.96" effort="1.0" velocity="6.28"/>
     <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
@@ -733,7 +733,7 @@
     <parent link="arm_b_2_1"/>
     <child link="arm_c_2_1"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="2.355"/>
+    <limit lower="0" upper="2.355" effort="1.0" velocity="6.28"/>
     <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
@@ -743,7 +743,7 @@
     <parent link="base_link"/>
     <child link="arm_a_3_1"/>
     <axis xyz="0 1.0 0"/>
-    <limit lower="-1.57" upper="1.57"/>
+    <limit lower="-1.57" upper="1.57" effort="1.0" velocity="6.28"/>
     <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
@@ -752,7 +752,7 @@
     <parent link="arm_a_3_1"/>
     <child link="arm_b_3_1"/>
     <axis xyz="0 1.0 0"/>
-    <limit lower="-1.57" upper="0.96"/>
+    <limit lower="-1.57" upper="0.96" effort="1.0" velocity="6.28"/>
     <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
@@ -761,7 +761,7 @@
     <parent link="arm_b_3_1"/>
     <child link="arm_c_3_1"/>
     <axis xyz="0 0 1"/>
-    <limit lower="0" upper="2.355"/>
+    <limit lower="0" upper="2.355" effort="1.0" velocity="6.28"/>
     <dynamics damping="0.02" friction="0.0"/>
   </joint>
 
