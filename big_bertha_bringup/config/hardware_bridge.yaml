@@ -62,6 +62,12 @@
     # IMU offset, projected_gravity_b.z = -1 at rest). Apply AFTER bias removal.
     imu_axis_sign: [-1.0, 1.0, -1.0]
 
+    # Magnetometer axis mapping. The AK8963 magnetometer die is mounted
+    # INDEPENDENTLY of the MPU9250 accel/gyro, so its axes are not aligned with
+    # the IMU axes. It gets its OWN sign vector — calibrate on hardware so the
+    # filtered heading tracks physical rotation. Applied only to /imu/mag.
+    mag_axis_sign: [-1.0, 1.0, -1.0]
+
     # Startup calibration — collects N IMU samples while stationary to compute
     # gyro bias (mean offsets subtracted from angular_velocity) and accel bias
     # (mean offsets with gravity removed, assuming IMU is level at startup).

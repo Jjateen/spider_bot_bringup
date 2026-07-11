@@ -61,6 +61,7 @@ def generate_launch_description():
     slam = LaunchConfiguration('slam')
     use_sim_time = LaunchConfiguration('use_sim_time')
     map_yaml = LaunchConfiguration('map')
+    imu_topic = LaunchConfiguration('imu_topic')
 
     def include(pkg_dir, rel_path, args, condition=None):
         return IncludeLaunchDescription(
@@ -102,7 +103,7 @@ def generate_launch_description():
         include(
             policy_pkg,
             os.path.join('launch', 'policy_controller.launch.py'),
-            {'use_sim_time': use_sim_time},
+            {'use_sim_time': use_sim_time, 'imu_topic': imu_topic},
         ),
     ], scoped=True)
 
@@ -110,7 +111,7 @@ def generate_launch_description():
     leg_odom = include(
         leg_pkg,
         os.path.join('launch', 'legged_odometry.launch.py'),
-        {},
+        {'imu_topic': imu_topic},
     )
 
     # ── 5. State estimation: robot_localization EKF ───────────────────
@@ -144,7 +145,7 @@ def generate_launch_description():
         executable='scan_ground_filter',
         name='scan_ground_filter',
         output='screen',
-        parameters=[{'use_sim_time': use_sim_time}],
+        parameters=[{'use_sim_time': use_sim_time, 'imu_topic': imu_topic}],
     )
 
     # ── 8. Planning: Nav2 servers ─────────────────────────────────────
@@ -164,6 +165,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'map', default_value=default_map,
             description='Saved map YAML for known-map mode'),
+        DeclareLaunchArgument(
+            'imu_topic', default_value='/filtered/imu',
+            description='Orientation source for hardware consumers '
+                        '(filtered Imu from imu_filter_madgwick)'),
 
         rsp,
         bridge,
