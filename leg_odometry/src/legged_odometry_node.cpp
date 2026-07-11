@@ -46,8 +46,9 @@ public:
       "/position_controller/commands", rclcpp::QoS(1),
       std::bind(&LeggedOdometryNode::on_cmd, this, std::placeholders::_1));
 
+    imu_topic_ = declare_parameter<std::string>("imu_topic", "/imu");
     imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-      "/imu", rclcpp::SensorDataQoS(),
+      imu_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LeggedOdometryNode::on_imu, this, std::placeholders::_1));
 
     joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(1));
@@ -274,6 +275,7 @@ private:
 
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  std::string imu_topic_;
 
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
