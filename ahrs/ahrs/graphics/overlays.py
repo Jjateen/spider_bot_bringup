@@ -16,7 +16,9 @@ class Overlay:
         self._hud = Hud()
 
     def update(self, state: RobotState, fps: float, imu_rate: float) -> None:
-        color = [0.0, 1.0, 0.0] if state.imu_connected else [1.0, 0.0, 0.0]
+        # Alarms on live arrival rate (RateTracker decays to 0 when messages
+        # stop), not just the one-time imu_connected flag.
+        color = [0.0, 1.0, 0.0] if imu_rate > 0.5 else [1.0, 0.0, 0.0]
         self._indicator.paint_uniform_color(color)
         self._hud.update(state, fps, imu_rate)
 

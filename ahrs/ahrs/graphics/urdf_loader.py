@@ -1,6 +1,5 @@
 import os
 import subprocess
-import tempfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 
@@ -49,6 +48,7 @@ def _resolve_package_path(package_name: str) -> str:
 
 
 def _run_xacro(xacro_path: str) -> str:
+    import subprocess
     logger.info(f"Running xacro on {xacro_path}")
     cmd = [
         "xacro",
@@ -59,6 +59,14 @@ def _run_xacro(xacro_path: str) -> str:
         cmd, capture_output=True, text=True, check=True
     )
     return result.stdout
+
+
+def load_urdf_robot(
+    xacro_path: str,
+    mesh_dir: str | None = None,
+) -> RobotModel:
+    xml_str = _run_xacro(xacro_path)
+    return load_urdf_from_string(xml_str)
 
 
 def _parse_xyz(s: str) -> np.ndarray:
@@ -109,33 +117,33 @@ def _load_mesh(
     return mesh
 
 
-def load_urdf_robot(
-    xacro_path: str,
-    mesh_dir: str | None = None,
+def load_urdf_from_string(
+    urdf_xml: str,
 ) -> RobotModel:
-    xml_str = _run_xacro(xacro_path)
-    root = ET.fromstring(xml_str)
+    root = ET.fromstring(urdf_xml)
 
     robot_name = root.get("name", "robot")
     logger.info(f"Parsing URDF robot: {robot_name}")
 
     model = RobotModel()
-    mesh_colors: dict[str, tuple[float, float, float]] = {}
 
     for link_elem in root.findall("link"):
         name = link_elem.get("name")
         if name is None:
             continue
 
-        color = (0.7, 0.7, 0.7)
-        mesh_path = None
-        scale = 1.0
-
-        visual = link_elem.find("visual")
-        if visual is not None:
+        for visual in link_elem.findall("visual"):
             origin_elem = visual.find("origin")
-            geom = visual.find("geometry")
+            xyz = np.zeros(3, dtype=np.float64)
+            rpy = np.zeros(3, dtype=np.float64)
+            if origin_elem is not None:
+                if origin_elem.get("xyz"):
+                    xyz = _parse_xyz(origin_elem.get("xyz"))
+                if origin_elem.get("rpy"):
+                    rpy = _parse_rpy(origin_elem.get("rpy"))
+            visual_T = _compose_transform(xyz, rpy)
 
+            color = (0.7, 0.7, 0.7)
             mat = visual.find("material")
             if mat is not None:
                 col = mat.find("color")
@@ -144,36 +152,54 @@ def load_urdf_robot(
                     if len(rgba) >= 3:
                         color = (float(rgba[0]), float(rgba[1]), float(rgba[2]))
 
-            if geom is not None:
+            geom = visual.find("geometry")
+            if geom is None:
+                continue
+
+            mesh = None
+
+            box_elem = geom.find("box")
+            if box_elem is not None:
+                size_str = box_elem.get("size", "0.01 0.01 0.01")
+                parts = size_str.strip().split()
+                w, h, d = float(parts[0]), float(parts[1]), float(parts[2])
+                if w > 0 and h > 0 and d > 0:
+                    box = o3d.geometry.TriangleMesh.create_box(w, h, d)
+                    box.compute_vertex_normals()
+                    box.paint_uniform_color(color)
+                    box.translate(-np.array([w / 2, h / 2, d / 2]))
+                    mesh = box
+
+            if mesh is None:
                 mesh_elem = geom.find("mesh")
                 if mesh_elem is not None:
                     mesh_path = mesh_elem.get("filename", "")
                     scale_str = mesh_elem.get("scale")
                     scale = _parse_scale(scale_str)
 
-        if mesh_path is None:
-            logger.debug(f"Skipping link {name} (no mesh)")
-            continue
+                    actual_path = mesh_path
+                    if mesh_path.startswith("package://"):
+                        pkg_part = mesh_path[len("package://"):]
+                        pkg_name, rel_path = pkg_part.split("/", 1)
+                        pkg_dir = _resolve_package_path(pkg_name)
+                        actual_path = os.path.join(pkg_dir, rel_path)
 
-        actual_path = mesh_path
-        if mesh_path.startswith("package://"):
-            pkg_part = mesh_path[len("package://"):]
-            pkg_name, rel_path = pkg_part.split("/", 1)
-            pkg_dir = _resolve_package_path(pkg_name)
-            actual_path = os.path.join(pkg_dir, rel_path)
+                    mesh = _load_mesh(actual_path, scale, color)
 
-        mesh = _load_mesh(actual_path, scale, color)
-        if mesh is None:
-            continue
+            if mesh is None:
+                continue
 
-        lm = LinkMesh(
-            name=name,
-            mesh=mesh,
-            original_vertices=np.asarray(mesh.vertices, dtype=np.float64).copy(),
-            color=color,
-        )
-        model.links.append(lm)
-        mesh_colors[name] = color
+            vertices = np.asarray(mesh.vertices, dtype=np.float64)
+            vertices[:] = vertices @ visual_T[:3, :3].T + visual_T[:3, 3]
+            mesh.compute_vertex_normals()
+
+            lm = LinkMesh(
+                name=name,
+                mesh=mesh,
+                original_vertices=np.asarray(mesh.vertices, dtype=np.float64).copy(),
+                color=color,
+            )
+            model.links.append(lm)
 
     logger.info(f"Loaded {len(model.links)} link meshes")
 
@@ -228,6 +254,17 @@ def load_urdf_robot(
             model.parent_to_children[parent] = []
         model.parent_to_children[parent].append((name, child))
 
+    # Derive the actual root link: a link that is never the child of any
+    # joint. If the URDF names its root something other than the default
+    # "base_link", compute_fk would otherwise set base_rotation on a link
+    # that is never rendered, silently dropping the IMU-derived attitude.
+    _child_links = set(model.child_to_parent.keys())
+    _root_candidates = [
+        lm.name for lm in model.links if lm.name not in _child_links
+    ]
+    if _root_candidates:
+        model.root = _root_candidates[0]
+
     logger.info(
         f"Loaded {len(model.joints)} joints "
         f"(root: {model.root})"
@@ -247,7 +284,7 @@ def compute_fk(
 
     visited = {model.root}
 
-    while len(visited) < len(model.parent_to_children) + 1:
+    while True:
         added = False
         for jd in model.joints:
             if jd.parent in visited and jd.child not in visited:

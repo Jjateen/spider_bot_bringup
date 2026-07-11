@@ -6,6 +6,7 @@ class ComplementaryFilter:
     def __init__(self, alpha: float = 0.98):
         self._orientation = Rotation.from_quat([0, 0, 0, 1])
         self._alpha = alpha
+        self._initialized = False
 
     def update(
         self,
@@ -18,18 +19,30 @@ class ComplementaryFilter:
         q_gyro = (self._orientation * delta).as_quat()
 
         acc_norm = np.sqrt(ax * ax + ay * ay + az * az)
-        if 8.0 < acc_norm < 11.0:
+        if acc_norm > 1e-3:
             ax_n, ay_n, az_n = ax / acc_norm, ay / acc_norm, az / acc_norm
             roll = np.arctan2(ay_n, az_n)
             pitch = np.arctan2(-ax_n, np.sqrt(ay_n * ay_n + az_n * az_n))
             yaw = Rotation.from_quat(q_gyro).as_euler('xyz')[2]
             q_accel = Rotation.from_euler('xyz', [roll, pitch, yaw]).as_quat()
 
+            # Seed the orientation from the first good gravity reading so the
+            # absolute frame is gravity-referenced rather than startup-pose
+            # relative. Yaw is taken from the (identity) gyro at that moment.
+            conf = float(np.clip(1.0 - abs(acc_norm - 9.81) / 9.81, 0.0, 1.0))
+            if not self._initialized and conf > 0.5:
+                self._orientation = Rotation.from_quat(q_accel)
+                self._initialized = True
+                q_gyro = (self._orientation * delta).as_quat()
+
             dot = np.dot(q_gyro, q_accel)
             if dot < 0:
                 q_accel = -q_accel
                 dot = -dot
-            t = 1.0 - self._alpha
+            # Confidence weight: full tilt correction near 1g, fades as the
+            # measured acceleration departs from gravity (dynamic motion),
+            # instead of the previous hard on/off gate at |a| in (8, 11).
+            t = (1.0 - self._alpha) * conf
             if dot > 0.9995:
                 q_fused = q_gyro + t * (q_accel - q_gyro)
             else:
@@ -47,3 +60,4 @@ class ComplementaryFilter:
 
     def reset(self) -> None:
         self._orientation = Rotation.from_quat([0, 0, 0, 1])
+        self._initialized = False

@@ -37,7 +37,7 @@ class Scene:
         joint_positions: dict[str, float] | None = None,
     ) -> None:
         self._robot.update_pose(state.rotation_matrix)
-        if joint_positions:
+        if joint_positions is not None:
             self._robot.update_joints(joint_positions)
         self._overlay.update(state, fps, imu_rate)
 

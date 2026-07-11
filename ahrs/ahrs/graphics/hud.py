@@ -12,19 +12,19 @@ from ahrs.ros.robot_state import RobotState
 class Hud:
     def __init__(self) -> None:
         self._fig, self._ax = plt.subplots(
-            figsize=(7.0, 3.0), dpi=80, facecolor='black',
+            figsize=(7.0, 3.0), dpi=200, facecolor='black',
         )
         self._ax.set_facecolor('black')
         self._ax.axis('off')
         self._text = self._ax.text(
             0.03, 0.5, '', color='lime', fontfamily='monospace',
-            fontsize=9, verticalalignment='center',
+            fontsize=16, verticalalignment='center',
             transform=self._ax.transAxes,
         )
         plt.subplots_adjust(left=0, right=1, bottom=0, top=1)
         self._fig.canvas.draw()
         self._texture = o3d.geometry.Image(
-            np.zeros((240, 560, 3), dtype=np.uint8),
+            np.zeros((1, 1, 3), dtype=np.uint8),
         )
         self._mesh = self._create_panel()
         self._frame_counter = 0

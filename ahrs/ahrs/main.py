@@ -3,6 +3,7 @@ import os
 import signal
 import sys
 
+import rclpy
 import yaml
 
 from ahrs.graphics.grid import Grid
@@ -12,6 +13,7 @@ from ahrs.graphics.overlays import Overlay
 from ahrs.graphics.scene import Scene
 from ahrs.graphics.viewer import Viewer
 from ahrs.ros.joint_state_subscriber import SharedJointState
+from ahrs.ros.robot_description_subscriber import RobotDescriptionSubscriber
 from ahrs.ros.robot_state import SharedRobotState
 from ahrs.ros.ros_node import ROSNode
 from ahrs.utils.logger import setup_logger
@@ -58,33 +60,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _resolve_urdf_path(urdf_path: str) -> str | None:
-    if not urdf_path:
-        try:
-            from ament_index_python.packages import get_package_share_directory
-            pkg_dir = get_package_share_directory("big_bertha_description")
-            candidate = os.path.join(pkg_dir, "urdf", "big_bertha.urdf.xacro")
-            if os.path.exists(candidate):
-                logger.info(f"Auto-discovered URDF: {candidate}")
-                return candidate
-        except Exception:
-            pass
-        return None
-    if urdf_path.startswith("package://"):
-        parts = urdf_path[len("package://"):].split("/", 1)
-        try:
-            from ament_index_python.packages import get_package_share_directory
-            pkg_dir = get_package_share_directory(parts[0])
-            return os.path.join(pkg_dir, parts[1])
-        except Exception:
-            logger.warning(f"Could not resolve package: {parts[0]}")
-            return None
-    if os.path.exists(urdf_path):
-        return urdf_path
-    logger.warning(f"URDF path not found: {urdf_path}")
-    return None
-
-
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
@@ -99,26 +74,58 @@ def main() -> None:
     logger.info(f"Using IMU topic: {imu_topic}")
     logger.info("Starting AHRS Visualizer")
 
+    rclpy.init(args=None)
     state = SharedRobotState()
 
-    urdf_path = _resolve_urdf_path(robot_cfg.get("urdf_path", ""))
+    # Read use_sim_time, allowing a launch-provided ROS parameter to override
+    # the config-file default. rclpy auto-declares `use_sim_time` on every
+    # node, so read it rather than re-declaring (re-declare raises
+    # ParameterAlreadyDeclaredException).
+    _param_node = rclpy.create_node("ahrs_param_reader")
+    use_sim_time = _param_node.get_parameter("use_sim_time").value
+    _param_node.destroy_node()
+
+    desc_sub = RobotDescriptionSubscriber()
     joint_state: SharedJointState | None = None
     joint_topic = robot_cfg.get("joint_state_topic", "/joint_states")
 
-    if urdf_path:
-        logger.info(f"Loading URDF robot from: {urdf_path}")
-        mesh_dir = robot_cfg.get("mesh_dir", "") or None
-        robot = Robot.from_urdf(urdf_path, mesh_dir)
+    logger.info("Waiting for /robot_description...")
+    timeout = robot_cfg.get("description_timeout", 5.0)
+    deadline = (rclpy.clock.Clock().now() + rclpy.duration.Duration(seconds=timeout)).nanoseconds
+    while desc_sub.model is None and rclpy.ok():
+        rclpy.spin_once(desc_sub, timeout_sec=0.1)
+        if rclpy.clock.Clock().now().nanoseconds > deadline:
+            break
+
+    if desc_sub.model is not None:
+        logger.info(
+            f"Loaded URDF robot from /robot_description "
+            f"({len(desc_sub.model.links)} links, {len(desc_sub.model.joints)} joints)"
+        )
+        robot = Robot.from_model(desc_sub.model)
         joint_state = SharedJointState()
         logger.info(f"Will subscribe to joint states: {joint_topic}")
     else:
-        logger.info("Using cube robot (no URDF path configured)")
+        logger.warning(
+            f"No /robot_description received after {timeout}s timeout, "
+            "using cube robot"
+        )
         robot = Robot(size=robot_cfg.get("cube_size", 0.3))
+    desc_sub.destroy_node()
 
+    filter_alpha = config.get("filter_alpha", 0.5)
+    gyro_bias = config.get("gyro_bias", [0.0, 0.0, 0.0])
+    accel_bias = config.get("accel_bias", [0.0, 0.0, 0.0])
+    imu_units = config.get("imu_units", None)
     ros_node = ROSNode(
         imu_topic, state,
         joint_state=joint_state,
         joint_topic=joint_topic,
+        filter_alpha=filter_alpha,
+        gyro_bias=gyro_bias,
+        accel_bias=accel_bias,
+        imu_units=imu_units,
+        use_sim_time=use_sim_time,
     )
 
     grid = Grid(

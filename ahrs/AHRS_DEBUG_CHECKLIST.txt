@@ -1,0 +1,99 @@
+AHRS -> 3D MODEL DEBUG CHECKLIST (stack-specific)
+================================================
+
+This is the generic ROS/TF "AHRS -> model" checklist translated for THIS
+project. Our AHRS is NOT a TF pipeline: the filter writes to an in-process
+SharedRobotState, and the Open3D viewer polls it and applies it via
+Robot.update_pose / update_joints. There is NO /ahrs/orientation topic,
+NO sendTransform, NO TF, NO ros_gz_bridge for output, NO RViz.
+
+Therefore the following generic-checklist sections are N/A here and must
+NOT be chased:
+  - something calls sendTransform() / publishes JointState for the attitude
+  - publish_tf / equivalent flag
+  - ros_gz_bridge ROS->Gazebo direction entry
+  - tf2_tools view_frames showing two broadcasters for one frame
+  - fixed joint in URDF/SDF blocking rotation
+  - robot_localization two_d_mode flattening roll/pitch
+
+
+START HERE
+----------
+Symptom: IMU data arrives, but the model never turns, while the render
+loop is confirmed refreshing.
+
+1. Does the model react to sensor motion?
+   - Run: ros2 launch ahrs visualizer.launch.py
+   - Watch the overlay sphere (bottom-left): GREEN = IMU rate > 0.5 Hz,
+     RED = "IMU NOT RECEIVED".
+   - Tilt/pitch the robot (Gazebo) and watch the model.
+   - Frozen at identity, never changes -> filter not converging ->
+     see Section 2 (items 3/4 below).
+   - Changes correctly -> keep going.
+
+2. Is IMU even arriving?
+   - ros2 topic hz /imu
+   - If 0 Hz: wrong topic name (config imu_topic, default /imu), no
+     publisher, or QoS. Our subscriber is BEST_EFFORT; a RELIABLE sim
+     publisher is compatible, but a BEST_EFFORT-only publisher with no
+     matching reader drops silently. -> see diagnostics (item 7).
+   - RED overlay sphere with nonzero-but-stalled rate also points here.
+
+3. Force a known orientation (rules out the filter math):
+   - Publish a constant /imu with angular_velocity=0 and
+     linear_acceleration=[0,0,9.81] -> model should be level.
+   - linear_acceleration=[0,9.81,0] -> model should pitch ~+90 deg.
+   - No reaction at all -> base rotation not applied -> Section 4
+     (items 1/2 below: root-link mismatch or update_pose no-op).
+
+4. Console traceback?
+   - With the callback now wrapped in try/except, any error is logged as
+     "IMU callback failed: ..." every cycle instead of being swallowed
+     once. Grep the launch terminal for that string.
+
+
+THE REAL "MIDDLE" BREAK POINTS (this stack)
+-------------------------------------------
+(equivalent to the generic "wiring into the transform" stage)
+
+A. Root link not found (BUG A / item 1).
+   urdf_loader now derives the true root (a link never used as a joint
+   child). If it ever mismatches, base_rotation is set on a link that is
+   never rendered -> whole model never rotates. Fix in urdf_loader.py.
+
+B. Base rotation coupled to joints (BUG C / item 2).
+   update_pose now applies base_rotation directly in URDF mode, so the
+   model reflects IMU attitude even if /joint_states is empty/broken.
+
+C. Tilt correction gated off during motion (BUG 3 / item 3).
+   The old hard gate (|a| in 8..11 m/s^2) disabled roll/pitch correction
+   for most of a gait. Now a gravity-confidence weight keeps it active
+   (full near 1g, fading with dynamic acceleration).
+
+D. Startup-relative frame (BUG B / item 4).
+   The filter now seeds orientation from the first good gravity reading
+   (yaw from gyro at that instant), so "level" = gravity, not the
+   power-on pose. reset() re-levels.
+
+E. Silent callback death / bad input (item 7).
+   Callback guards against NaN/Inf and all-zero samples; biases and unit
+   conversion (deg/s, g) are applied before filtering.
+
+
+SENSOR-SIDE QUICK CHECKS (do these once)
+----------------------------------------
+- accel magnitude at rest ~ 9.81 m/s^2, gyro ~ 0 (else bias/units wrong)
+- no NaN / Inf / all-zero rows (sanitizer drops them now)
+- units: filter assumes ROS-standard rad/s and m/s^2; set imu_units
+  {ang: deg_s, lin: g} in config.yaml only if the publisher differs
+- frame/axis convention: ROS X-forward, Y-left, Z-up, right-handed
+
+
+VERIFICATION AFTER FIXES
+------------------------
+- python -m pytest ahrs/test/test_orientation_filter.py
+- colcon build --packages-select ahrs
+- Tilt in Gazebo -> model pitches/rolls; spin -> yaw tracks (drifts
+  without magnetometer, expected); kill /joint_states -> model still
+  reflects IMU; feed NaN/zero IMU -> RED alarm, no crash.
+- Load a URDF whose root != "base_link" -> rotation still applies.

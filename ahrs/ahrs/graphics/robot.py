@@ -38,25 +38,64 @@ class Robot:
             np.asarray(self._geometry_ref.vertices, dtype=np.float64)
         )
 
+        self._combined_mesh: o3d.geometry.TriangleMesh | None = None
+        self._per_link_ranges: list[tuple[int, int, int, int]] = []
+        self._total_vertices: int = 0
+        self._last_joint_positions: dict[str, float] = {}
+
     @classmethod
-    def from_urdf(
-        cls, xacro_path: str, mesh_dir: str | None = None
-    ) -> "Robot":
+    def from_model(cls, model: RobotModel) -> "Robot":
         robot = cls.__new__(cls)
-        robot._model = load_urdf_robot(xacro_path, mesh_dir)
+        robot._model = model
         robot._cube_mode = False
         robot._size = 0.0
         robot._base_rotation = np.eye(3, dtype=np.float64)
 
-        all_meshes = [lm.mesh for lm in robot._model.links]
+        all_vertices = []
+        all_triangles = []
+        all_colors = []
+        per_link_ranges = []
+        vert_offset = 0
+        tri_offset = 0
 
-        if len(all_meshes) > 0:
-            robot._geometry = all_meshes[0]
-            bb_min = all_meshes[0].get_min_bound()
-            bb_max = all_meshes[0].get_max_bound()
-            for m in all_meshes[1:]:
-                bb_min = np.minimum(bb_min, m.get_min_bound())
-                bb_max = np.maximum(bb_max, m.get_max_bound())
+        for lm in model.links:
+            verts = np.asarray(lm.mesh.vertices, dtype=np.float64)
+            tris = np.asarray(lm.mesh.triangles, dtype=np.int32)
+            cols = np.asarray(lm.mesh.vertex_colors, dtype=np.float64)
+
+            n_verts = len(verts)
+            n_tris = len(tris)
+
+            if len(cols) == 0:
+                cols = np.tile(np.array(lm.color, dtype=np.float64), (n_verts, 1))
+
+            per_link_ranges.append(
+                (vert_offset, vert_offset + n_verts, tri_offset, tri_offset + n_tris)
+            )
+
+            all_vertices.append(verts)
+            all_triangles.append(tris + vert_offset)
+            all_colors.append(cols)
+
+            vert_offset += n_verts
+            tri_offset += n_tris
+
+        combined = o3d.geometry.TriangleMesh()
+        combined.vertices = o3d.utility.Vector3dVector(np.vstack(all_vertices))
+        combined.triangles = o3d.utility.Vector3iVector(np.vstack(all_triangles))
+        combined.vertex_colors = o3d.utility.Vector3dVector(np.vstack(all_colors))
+        combined.compute_vertex_normals()
+
+        robot._combined_mesh = combined
+        robot._per_link_ranges = per_link_ranges
+        robot._total_vertices = vert_offset
+        robot._geometry = combined
+        robot._original_vertices = np.empty((0, 3), dtype=np.float64)
+        robot._last_joint_positions = {}
+
+        if len(model.links) > 0:
+            bb_min = combined.get_min_bound()
+            bb_max = combined.get_max_bound()
             extent = bb_max - bb_min
             ref_size = max(extent) * 0.3
         else:
@@ -71,51 +110,72 @@ class Robot:
 
         return robot
 
+    @classmethod
+    def from_urdf(
+        cls, xacro_path: str, mesh_dir: str | None = None
+    ) -> "Robot":
+        model = load_urdf_robot(xacro_path, mesh_dir)
+        return cls.from_model(model)
+
     def update_pose(self, rotation_matrix: np.ndarray) -> None:
         self._base_rotation = rotation_matrix.copy()
 
         if self._cube_mode:
             rotated = self._original_vertices @ rotation_matrix.T
-            np.asarray(self._geometry.vertices)[:] = rotated
+            self._geometry.vertices = o3d.utility.Vector3dVector(rotated)
             self._geometry.compute_vertex_normals()
 
             rotated_ref = self._original_ref_vertices @ rotation_matrix.T
-            np.asarray(self._geometry_ref.vertices)[:] = rotated_ref
+            self._geometry_ref.vertices = o3d.utility.Vector3dVector(rotated_ref)
+        else:
+            # In URDF mode the base attitude must be applied even when the
+            # joint-state path is empty/broken, so apply it here directly
+            # instead of relying solely on update_joints.
+            self._apply_fk(self._last_joint_positions)
 
     def update_joints(self, joint_positions: dict[str, float]) -> None:
         if self._cube_mode or self._model is None:
+            return
+        self._last_joint_positions = dict(joint_positions)
+        self._apply_fk(joint_positions)
+
+    def _apply_fk(self, joint_positions: dict[str, float]) -> None:
+        if self._combined_mesh is None or self._model is None:
             return
 
         transforms = compute_fk(
             self._model, joint_positions, self._base_rotation
         )
 
-        for lm in self._model.links:
+        full_vertices = np.empty((self._total_vertices, 3), dtype=np.float64)
+        for i, lm in enumerate(self._model.links):
             if lm.name in transforms:
                 T = transforms[lm.name]
+                v_start, v_end, _, _ = self._per_link_ranges[i]
                 rotated = lm.original_vertices @ T[:3, :3].T + T[:3, 3]
-                np.asarray(lm.mesh.vertices)[:] = rotated
+                full_vertices[v_start:v_end] = rotated
+
+        self._combined_mesh.vertices = o3d.utility.Vector3dVector(full_vertices)
+        self._combined_mesh.compute_vertex_normals()
 
         ref_T = transforms.get(
             self._model.root, np.eye(4, dtype=np.float64)
         )
         rotated_ref = self._original_ref_vertices @ ref_T[:3, :3].T + ref_T[:3, 3]
-        np.asarray(self._geometry_ref.vertices)[:] = rotated_ref
+        self._geometry_ref.vertices = o3d.utility.Vector3dVector(rotated_ref)
 
     @property
     def geometries(self) -> list[o3d.geometry.Geometry]:
         if self._cube_mode:
             return [self._geometry, self._geometry_ref]
-        meshes = [lm.mesh for lm in self._model.links]
-        meshes.append(self._geometry_ref)
-        return meshes
+        return [self._combined_mesh, self._geometry_ref]
 
     @property
     def geometry(self) -> o3d.geometry.TriangleMesh:
         if self._cube_mode:
             return self._geometry
-        if self._model and len(self._model.links) > 0:
-            return self._model.links[0].mesh
+        if self._combined_mesh is not None:
+            return self._combined_mesh
         return self._geometry
 
     @property
