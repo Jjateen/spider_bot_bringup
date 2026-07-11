@@ -92,6 +92,15 @@ public:
     gyro_cov_ = declare_parameter<std::vector<double>>(
       "angular_velocity_covariance", {0.00001, 0.0, 0.0, 0.0, 0.00001, 0.0, 0.0, 0.0, 0.00001});
 
+    // IMU axis mapping: chip frame -> base_link frame. The MPU9250 is mounted
+    // 180° about Y (chip z points down vs base_link z-up), so x and z default
+    // to -1. Sign is applied to linear_acceleration and angular_velocity after
+    // bias removal so /imu matches Isaac training (base_link-aligned IMU).
+    {
+      std::vector<double> def_sign = {-1.0, 1.0, -1.0};
+      imu_axis_sign_ = declare_parameter<std::vector<double>>("imu_axis_sign", def_sign);
+    }
+
     // Calibration: measure sensor drift at startup
     gyro_calibration_enabled_ = declare_parameter<bool>("gyro_calibration_enabled", true);
     gyro_calibration_samples_ = declare_parameter<int>("gyro_calibration_samples", 200);
@@ -603,13 +612,16 @@ private:
     double gy_corr = gy - gyro_bias_y_;
     double gz_corr = gz - gyro_bias_z_;
 
-    msg.linear_acceleration.x = ax_corr;
-    msg.linear_acceleration.y = ay_corr;
-    msg.linear_acceleration.z = az_corr;
+    // Map chip frame -> base_link frame (mounting is 180° about Y: invert x, z).
+    // Applied AFTER bias removal so calibration (accel_bias_z_ = az_mean - 9.81)
+    // still sees the raw chip values.
+    msg.linear_acceleration.x = ax_corr * imu_axis_sign_[0];
+    msg.linear_acceleration.y = ay_corr * imu_axis_sign_[1];
+    msg.linear_acceleration.z = az_corr * imu_axis_sign_[2];
 
-    msg.angular_velocity.x = gx_corr;
-    msg.angular_velocity.y = gy_corr;
-    msg.angular_velocity.z = gz_corr;
+    msg.angular_velocity.x = gx_corr * imu_axis_sign_[0];
+    msg.angular_velocity.y = gy_corr * imu_axis_sign_[1];
+    msg.angular_velocity.z = gz_corr * imu_axis_sign_[2];
 
     // Fill in the noise levels (covariance matrices)
     std::copy(orient_cov_.begin(), orient_cov_.end(), msg.orientation_covariance.begin());
@@ -664,6 +676,7 @@ private:
   std::vector<double> orient_cov_;
   std::vector<double> accel_cov_;
   std::vector<double> gyro_cov_;
+  std::vector<double> imu_axis_sign_{-1.0, 1.0, -1.0};  // chip frame -> base_link
 
   // ── Calibration biases ──────────────────────────────
   double gyro_bias_x_{0.0}, gyro_bias_y_{0.0}, gyro_bias_z_{0.0};
