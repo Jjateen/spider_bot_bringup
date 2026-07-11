@@ -127,9 +127,9 @@ public:
     warmup_sec_ = declare_parameter<double>("warmup_sec", 3.0);
     policy_decimation_ = std::max(1, static_cast<int>(std::round(pd_rate_ / control_rate_)));
     joint_names_ = declare_parameter<std::vector<std::string>>(
-      "joint_names", {"Revolute_110", "Revolute_111", "Revolute_112", "Revolute_113",
-                      "Revolute_114", "Revolute_115", "Revolute_116", "Revolute_117",
-                      "Revolute_118", "Revolute_119", "Revolute_120", "Revolute_121"});
+      "joint_names", {"Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119",
+                      "Revolute_111", "Revolute_114", "Revolute_117", "Revolute_120",
+                      "Revolute_112", "Revolute_115", "Revolute_118", "Revolute_121"});
     auto default_pose = declare_parameter<std::vector<double>>(
       "default_joint_pos",
       {0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 2.00, 2.00, 2.00, 2.00});
@@ -164,10 +164,11 @@ public:
     status_pub_ = create_publisher<spider_msgs::msg::PolicyStatus>("policy_status", rclcpp::QoS(1));
 
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-      "/odom", rclcpp::SensorDataQoS(),
+      "/odom", rclcpp::QoS(1),
       std::bind(&PolicyControllerNode::on_odom, this, std::placeholders::_1));
+    imu_topic_ = declare_parameter<std::string>("imu_topic", "/imu");
     imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-      "/imu", rclcpp::SensorDataQoS(),
+      imu_topic_, rclcpp::SensorDataQoS(),
       std::bind(&PolicyControllerNode::on_imu, this, std::placeholders::_1));
     joint_sub_ = create_subscription<sensor_msgs::msg::JointState>(
       "/joint_states", rclcpp::SensorDataQoS(),
@@ -587,7 +588,7 @@ private:
   double control_rate_{50.0};
   double cmd_timeout_{0.5};
   double joint_limit_{3.14159};
-  bool use_effort_{true};
+  bool use_effort_{false};
   double kp_{20.0};
   double kd_{2.0};
   double effort_limit_{1.0};
@@ -660,6 +661,7 @@ private:
   rclcpp::Publisher<spider_msgs::msg::PolicyStatus>::SharedPtr status_pub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  std::string imu_topic_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hip_bias_sub_;
