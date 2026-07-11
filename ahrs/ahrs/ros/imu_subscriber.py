@@ -4,7 +4,6 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPo
 from sensor_msgs.msg import Imu
 import numpy as np
 
-from ahrs.math_utils.orientation_filter import ComplementaryFilter
 from ahrs.math_utils.quaternion import (
     quaternion_to_euler,
     quaternion_to_rotation_matrix,
@@ -32,8 +31,6 @@ class ImuSubscriber(Node):
         super().__init__("imu_subscriber")
         self._state = state
         self._rate_tracker = rate_tracker
-        self._filter = ComplementaryFilter(alpha=alpha)
-        self.get_logger().info(f"Complementary filter alpha={alpha}")
 
         self._gyro_bias = (
             np.asarray(gyro_bias, dtype=np.float64)
@@ -64,6 +61,21 @@ class ImuSubscriber(Node):
 
     def _callback(self, msg: Imu) -> None:
         try:
+            # Orientation is now supplied by the upstream filter (imu_filter_madgwick)
+            # on /filtered/imu — we no longer estimate it here.
+            q = np.array(
+                [
+                    msg.orientation.x,
+                    msg.orientation.y,
+                    msg.orientation.z,
+                    msg.orientation.w,
+                ],
+                dtype=np.float64,
+            )
+            if not np.all(np.isfinite(q)) or np.linalg.norm(q) < 1e-6:
+                self.get_logger().warn("IMU orientation missing/invalid; skipping")
+                return
+
             av = np.array(
                 [
                     msg.angular_velocity.x,
@@ -103,21 +115,10 @@ class ImuSubscriber(Node):
             av = av - self._gyro_bias
             la = la - self._accel_bias
 
-            ts = float(msg.header.stamp.sec) + float(msg.header.stamp.nanosec) * 1e-9
-
-            if self._prev_ts is not None and ts > self._prev_ts:
-                dt = ts - self._prev_ts
-            else:
-                dt = 0.01
-            self._prev_ts = ts
-
-            q = self._filter.update(
-                la[0], la[1], la[2],
-                av[0], av[1], av[2],
-                dt,
-            )
             R = quaternion_to_rotation_matrix(q)
             roll, pitch, yaw = quaternion_to_euler(q)
+
+            ts = float(msg.header.stamp.sec) + float(msg.header.stamp.nanosec) * 1e-9
 
             self._state.update(
                 quaternion=q,

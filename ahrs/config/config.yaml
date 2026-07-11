@@ -1,4 +1,4 @@
-imu_topic: "/imu"
+imu_topic: "/filtered/imu"
 filter_alpha: 0.5
 use_sim_time: false
 gyro_bias: [0.0, 0.0, 0.0]
