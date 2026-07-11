@@ -66,8 +66,9 @@ public:
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     const auto sensor_qos = rclcpp::SensorDataQoS();
+    imu_topic_ = this->declare_parameter<std::string>("imu_topic", "imu");
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-      "imu", sensor_qos, std::bind(&ScanGroundFilter::onImu, this, std::placeholders::_1));
+      imu_topic_, sensor_qos, std::bind(&ScanGroundFilter::onImu, this, std::placeholders::_1));
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       "scan", sensor_qos, std::bind(&ScanGroundFilter::onScan, this, std::placeholders::_1));
     // RELIABLE so it satisfies the costmap's reliable subscription (a
@@ -182,6 +183,7 @@ private:
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  std::string imu_topic_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr pub_;
 };
