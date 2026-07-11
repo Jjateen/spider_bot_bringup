@@ -46,6 +46,11 @@ def generate_launch_description() -> LaunchDescription:
             default_value="false",
             description="Launch hardware bridge alongside the visualizer",
         ),
+        DeclareLaunchArgument(
+            "use_sim_time",
+            default_value="false",
+            description="Use simulation time for the AHRS nodes",
+        ),
 
         LogInfo(
             msg=[
@@ -60,6 +65,7 @@ def generate_launch_description() -> LaunchDescription:
             executable="ahrs_visualizer",
             name="ahrs_visualizer",
             output="screen",
+            parameters=[{"use_sim_time": LaunchConfiguration("use_sim_time")}],
             arguments=[
                 "--config",
                 LaunchConfiguration("config"),

@@ -18,10 +18,23 @@ class ROSNode:
         imu_state: SharedRobotState,
         joint_state: SharedJointState | None = None,
         joint_topic: str = "/joint_states",
+        filter_alpha: float = 0.5,
+        gyro_bias=None,
+        accel_bias=None,
+        imu_units: dict | None = None,
+        use_sim_time: bool = False,
     ) -> None:
-        rclpy.init(args=None)
         self._rate_tracker = RateTracker()
-        self._imu_node = ImuSubscriber(imu_topic, imu_state, self._rate_tracker)
+        self._imu_node = ImuSubscriber(
+            imu_topic,
+            imu_state,
+            self._rate_tracker,
+            alpha=filter_alpha,
+            gyro_bias=gyro_bias,
+            accel_bias=accel_bias,
+            imu_units=imu_units,
+            use_sim_time=use_sim_time,
+        )
 
         self._joint_state = joint_state
         self._joint_node: JointStateSubscriber | None = None

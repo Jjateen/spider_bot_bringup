@@ -40,3 +40,4 @@ docker-compose.yml
 .dockerignore
 scripts/docker_build.sh
 scripts/docker_run.sh
+PROJECT_SPEC.txt

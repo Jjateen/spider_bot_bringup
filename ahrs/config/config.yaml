@@ -1,4 +1,14 @@
 imu_topic: "/imu"
+filter_alpha: 0.5
+use_sim_time: false
+gyro_bias: [0.0, 0.0, 0.0]
+accel_bias: [0.0, 0.0, 0.0]
+# Units the incoming /imu message uses. The filter assumes ROS-standard
+# rad/s and m/s^2. Set these to convert non-standard hardware output.
+# ang: rad_s | deg_s    lin: m_s2 | g
+imu_units:
+  ang: rad_s
+  lin: m_s2
 window:
   width: 1280
   height: 720
@@ -12,8 +22,6 @@ camera:
   look_at: [0.0, 0.0, 0.0]
 background_color: [0.12, 0.12, 0.12]
 robot:
-  model_path: ""
   cube_size: 0.3
-  urdf_path: ""
-  mesh_dir: ""
   joint_state_topic: "/joint_states"
+  description_timeout: 5.0
