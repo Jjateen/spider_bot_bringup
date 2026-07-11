@@ -191,13 +191,14 @@ def tcp_imu_server():
 
 # ── Bridge.notify handlers (called when STM32 pushes data) ──────────────────
 
-def on_imu(ax, ay, az, gx, gy, gz, sample_id=None, timestamp=None):
+def on_imu(ax, ay, az, gx, gy, gz, mx=0.0, my=0.0, mz=0.0, sample_id=None, timestamp=None):
     if all(v == 0.0 for v in (ax, ay, az, gx, gy, gz)):
         print("[bridge] WARNING: IMU reading all zeros — sensor may be missing")
     with cache_lock:
         cache["imu"] = {
             "ax": ax, "ay": ay, "az": az,
             "gx": gx, "gy": gy, "gz": gz,
+            "mx": mx, "my": my, "mz": mz,
             "lin_acc_x": ax, "lin_acc_y": ay, "lin_acc_z": az,
         }
 

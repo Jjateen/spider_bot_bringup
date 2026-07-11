@@ -41,6 +41,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
+#include "sensor_msgs/msg/magnetic_field.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 
 class HardwareBridgeNode : public rclcpp::Node
@@ -101,6 +102,14 @@ public:
       imu_axis_sign_ = declare_parameter<std::vector<double>>("imu_axis_sign", def_sign);
     }
 
+    // Magnetometer axis mapping. The AK8963 die is mounted INDEPENDENTLY of the
+    // MPU9250 accel/gyro, so it gets its OWN sign vector (calibrate on hardware
+    // so heading tracks physical rotation). Applied to magnetic_field only.
+    {
+      std::vector<double> def_sign = {-1.0, 1.0, -1.0};
+      mag_axis_sign_ = declare_parameter<std::vector<double>>("mag_axis_sign", def_sign);
+    }
+
     // Calibration: measure sensor drift at startup
     gyro_calibration_enabled_ = declare_parameter<bool>("gyro_calibration_enabled", true);
     gyro_calibration_samples_ = declare_parameter<int>("gyro_calibration_samples", 200);
@@ -127,6 +136,8 @@ public:
 
     // ── Publisher ─────────────────────────────────────────────────────
     imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("/imu", rclcpp::SensorDataQoS());
+    mag_pub_ = create_publisher<sensor_msgs::msg::MagneticField>(
+      "/imu/mag", rclcpp::SensorDataQoS());
 
     // ── Subscriber ────────────────────────────────────────────────────
     cmd_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
@@ -345,22 +356,24 @@ private:
         // If a non-IMU line was consumed (e.g. {"ok":true} from an
         // interleaved servo response), try the next line from the buffer
         // without sending a new request.
-        if (!line.empty()) {
-          double ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
-          bool got_imu = parse_imu_json(line, ax, ay, az, gx, gy, gz);
-          if (!got_imu) {
-            // Non-IMU line — check if another response is already buffered
-            auto nl = read_buf_.find('\n');
-            if (nl != std::string::npos) {
-              std::string next = read_buf_.substr(0, nl);
-              read_buf_.erase(0, nl + 1);
-              got_imu = parse_imu_json(next, ax, ay, az, gx, gy, gz);
-            }
-          }
-          if (got_imu) {
-            publish_imu(ax, ay, az, gx, gy, gz);
-          }
-        }
+         if (!line.empty()) {
+           double ax = 0, ay = 0, az = 0, gx = 0, gy = 0, gz = 0;
+           double mx = 0, my = 0, mz = 0;
+           bool mag_ok = false;
+           bool got_imu = parse_imu_json(line, ax, ay, az, gx, gy, gz, mx, my, mz, mag_ok);
+           if (!got_imu) {
+             // Non-IMU line — check if another response is already buffered
+             auto nl = read_buf_.find('\n');
+             if (nl != std::string::npos) {
+               std::string next = read_buf_.substr(0, nl);
+               read_buf_.erase(0, nl + 1);
+               got_imu = parse_imu_json(next, ax, ay, az, gx, gy, gz, mx, my, mz, mag_ok);
+             }
+           }
+           if (got_imu) {
+             publish_imu(ax, ay, az, gx, gy, gz, mx, my, mz, mag_ok);
+           }
+         }
       }
 
       // Drain any leftover data into the buffer
@@ -469,11 +482,13 @@ private:
       if (!read_imu_line(line)) return false;
 
       // Got a reading — add it to the totals
-      if (!line.empty()) {
-        double ax, ay, az, gx, gy, gz;
-        if (!parse_imu_json(line, ax, ay, az, gx, gy, gz)) {
-          continue;  // error response (sensor absent) — skip this sample
-        }
+       if (!line.empty()) {
+         double ax, ay, az, gx, gy, gz;
+         double mx, my, mz;
+         bool mag_ok;
+         if (!parse_imu_json(line, ax, ay, az, gx, gy, gz, mx, my, mz, mag_ok)) {
+           continue;  // error response (sensor absent) — skip this sample
+         }
         gx_sum += gx;
         gy_sum += gy;
         gz_sum += gz;
@@ -566,7 +581,7 @@ private:
   // push IMU data because the sensor was absent).
   bool parse_imu_json(
     const std::string & line, double & ax, double & ay, double & az, double & gx, double & gy,
-    double & gz)
+    double & gz, double & mx, double & my, double & mz, bool & mag_ok)
   {
     // Find a key like "ax" in the JSON and return the number after it
     auto find_val = [&](const std::string & key) -> std::pair<bool, double> {
@@ -594,10 +609,19 @@ private:
     r = find_val("gx"); if (!r.first) return false; gx = r.second;
     r = find_val("gy"); if (!r.first) return false; gy = r.second;
     r = find_val("gz"); if (!r.first) return false; gz = r.second;
+
+    // Magnetometer is optional — present only if the AK8963 reported it.
+    mx = my = mz = 0.0;
+    mag_ok = false;
+    r = find_val("mx"); if (r.first) { mx = r.second; mag_ok = true; }
+    r = find_val("my"); if (r.first) { my = r.second; mag_ok = true; }
+    r = find_val("mz"); if (r.first) { mz = r.second; mag_ok = true; }
     return true;
   }
 
-  void publish_imu(double ax, double ay, double az, double gx, double gy, double gz)
+  void publish_imu(
+    double ax, double ay, double az, double gx, double gy, double gz,
+    double mx, double my, double mz, bool mag_ok)
   {
     auto msg = sensor_msgs::msg::Imu();
     msg.header.stamp = now();
@@ -629,6 +653,20 @@ private:
     std::copy(gyro_cov_.begin(), gyro_cov_.end(), msg.angular_velocity_covariance.begin());
 
     imu_pub_->publish(msg);
+
+    // Publish the magnetometer on /imu/mag when a valid reading arrived.
+    // The AK8963's Earth-field magnitude is never ~0, so an all-zero sample
+    // means the magnetometer was absent — skip it so the upstream filter
+    // (imu_filter_madgwick) degrades gracefully to accel+gyro only.
+    if (mag_ok && (std::abs(mx) + std::abs(my) + std::abs(mz) > 1e-9)) {
+      auto m = sensor_msgs::msg::MagneticField();
+      m.header.stamp = msg.header.stamp;
+      m.header.frame_id = "imu_link";
+      m.magnetic_field.x = mx * mag_axis_sign_[0];
+      m.magnetic_field.y = my * mag_axis_sign_[1];
+      m.magnetic_field.z = mz * mag_axis_sign_[2];
+      mag_pub_->publish(m);
+    }
 
     // Track how much the heading has drifted since calibration
     auto now_steady = std::chrono::steady_clock::now();
@@ -672,11 +710,13 @@ private:
 
   // ── ROS ─────────────────────────────────────────────────────────────
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr mag_pub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_sub_;
   std::vector<double> orient_cov_;
   std::vector<double> accel_cov_;
   std::vector<double> gyro_cov_;
   std::vector<double> imu_axis_sign_{-1.0, 1.0, -1.0};  // chip frame -> base_link
+  std::vector<double> mag_axis_sign_{-1.0, 1.0, -1.0};  // AK8963 die -> base_link
 
   // ── Calibration biases ──────────────────────────────
   double gyro_bias_x_{0.0}, gyro_bias_y_{0.0}, gyro_bias_z_{0.0};

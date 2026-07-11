@@ -44,6 +44,7 @@ def generate_launch_description():
     start_enabled = LaunchConfiguration('start_enabled')
     heading_lock = LaunchConfiguration('heading_lock')
     heading_lock_yaw = LaunchConfiguration('heading_lock_yaw')
+    imu_topic = LaunchConfiguration('imu_topic')
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
@@ -54,6 +55,9 @@ def generate_launch_description():
         # Nav2 owns the heading). heading_lock_yaw is the world heading to hold.
         DeclareLaunchArgument('heading_lock', default_value='false'),
         DeclareLaunchArgument('heading_lock_yaw', default_value='0.0'),
+        # IMU topic the gait controller reads orientation from. On real hardware
+        # this is the filtered output (/filtered/imu); sim supplies /imu.
+        DeclareLaunchArgument('imu_topic', default_value='/imu'),
 
         Node(
             package='big_bertha_policy_controller',
@@ -68,6 +72,7 @@ def generate_launch_description():
                     'start_enabled': start_enabled,
                     'heading_lock': ParameterValue(heading_lock, value_type=bool),
                     'heading_lock_yaw': ParameterValue(heading_lock_yaw, value_type=float),
+                    'imu_topic': imu_topic,
                 },
             ],
         ),

@@ -58,8 +58,9 @@ public:
     // the costmap's subscription either way (a best-effort publisher would
     // never reach a reliable subscriber).
     const auto sensor_qos = rclcpp::SensorDataQoS();
+    imu_topic_ = this->declare_parameter<std::string>("imu_topic", "imu");
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-      "imu", sensor_qos, std::bind(&ScanGroundFilter::onImu, this, std::placeholders::_1));
+      imu_topic_, sensor_qos, std::bind(&ScanGroundFilter::onImu, this, std::placeholders::_1));
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       "scan", sensor_qos, std::bind(&ScanGroundFilter::onScan, this, std::placeholders::_1));
     pub_ = this->create_publisher<sensor_msgs::msg::LaserScan>("scan_filtered", 10);
@@ -105,6 +106,7 @@ private:
   double rzx_{0.0};  // 2*(x*z - w*y); identity until the first IMU msg
   double rzy_{0.0};  // 2*(y*z + w*x)
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  std::string imu_topic_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr pub_;
 };

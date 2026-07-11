@@ -198,8 +198,9 @@ public:
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
       "/odom", rclcpp::QoS(1),
       std::bind(&PolicyControllerNode::on_odom, this, std::placeholders::_1));
+    imu_topic_ = declare_parameter<std::string>("imu_topic", "/imu");
     imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-      "/imu", rclcpp::SensorDataQoS(),
+      imu_topic_, rclcpp::SensorDataQoS(),
       std::bind(&PolicyControllerNode::on_imu, this, std::placeholders::_1));
     joint_sub_ = create_subscription<sensor_msgs::msg::JointState>(
       "/joint_states", rclcpp::SensorDataQoS(),
@@ -741,6 +742,7 @@ private:
   rclcpp::Publisher<spider_msgs::msg::PolicyStatus>::SharedPtr status_pub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  std::string imu_topic_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hip_bias_sub_;

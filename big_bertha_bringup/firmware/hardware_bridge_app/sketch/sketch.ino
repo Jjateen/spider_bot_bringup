@@ -28,6 +28,7 @@
 
 // ── I2C device addresses ──────────────────────────────────────────────
 static const uint8_t MPU9250_ADDR = 0x68;
+static const uint8_t AK8963_ADDR = 0x0C;   // magnetometer inside the MPU9250
 static const uint8_t PCA9685_ADDR = 0x40;
 
 // ── PCA9685 register map ──────────────────────────────────────────────
@@ -44,6 +45,7 @@ static const uint8_t PWM_CHANNEL_MAP[12] = {0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 
 static int g_i2c_scan = 0;
 static bool g_ai_ok = false;
 static bool g_mpu9250_present = false;
+static bool g_mag_present = false;
 
 // Current PWM off-counts for all 16 channels (0 = output low = servo off)
 static uint16_t g_pwm[16] = {0};
@@ -211,6 +213,41 @@ static bool mpu9250_read(
   return true;
 }
 
+// ── AK8963 magnetometer (bundled inside the MPU9250) ───────────────
+// The AK8963 is wired to the MPU9250's auxiliary I2C. Enabling bypass
+// mode on the MPU9250 exposes the AK8963 at 0x0C on the main bus so we
+// can read it directly.
+
+static bool ak8963_init()
+{
+  // INT_PIN_CFG: set BYPASS_EN (bit 1) so the AK8963 is addressable.
+  i2c_write_byte(MPU9250_ADDR, 0x37, 0x02);
+  delay(10);
+  // CNTL1: 16-bit output, continuous measurement mode 2 (~100 Hz).
+  i2c_write_byte(AK8963_ADDR, 0x0A, 0x16);
+  delay(10);
+  return true;
+}
+
+static bool ak8963_read(float & mx, float & my, float & mz)
+{
+  uint8_t st1 = 0;
+  if (!i2c_read_bytes(AK8963_ADDR, 0x02, &st1, 1)) return false;
+  if (!(st1 & 0x01)) { mx = my = mz = 0.0f; return false; }   // no new data
+  uint8_t raw[6] = {0};
+  if (!i2c_read_bytes(AK8963_ADDR, 0x03, raw, 6)) return false;
+  uint8_t st2 = 0;
+  i2c_read_bytes(AK8963_ADDR, 0x09, &st2, 1);   // clear DRDY / overflow
+  int16_t rx = (int16_t)((raw[1] << 8) | raw[0]);
+  int16_t ry = (int16_t)((raw[3] << 8) | raw[2]);
+  int16_t rz = (int16_t)((raw[5] << 8) | raw[4]);
+  const float mRes = 0.15f;   // µT/LSB at 16-bit
+  mx = rx * mRes * 1e-6f;     // convert to Tesla
+  my = ry * mRes * 1e-6f;
+  mz = rz * mRes * 1e-6f;
+  return true;
+}
+
 // ── Diagnostics ───────────────────────────────────────────────────────
 
 static int i2c_scan_devices()
@@ -321,6 +358,7 @@ void setup()
 
   g_i2c_scan = i2c_scan_devices();
   g_mpu9250_present = mpu9250_init();
+  g_mag_present = false;  // DIAG: ak8963_init() temporarily disabled for isolation test
   g_ai_ok = pca9685_init() && pca9685_verify_init();
 
   // Initialize Bridge RPC.  If begin() fails, started=false and the
@@ -448,10 +486,11 @@ void loop()
   // Push IMU at 125 Hz (only if sensor was detected)
   if (g_mpu9250_present && now - g_last_imu_push >= IMU_INTERVAL) {
     g_last_imu_push = now;
-    float ax, ay, az, gx, gy, gz;
+    float ax, ay, az, gx, gy, gz, mx = 0, my = 0, mz = 0;
     if (mpu9250_read(ax, ay, az, gx, gy, gz)) {
+      if (g_mag_present) ak8963_read(mx, my, mz);
       Bridge.notify("imu", ax, ay, az, gx, gy, gz,
-                    (float)g_imu_sample++, (float)now);
+                    mx, my, mz, (float)g_imu_sample++, (float)now);
     }
   }
 
