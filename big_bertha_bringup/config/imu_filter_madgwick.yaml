@@ -1,0 +1,29 @@
+# Madgwick AHRS filter for hardware IMU.
+#
+# Fuses accel + gyro (no magnetometer) into an orientation quaternion
+# published on /filtered/imu. Hardware-only; sim IMU already has orientation.
+#
+# The hardware bridge publishes raw /imu with accel + gyro already axis-mapped
+# into the base_link frame (imu_axis_sign: [-1, 1, -1], 180 deg about Y).
+# The filter adds the orientation quaternion; accel/gyro pass through unchanged.
+#
+# Topics:
+#   subscribes: imu/data_raw  (remapped to /imu from hardware_bridge)
+#   publishes:   imu/data      (remapped to /filtered/imu)
+imu_filter_madgwick:
+  ros__parameters:
+    use_mag: false                # AK8963 not available on this board
+    world_frame: "enu"            # ROS standard (X-E, Y-N, Z-up)
+    publish_tf: false             # EKF owns odom->base_link; no competing TF
+    reverse_tf: false
+    fixed_frame: "odom"           # unused when publish_tf is false
+    constant_dt: 0.0              # use IMU message timestamps for dt
+    remove_gravity_vector: false  # policy expects raw accel with gravity
+    stateless: false              # stateful filter (accumulates orientation)
+    publish_debug_topics: false
+    gain: 0.1                     # filter gain (higher = faster convergence, more noise)
+    zeta: 0.0                     # gyro drift bias gain (0 = no drift compensation)
+    orientation_stddev: 0.0       # orientation covariance (0 = unknown)
+    mag_bias_x: 0.0               # unused (use_mag: false)
+    mag_bias_y: 0.0
+    mag_bias_z: 0.0

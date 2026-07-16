@@ -35,9 +35,10 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    """Build the hardware-bridge launch description."""
+    """Build the hardware-bridge + Madgwick filter launch description."""
     pkg = get_package_share_directory('big_bertha_bringup')
     default_params = os.path.join(pkg, 'config', 'hardware_bridge.yaml')
+    imu_filter_config = os.path.join(pkg, 'config', 'imu_filter_madgwick.yaml')
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     params_file = LaunchConfiguration('params_file')
@@ -54,6 +55,17 @@ def generate_launch_description():
             parameters=[
                 params_file,
                 {'use_sim_time': use_sim_time},
+            ],
+        ),
+        Node(
+            package='imu_filter_madgwick',
+            executable='imu_filter_madgwick_node',
+            name='imu_filter_madgwick',
+            output='screen',
+            parameters=[imu_filter_config, {'use_sim_time': use_sim_time}],
+            remappings=[
+                ('imu/data_raw', '/imu'),
+                ('imu/data', '/filtered/imu'),
             ],
         ),
     ])
