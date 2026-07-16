@@ -46,12 +46,6 @@ static int g_i2c_scan = 0;
 static bool g_ai_ok = false;
 static bool g_mpu9250_present = false;
 static bool g_mag_present = false;
-static uint8_t g_ak8963_whoami = 0;       // AK8963 WIA read via MPU9250 master
-static uint8_t g_diag_mpu_wia = 0;        // MPU9250 WHO_AM_I (0x75)
-static uint8_t g_diag_user_ctrl = 0;      // USER_CTRL (0x6A) readback
-static uint8_t g_diag_ext0 = 0;           // EXT_SENS_DATA_00 (0x49)
-static uint8_t g_diag_ext1 = 0;           // EXT_SENS_DATA_01 (0x4A)
-static bool g_mag_bypass_mode = false;    // true: bypass, false: I2C master
 
 // Current PWM off-counts for all 16 channels (0 = output low = servo off)
 static uint16_t g_pwm[16] = {0};
@@ -86,7 +80,7 @@ static unsigned long g_diag_start_ms = 0;    // when phase 1 started, for timeou
 
 // I2C error tracking for self-healing
 static int g_i2c_consecutive_fails = 0;       // resets on any success
-static volatile bool g_i2c_busy = false;      // guard for BG-thread vs loop() race
+static bool g_i2c_busy = false;               // guard for BG-thread vs loop() race
 
 // 125 Hz IMU (8 ms) — matches expected rate for the 50 Hz policy controller
 static const unsigned long IMU_INTERVAL = 8;
@@ -220,128 +214,38 @@ static bool mpu9250_read(
 }
 
 // ── AK8963 magnetometer (bundled inside the MPU9250) ───────────────
-// The AK8963 lives on the MPU9250's auxiliary I2C bus. We try two methods:
-//   1. BYPASS mode — set INT_PIN_CFG.BYPASS_EN so AK8963 appears on main I2C
-//      bus at 0x0C. Read/write it directly.
-//   2. I2C MASTER mode — fallback using MPU9250's internal I2C master to read
-//      continuously into EXT_SENS_DATA registers (0x49..).
-
-static bool ak8963_init_bypass()
-{
-  // Reset MPU9250 to known state
-  if (!i2c_write_byte(MPU9250_ADDR, 0x6B, 0x80)) return false;  // reset
-  delay(50);
-  if (!i2c_write_byte(MPU9250_ADDR, 0x6B, 0x00)) return false;  // wake
-  delay(50);
-
-  // Enable bypass mode — AK8963 at 0x0C on main I2C bus
-  if (!i2c_write_byte(MPU9250_ADDR, 0x37, 0x02)) return false;  // INT_PIN_CFG: BYPASS_EN
-  delay(10);
-
-  // Probe AK8963 WHO_AM_I
-  uint8_t who = 0;
-  if (!i2c_read_bytes(AK8963_ADDR, 0x00, &who, 1)) return false;
-  g_ak8963_whoami = who;
-  if (who != 0x48) return false;
-
-  // Set continuous measurement mode 2 (100 Hz, 16-bit)
-  if (!i2c_write_byte(AK8963_ADDR, 0x0A, 0x16)) return false;  // CNTL1
-  delay(10);
-
-  g_mag_bypass_mode = true;
-  return true;
-}
-
-static bool ak8963_init_master()
-{
-  // I2C master mode — MPU9250 reads AK8963 into EXT_SENS_DATA
-  if (!i2c_write_byte(MPU9250_ADDR, 0x6B, 0x00)) return false;  // wake
-  delay(10);
-  if (!i2c_write_byte(MPU9250_ADDR, 0x37, 0x00)) return false;  // INT_PIN_CFG: bypass off
-  if (!i2c_write_byte(MPU9250_ADDR, 0x6A, 0x20)) return false;  // USER_CTRL: I2C_MST_EN
-  if (!i2c_write_byte(MPU9250_ADDR, 0x24, 0x0D)) return false;  // I2C_MST_CTRL: ~350 kHz
-  delay(10);
-  // Write CNTL1 = 0x16 via SLV0
-  if (!i2c_write_byte(MPU9250_ADDR, 0x25, 0x0C)  // I2C_SLV0_ADDR: 0x0C (write)
-   || !i2c_write_byte(MPU9250_ADDR, 0x26, 0x0A)  // I2C_SLV0_REG: CNTL1
-   || !i2c_write_byte(MPU9250_ADDR, 0x63, 0x16)  // I2C_SLV0_DO: cont mode 2, 16-bit
-   || !i2c_write_byte(MPU9250_ADDR, 0x27, 0x81)) // I2C_SLV0_CTRL: enable, 1 byte
-    return false;
-  delay(20);
-  // Probe WHO_AM_I via SLV0-read
-  if (!i2c_write_byte(MPU9250_ADDR, 0x25, 0x8C)  // I2C_SLV0_ADDR: 0x0C (read)
-   || !i2c_write_byte(MPU9250_ADDR, 0x26, 0x00)  // I2C_SLV0_REG: WIA
-   || !i2c_write_byte(MPU9250_ADDR, 0x27, 0x81)) // I2C_SLV0_CTRL: enable, 1 byte
-    return false;
-  delay(30);
-  uint8_t who = 0;
-  if (!i2c_read_bytes(MPU9250_ADDR, 0x49, &who, 1)) return false;
-  g_ak8963_whoami = who;
-  if (who != 0x48) return false;
-  // Configure continuous 8-byte read (ST1 + 6 data + ST2)
-  if (!i2c_write_byte(MPU9250_ADDR, 0x26, 0x02)  // I2C_SLV0_REG: ST1
-   || !i2c_write_byte(MPU9250_ADDR, 0x27, 0x88)  // I2C_SLV0_CTRL: enable, 8 bytes
-   || !i2c_write_byte(MPU9250_ADDR, 0x67, 0x01)) // I2C_MST_DELAY_CTRL: delay enable
-    return false;
-  delay(10);
-  g_mag_bypass_mode = false;
-  return true;
-}
+// The AK8963 is wired to the MPU9250's auxiliary I2C. Enabling bypass
+// mode on the MPU9250 exposes the AK8963 at 0x0C on the main bus so we
+// can read it directly.
 
 static bool ak8963_init()
 {
-  // Try bypass mode first (simpler, more reliable on STM32U585 I2C)
-  g_mag_bypass_mode = false;
-  if (ak8963_init_bypass()) {
-    return true;
-  }
-  // Fall back to I2C master mode
-  if (ak8963_init_master()) {
-    return true;
-  }
-  // Capture diagnostics for debugging
-  i2c_read_bytes(MPU9250_ADDR, 0x75, &g_diag_mpu_wia, 1);
-  i2c_read_bytes(MPU9250_ADDR, 0x6A, &g_diag_user_ctrl, 1);
-  i2c_read_bytes(MPU9250_ADDR, 0x49, &g_diag_ext0, 1);
-  i2c_read_bytes(MPU9250_ADDR, 0x4A, &g_diag_ext1, 1);
-  return false;
+  // INT_PIN_CFG: set BYPASS_EN (bit 1) so the AK8963 is addressable.
+  i2c_write_byte(MPU9250_ADDR, 0x37, 0x02);
+  delay(10);
+  // CNTL1: 16-bit output, continuous measurement mode 2 (~100 Hz).
+  i2c_write_byte(AK8963_ADDR, 0x0A, 0x16);
+  delay(10);
+  return true;
 }
 
 static bool ak8963_read(float & mx, float & my, float & mz)
 {
-  if (g_mag_bypass_mode) {
-    // Bypass mode: read directly from AK8963
-    uint8_t st1 = 0;
-    if (!i2c_read_bytes(AK8963_ADDR, 0x02, &st1, 1)) return false;
-    if (!(st1 & 0x01)) return false;  // no new data
-    uint8_t raw[6] = {0};
-    if (!i2c_read_bytes(AK8963_ADDR, 0x03, raw, 6)) return false;
-    // Check ST2 for overflow
-    uint8_t st2 = 0;
-    i2c_read_bytes(AK8963_ADDR, 0x09, &st2, 1);
-    if (st2 & 0x08) return false;  // magnetic overflow
-    int16_t rx = (int16_t)((raw[1] << 8) | raw[0]);
-    int16_t ry = (int16_t)((raw[3] << 8) | raw[2]);
-    int16_t rz = (int16_t)((raw[5] << 8) | raw[4]);
-    const float mRes = 0.15f;
-    mx = rx * mRes * 1e-6f;
-    my = ry * mRes * 1e-6f;
-    mz = rz * mRes * 1e-6f;
-    return true;
-  } else {
-    // I2C master mode: read from MPU9250 EXT_SENS_DATA
-    uint8_t raw[8] = {0};
-    if (!i2c_read_bytes(MPU9250_ADDR, 0x49, raw, 8)) return false;
-    if (!(raw[0] & 0x01)) { mx = my = mz = 0.0f; return false; }
-    int16_t rx = (int16_t)((raw[2] << 8) | raw[1]);
-    int16_t ry = (int16_t)((raw[4] << 8) | raw[3]);
-    int16_t rz = (int16_t)((raw[6] << 8) | raw[5]);
-    const float mRes = 0.15f;
-    mx = rx * mRes * 1e-6f;
-    my = ry * mRes * 1e-6f;
-    mz = rz * mRes * 1e-6f;
-    return true;
-  }
+  uint8_t st1 = 0;
+  if (!i2c_read_bytes(AK8963_ADDR, 0x02, &st1, 1)) return false;
+  if (!(st1 & 0x01)) { mx = my = mz = 0.0f; return false; }   // no new data
+  uint8_t raw[6] = {0};
+  if (!i2c_read_bytes(AK8963_ADDR, 0x03, raw, 6)) return false;
+  uint8_t st2 = 0;
+  i2c_read_bytes(AK8963_ADDR, 0x09, &st2, 1);   // clear DRDY / overflow
+  int16_t rx = (int16_t)((raw[1] << 8) | raw[0]);
+  int16_t ry = (int16_t)((raw[3] << 8) | raw[2]);
+  int16_t rz = (int16_t)((raw[5] << 8) | raw[4]);
+  const float mRes = 0.15f;   // µT/LSB at 16-bit
+  mx = rx * mRes * 1e-6f;     // convert to Tesla
+  my = ry * mRes * 1e-6f;
+  mz = rz * mRes * 1e-6f;
+  return true;
 }
 
 // ── Diagnostics ───────────────────────────────────────────────────────
@@ -454,7 +358,7 @@ void setup()
 
   g_i2c_scan = i2c_scan_devices();
   g_mpu9250_present = mpu9250_init();
-  g_mag_present = ak8963_init();
+  g_mag_present = false;  // DIAG: ak8963_init() temporarily disabled for isolation test
   g_ai_ok = pca9685_init() && pca9685_verify_init();
 
   // Initialize Bridge RPC.  If begin() fails, started=false and the
@@ -623,10 +527,7 @@ void loop()
     Bridge.notify("hw_status", g_i2c_scan, ai ? 1 : 0, g_servo_calls, g_ping_count,
                   g_pwm_write_attempts, g_pwm_write_fails, g_pwm_last_fail_ch,
                   g_pwm_last_fail_code, g_set_servo_last_len, g_set_servo_last_idx,
-                  g_pwm_readback_ch0, (int)g_mag_present, (int)g_ak8963_whoami,
-                  (int)g_diag_mpu_wia, (int)g_diag_user_ctrl,
-                  (int)g_diag_ext0, (int)g_diag_ext1,
-                  g_mag_bypass_mode ? 1 : 0);
+                  g_pwm_readback_ch0);
   }
 
   // LED blink codes (non-blocking)
