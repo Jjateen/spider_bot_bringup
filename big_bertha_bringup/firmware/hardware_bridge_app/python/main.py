@@ -206,7 +206,9 @@ def on_imu(ax, ay, az, gx, gy, gz, mx=0.0, my=0.0, mz=0.0, sample_id=None, times
 def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0,
                  pwm_attempts=0, pwm_fails=0, pwm_last_fail_ch=-1,
                  pwm_last_fail_code=0, set_servo_last_len=0, set_servo_last_idx=0,
-                 pwm_readback_ch0=-1):
+                 pwm_readback_ch0=-1, mag_present=0, ak8963_whoami=0,
+                 mpu_wia=0, user_ctrl=0, ext0=0, ext1=0,
+                 mag_bypass_mode=0):
     with cache_lock:
         cache["hw_status"] = {
             "i2c_scan": scan,
@@ -222,6 +224,13 @@ def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0,
             "set_servo_last_len": set_servo_last_len,
             "set_servo_last_idx": set_servo_last_idx,
             "pwm_readback_ch0": pwm_readback_ch0,
+            "mag_present": bool(mag_present),
+            "ak8963_whoami": ak8963_whoami,
+            "mpu_wia": mpu_wia,
+            "user_ctrl": user_ctrl,
+            "ext0": ext0,
+            "ext1": ext1,
+            "mag_bypass_mode": bool(mag_bypass_mode),
         }
 
 
