@@ -27,6 +27,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     bringup_pkg = get_package_share_directory('big_bertha_bringup')
+    leg_pkg = get_package_share_directory('leg_odometry')
     use_sim_time = LaunchConfiguration('use_sim_time')
 
     return LaunchDescription([
@@ -36,6 +37,15 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 os.path.join(bringup_pkg, 'launch', 'hardware_bringup.launch.py')),
             launch_arguments={'use_sim_time': use_sim_time}.items(),
+        ),
+
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                os.path.join(leg_pkg, 'launch', 'legged_odometry.launch.py')),
+            launch_arguments={
+                'imu_topic': '/filtered/imu',
+                'use_sim_time': use_sim_time,
+            }.items(),
         ),
 
         Node(
