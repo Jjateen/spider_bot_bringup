@@ -40,6 +40,8 @@
 
   <xacro:property name="mesh_pkg" value="package://big_bertha_description/meshes"/>
 
+  <xacro:include filename="$(find big_bertha_description)/urdf/leg_macros.xacro"/>
+
   <!-- ============================== Links ============================== -->
 
   <link name="base_link">
@@ -954,22 +956,22 @@
     </inertial>
   </link>
 
-  <link name="arm_b_1_1">
-    <visual>
-      <origin xyz="-0.0085 -0.032 0.011" rpy="3.14 0 1.57"/>
-      <geometry><mesh filename="${mesh_pkg}/arm_b.stl" scale="0.001 0.001 0.001"/></geometry>
-      <material name="silver"/>
-    </visual>
-    <collision>
-      <origin xyz="-0.0085 -0.032 0.011" rpy="3.14 0 1.57"/>
-      <geometry><mesh filename="${mesh_pkg}/arm_b.stl" scale="0.001 0.001 0.001"/></geometry>
-    </collision>
-    <inertial>
-      <mass value="0.008137"/>
-      <origin xyz="0.04154098 -0.00048149 0.00107965" rpy="0 0 0"/>
-      <inertia ixx="0.00000479" ixy="-0.00000000" ixz="-0.00000001" iyy="0.00000378" iyz="0.00000000" izz="0.00000801"/>
-    </inertial>
-  </link>
+  <!-- Leg 4 (back-left, right-side meshes) -->
+  <xacro:leg prefix="4_1" side="right"
+    arm_a_vis_xyz="0.026 0.012 0.01" arm_a_vis_rpy="3.14 0 -1.57"
+    arm_a_servo_xyz="0.018 -0.0175 -0.050" arm_a_servo_rpy="0 -1.57 0"
+    arm_a_inertial_origin="-0.00051903 -0.01742240 -0.04805902"
+    arm_a_ixx="0.00001630" arm_a_ixy="-0.00000008" arm_a_ixz="-0.00000046" arm_a_iyy="0.00001265" arm_a_iyz="0.00000033" arm_a_izz="0.00001841"
+    arm_c_vis_xyz="0.01 -0.145 -0.053" arm_c_vis_rpy="1.57 0 -3.14"
+    arm_c_servo_xyz="0 -0.01 -0.045" arm_c_servo_rpy="0 0 0"
+    arm_c_inertial_origin="-0.00152686 -0.01416578 -0.02679160"
+    arm_c_ixx="0.00003866" arm_c_ixy="-0.00000290" arm_c_ixz="-0.00000068" arm_c_iyy="0.00001100" arm_c_iyz="-0.00000123" arm_c_izz="0.00003408"
+    arm_b_vis_xyz="-0.0085 -0.032 0.011" arm_b_vis_rpy="3.14 0 1.57"
+    arm_b_inertial_origin="0.04154098 -0.00048149 0.00107965"
+    arm_b_ixx="0.00000479" arm_b_ixy="-0.00000000" arm_b_ixz="-0.00000001" arm_b_iyy="0.00000378" arm_b_iyz="0.00000000" arm_b_izz="0.00000801"
+    joint_hip_name="Revolute_110" joint_hip_xyz="0.129 0.015 0.04" joint_hip_rpy="1.570796 0 -0.785"
+    joint_knee_name="Revolute_111" joint_knee_xyz="0 -0.008 -0.052" joint_knee_rpy="0 1.57 1.57"
+    joint_ankle_name="Revolute_112" joint_ankle_xyz="0.08 0.03 0" joint_ankle_rpy="0 1.57 1.57"/>
 
   <!-- arm_a_2_1 (front-right, leg 2) -->
   <link name="arm_a_2_1">
