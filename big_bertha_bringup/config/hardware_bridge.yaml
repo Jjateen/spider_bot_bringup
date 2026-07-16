@@ -57,10 +57,10 @@
     angular_velocity_covariance: [0.00001, 0.0, 0.0, 0.0, 0.00001, 0.0, 0.0, 0.0, 0.00001]
 
     # IMU axis mapping: chip frame -> base_link frame.
-    # The physical MPU9250 is mounted 180° about Y (chip z points down, opposite
+    # The MPU9250 is mounted 180° about Y (chip z points down, opposite
     # base_link z-up), so x and z are negated to match Isaac training (identity
     # IMU offset, projected_gravity_b.z = -1 at rest). Apply AFTER bias removal.
-    imu_axis_sign: [-1.0, 1.0, -1.0]
+    imu_axis_sign: [-1.0, -1.0, -1.0]
 
     # Magnetometer axis mapping. The AK8963 magnetometer die is mounted
     # INDEPENDENTLY of the MPU9250 accel/gyro, so its axes are not aligned with
