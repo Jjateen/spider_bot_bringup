@@ -187,8 +187,8 @@ else
   exit 1
 fi
 
-# Status (I2C devices)
-STATUS=$(echo '{"cmd":"status"}' | timeout 5 nc 127.0.0.1 50007 2>/dev/null)
+# Status (I2C devices) — served on the IMU port (50008), NOT the servo port (50007)
+STATUS=$(echo '{"cmd":"status"}' | timeout 5 nc 127.0.0.1 50008 2>/dev/null)
 if echo "$STATUS" | grep -q '"pca9685_ok":true'; then
   ok "PCA9685 (0x40): present"
 else
@@ -200,8 +200,8 @@ else
   fail "MPU9250 (0x68) not detected — check I2C wiring"
 fi
 
-# IMU data
-IMU=$(echo '{"cmd":"imu"}' | timeout 3 nc 127.0.0.1 50007 2>/dev/null)
+# IMU data — served on the IMU port (50008), NOT the servo port (50007)
+IMU=$(echo '{"cmd":"imu"}' | timeout 3 nc 127.0.0.1 50008 2>/dev/null)
 if echo "$IMU" | grep -q '"az":'; then
   AZ=$(echo "$IMU" | grep -o '"az":[0-9.eE+-]*' | cut -d: -f2)
   if [ -n "$AZ" ] && echo "$AZ" | awk '{ exit ($1 > 5.0 ? 0 : 1) }' 2>/dev/null; then
@@ -211,6 +211,14 @@ if echo "$IMU" | grep -q '"az":'; then
   fi
 else
   fail "IMU: no data received"
+fi
+
+# On-demand I2C scan (most direct check that the bus is alive)
+SCAN=$(echo '{"cmd":"scan_i2c"}' | timeout 8 nc 127.0.0.1 50008 2>/dev/null)
+if echo "$SCAN" | grep -q '"addrs"'; then
+  ok "I2C scan: $SCAN"
+else
+  fail "I2C scan: no result ($SCAN)"
 fi
 
 # ── Done ────────────────────────────────────────────────────────────────────
