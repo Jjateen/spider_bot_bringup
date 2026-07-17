@@ -1,13 +1,10 @@
-import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Imu
 import numpy as np
 
-from ahrs.math_utils.quaternion import (
-    quaternion_to_euler,
-    quaternion_to_rotation_matrix,
-)
+from ahrs.math_utils import G
+from ahrs.math_utils.quaternion import quaternion_to_matrix_and_euler
 from ahrs.ros.robot_state import SharedRobotState
 from ahrs.utils.timing import RateTracker
 
@@ -63,12 +60,15 @@ class ImuSubscriber(Node):
         try:
             # Orientation is now supplied by the upstream filter (imu_filter_madgwick)
             # on /filtered/imu — we no longer estimate it here.
+            # ROS msg uses [x, y, z, w]; the AHRS codebase uses [w, x, y, z]
+            # (see robot_state.py default, orientation_filter.py return, and
+            # test_orientation_filter.py _quat_wxyz helper).
             q = np.array(
                 [
+                    msg.orientation.w,
                     msg.orientation.x,
                     msg.orientation.y,
                     msg.orientation.z,
-                    msg.orientation.w,
                 ],
                 dtype=np.float64,
             )
@@ -110,13 +110,12 @@ class ImuSubscriber(Node):
             if self._ang_unit == "deg_s":
                 av = np.deg2rad(av)
             if self._lin_unit == "g":
-                la = la * 9.81
+                la = la * G
 
             av = av - self._gyro_bias
             la = la - self._accel_bias
 
-            R = quaternion_to_rotation_matrix(q)
-            roll, pitch, yaw = quaternion_to_euler(q)
+            R, roll, pitch, yaw = quaternion_to_matrix_and_euler(q)
 
             ts = float(msg.header.stamp.sec) + float(msg.header.stamp.nanosec) * 1e-9
 

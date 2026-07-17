@@ -102,7 +102,7 @@ void setup()
   Wire2.begin();
   Wire2.setClock(400000);
 
-  Bridge.begin();
+  Bridge.begin(460800);
 
   Bridge.provide("scan_bus", on_scan_bus);
   Bridge.provide("check_pca9685", on_check_pca9685);

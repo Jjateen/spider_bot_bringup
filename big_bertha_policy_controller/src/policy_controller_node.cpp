@@ -108,7 +108,12 @@ public:
     steer_rate_limit_ = declare_parameter<double>("steer_rate_limit", 0.01);
     hip_steer_sign_ =
       declare_parameter<std::vector<double>>("hip_steer_sign", {1.0, 1.0, 1.0, 1.0});
-    hip_steer_sign_.resize(4, 0.0);
+    if (hip_steer_sign_.size() != 4) {
+      RCLCPP_WARN(
+        get_logger(), "'hip_steer_sign' has %zu entries, expected 4; using defaults",
+        hip_steer_sign_.size());
+      hip_steer_sign_ = {1.0, 1.0, 1.0, 1.0};
+    }
     // Below this forward command the gait is gated off and the robot holds the
     // default stance (the policy cannot stand still on its own).
     stand_vx_thresh_ = declare_parameter<double>("stand_vx_thresh", 0.02);

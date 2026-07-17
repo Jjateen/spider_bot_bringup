@@ -98,6 +98,24 @@ def generate_launch_description():
         ],
     )
 
+    # ── 2b. IMU filter: /imu (raw) -> /filtered/imu (with orientation) ──
+    # The hardware bridge publishes raw accel+gyro with no orientation. This
+    # node runs the Madgwick AHRS algorithm to estimate orientation from
+    # gravity + gyro integration. No magnetometer (use_mag: false) so yaw
+    # drifts; the EKF gets absolute yaw via /odom from leg_odometry.
+    imu_filter_config = os.path.join(bringup_pkg, 'config', 'imu_filter_madgwick.yaml')
+    imu_filter = Node(
+        package='imu_filter_madgwick',
+        executable='imu_filter_madgwick_node',
+        name='imu_filter_madgwick',
+        output='screen',
+        parameters=[imu_filter_config, {'use_sim_time': use_sim_time}],
+        remappings=[
+            ('imu/data_raw', '/imu'),
+            ('imu/data', '/filtered/imu'),
+        ],
+    )
+
     # ── 3. Gait controller (/cmd_vel -> 12 joint targets) ─────────────
     locomotion = GroupAction([
         include(
@@ -172,6 +190,7 @@ def generate_launch_description():
 
         rsp,
         bridge,
+        imu_filter,
         locomotion,
         leg_odom,
         state_estimation,

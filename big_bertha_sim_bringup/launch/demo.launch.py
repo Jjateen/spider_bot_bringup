@@ -57,7 +57,7 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 
 
 def generate_launch_description():
@@ -96,11 +96,13 @@ def generate_launch_description():
     )
 
     # Single-goal mode (patrol:=false, default): one NavigateToPose to B.
-    goal_yaml = [
-        '{pose: {header: {frame_id: map}, pose: {position: {x: ',
-        goal_x, ', y: ', goal_y,
-        ', z: 0.0}, orientation: {w: 1.0}}}}',
-    ]
+    goal_yaml = PythonExpression([
+        "'{pose: {header: {frame_id: map}, pose: {position: {x: ' + '",
+        goal_x,
+        "' + ', y: ' + '",
+        goal_y,
+        "' + ', z: 0.0}, orientation: {w: 1.0}}}'"
+    ])
     send_goal = TimerAction(
         period=goal_delay,
         actions=[
@@ -127,10 +129,10 @@ def generate_launch_description():
             ExecuteProcess(
                 cmd=[
                     'bash', patrol_script,
-                    [goal_x, ',', goal_y],      # B  (NE, the diagonal goal)
-                    [goal2_x, ',', goal2_y],    # C  (2nd new goal)
-                    [goal3_x, ',', goal3_y],    # D  (3rd new goal)
-                    [start_x, ',', start_y],    # A  (back to the start point)
+                    PythonExpression([goal_x, "+','+", goal_y]),      # B
+                    PythonExpression([goal2_x, "+','+", goal2_y]),  # C
+                    PythonExpression([goal3_x, "+','+", goal3_y]),  # D
+                    PythonExpression([start_x, "+','+", start_y]),  # A
                 ],
                 output='screen',
             ),

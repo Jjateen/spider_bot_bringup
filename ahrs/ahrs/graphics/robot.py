@@ -3,11 +3,8 @@ import copy
 import numpy as np
 import open3d as o3d
 
-from ahrs.graphics.urdf_loader import (
-    RobotModel,
-    compute_fk,
-    load_urdf_robot,
-)
+from ahrs.graphics.robot_model import RobotModel
+from ahrs.graphics.fk import compute_fk
 
 
 class Robot:
@@ -109,13 +106,6 @@ class Robot:
         )
 
         return robot
-
-    @classmethod
-    def from_urdf(
-        cls, xacro_path: str, mesh_dir: str | None = None
-    ) -> "Robot":
-        model = load_urdf_robot(xacro_path, mesh_dir)
-        return cls.from_model(model)
 
     def update_pose(self, rotation_matrix: np.ndarray) -> None:
         self._base_rotation = rotation_matrix.copy()

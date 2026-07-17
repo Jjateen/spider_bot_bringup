@@ -13,22 +13,28 @@ def normalize_quaternion(q: np.ndarray) -> np.ndarray:
     return q / norm
 
 
-def validate_quaternion(q: np.ndarray) -> bool:
-    if q.shape != (4,):
-        return False
-    norm = np.linalg.norm(q)
-    return abs(norm - 1.0) < 1e-6
+def _to_scipy_rotation(q: np.ndarray) -> Rotation:
+    q = normalize_quaternion(q)
+    return Rotation.from_quat([q[1], q[2], q[3], q[0]])
 
 
 def quaternion_to_rotation_matrix(q: np.ndarray) -> np.ndarray:
-    q = normalize_quaternion(q)
-    rot = Rotation.from_quat([q[1], q[2], q[3], q[0]])
-    return rot.as_matrix()
+    return _to_scipy_rotation(q).as_matrix()
+
+
+def quaternion_to_matrix_and_euler(
+    q: np.ndarray,
+) -> tuple[np.ndarray, float, float, float]:
+    rot = _to_scipy_rotation(q)
+    R = rot.as_matrix()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        roll, pitch, yaw = rot.as_euler("xyz", degrees=False)
+    return R, roll, pitch, yaw
 
 
 def quaternion_to_euler(q: np.ndarray) -> tuple[float, float, float]:
-    q = normalize_quaternion(q)
-    rot = Rotation.from_quat([q[1], q[2], q[3], q[0]])
+    rot = _to_scipy_rotation(q)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         return tuple(rot.as_euler("xyz", degrees=False))

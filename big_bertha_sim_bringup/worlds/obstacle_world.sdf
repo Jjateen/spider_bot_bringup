@@ -35,7 +35,7 @@
          targets cleanly like Isaac's *implicit* actuator does at 200 Hz -> the
          robot walks straight. The policy itself still runs at 50 Hz (decimated
          in the node), matching training. -->
-    <physics name="2ms" type="ignored">
+    <physics name="2ms" type="dart">
       <max_step_size>0.002</max_step_size>
       <real_time_factor>1.0</real_time_factor>
     </physics>

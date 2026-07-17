@@ -82,9 +82,11 @@ private:
 
   void onScan(const sensor_msgs::msg::LaserScan::SharedPtr msg)
   {
+    auto out = std::make_shared<sensor_msgs::msg::LaserScan>(*msg);
+    out->ranges = msg->ranges;
     const double rmax = msg->range_max;
-    for (size_t i = 0; i < msg->ranges.size(); ++i) {
-      const float r = msg->ranges[i];
+    for (size_t i = 0; i < out->ranges.size(); ++i) {
+      const float r = out->ranges[i];
       if (!std::isfinite(r) || r >= rmax) {
         continue;
       }
@@ -94,11 +96,11 @@ private:
       if (dir_z < 0.0) {  // ray points downward -> may strike the floor
         const double endpoint_h = lidar_height_ + r * dir_z;
         if (endpoint_h < floor_margin_) {
-          msg->ranges[i] = std::numeric_limits<float>::infinity();  // ground/ghost
+          out->ranges[i] = std::numeric_limits<float>::infinity();  // ground/ghost
         }
       }
     }
-    pub_->publish(*msg);
+    pub_->publish(*out);
   }
 
   double lidar_height_{0.22};
