@@ -17,7 +17,7 @@ slam_toolbox:
     odom_frame: odom
     map_frame: map
     base_frame: base_link
-    scan_topic: /scan_filtered_filtered
+    scan_topic: /scan_filtered
     use_map_saver: true
     mode: mapping
     # Anchor the map frame at the world spawn (demo point A) so a SLAM-built
