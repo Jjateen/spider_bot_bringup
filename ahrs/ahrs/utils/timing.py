@@ -3,7 +3,7 @@ from collections import deque
 
 
 class FPSCounter:
-    def __init__(self, alpha: float = 0.05):
+    def __init__(self, alpha: float = 0.05) -> None:
         self.alpha = alpha
         self.smoothed_fps: float = 0.0
         self._last_time: float = time.perf_counter()
@@ -27,7 +27,7 @@ class FPSCounter:
 
 
 class RateTracker:
-    def __init__(self, window_size: int = 100):
+    def __init__(self, window_size: int = 100) -> None:
         self._timestamps: deque = deque(maxlen=window_size)
 
     def tick(self) -> None:

@@ -1,11 +1,9 @@
-import argparse
-import os
 import signal
 import sys
 
 import rclpy
-import yaml
 
+from ahrs.config import load_config, parse_args
 from ahrs.graphics.grid import Grid
 from ahrs.graphics.axes import Axes
 from ahrs.graphics.robot import Robot
@@ -21,45 +19,6 @@ from ahrs.utils.logger import setup_logger
 logger = setup_logger("ahrs")
 
 
-def load_config(config_path: str | None = None) -> dict:
-    if config_path is None:
-        try:
-            from ament_index_python.packages import get_package_share_directory
-            pkg_dir = get_package_share_directory("ahrs")
-            config_path = os.path.join(pkg_dir, "config", "config.yaml")
-        except Exception:
-            config_path = os.path.join(
-                os.path.dirname(__file__), "..", "config", "config.yaml"
-            )
-
-    config_path = os.path.abspath(config_path)
-    if not os.path.exists(config_path):
-        logger.warning(f"Config not found at {config_path}, using defaults")
-        return {}
-
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-    logger.info(f"Loaded config from {config_path}")
-    return config or {}
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="AHRS 3D Visualizer")
-    parser.add_argument(
-        "--config",
-        type=str,
-        default=None,
-        help="Path to YAML configuration file",
-    )
-    parser.add_argument(
-        "--topic",
-        type=str,
-        default=None,
-        help="IMU ROS2 topic (overrides config)",
-    )
-    return parser.parse_args()
-
-
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
@@ -67,7 +26,6 @@ def main() -> None:
     imu_topic = args.topic or config.get("imu_topic", "/imu")
     win_cfg = config.get("window", {})
     grid_cfg = config.get("grid", {})
-    cam_cfg = config.get("camera", {})
     bg = config.get("background_color", [0.12, 0.12, 0.12])
     robot_cfg = config.get("robot", {})
 
@@ -77,10 +35,6 @@ def main() -> None:
     rclpy.init(args=None)
     state = SharedRobotState()
 
-    # Read use_sim_time, allowing a launch-provided ROS parameter to override
-    # the config-file default. rclpy auto-declares `use_sim_time` on every
-    # node, so read it rather than re-declaring (re-declare raises
-    # ParameterAlreadyDeclaredException).
     _param_node = rclpy.create_node("ahrs_param_reader")
     use_sim_time = _param_node.get_parameter("use_sim_time").value
     _param_node.destroy_node()

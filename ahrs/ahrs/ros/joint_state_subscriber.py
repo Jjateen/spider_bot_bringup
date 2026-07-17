@@ -1,6 +1,5 @@
 import threading
 
-import numpy as np
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 

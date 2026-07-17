@@ -5,7 +5,8 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
 from std_msgs.msg import String
 
-from ahrs.graphics.urdf_loader import RobotModel, load_urdf_from_string
+from ahrs.graphics.robot_model import RobotModel
+from ahrs.graphics.urdf_parser import load_urdf_from_string
 from ahrs.utils.logger import setup_logger
 
 logger = setup_logger("ahrs.robot_description")
