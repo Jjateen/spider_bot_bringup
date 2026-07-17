@@ -27,6 +27,7 @@ verification_artifacts/
 
 # Cache files
 .cache/
+.ruff_cache/
 
 # Local-only planning / issues / reports (not tracked)
 PLAN.md
