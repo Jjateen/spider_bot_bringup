@@ -65,7 +65,7 @@
   </xacro:if>
 
   <!-- ===================== Friction / materials ====================== -->
-  <xacro:macro name="bb_surface" params="link color:=Gazebo/Silver mu:=1.0">
+  <xacro:macro name="bb_surface" params="link color:=Gazebo/Silver mu:=1.0 soft:=false">
     <gazebo reference="${link}">
       <material>${color}</material>
       <mu1>${mu}</mu1>
@@ -74,24 +74,40 @@
            and mesh-mesh self contact injects noisy forces (only the feet are
            clean spheres). Legs do not overlap in a normal gait. -->
       <self_collide>false</self_collide>
+      <!-- Foot contact softness: DART's default (near-rigid) contact stiffness
+           was tuned implicitly against the old, ~2x-too-heavy foot mass. The
+           v1.0.0 mass correction (0.12 to 0.0637 kg per calf/foot link, see
+           big_bertha.urdf.xacro) halved the foot's mass without softening the
+           contact spring, so the natural contact frequency ~sqrt(kp/m) roughly
+           doubled, observed as joint velocity pinned at the hardware cap
+           (6.54 rad/s) in perfect 4 leg sync every control tick, a genuine
+           physical resonance, not a PD/damping tunable oscillation (confirmed
+           unresponsive to a 12.5x joint PD kd increase). kp/kd here are ODE
+           contact spring stiffness/damping (N/m, Ns/m), not the joint PD gains.
+      -->
+      <xacro:if value="${soft}">
+        <kp>1.0e5</kp>
+        <kd>10.0</kd>
+      </xacro:if>
     </gazebo>
   </xacro:macro>
 
   <!-- Feet (arm_c_*) get high friction to match the training ground
-       (static/dynamic 1.0); body + upper links a touch lower. -->
+       (static/dynamic 1.0) and softened contact for the lighter foot mass;
+       body + upper links a touch lower friction, default (rigid) contact. -->
   <xacro:bb_surface link="base_link"  mu="0.6"/>
   <xacro:bb_surface link="arm_a_1_1"  mu="0.6"/>
   <xacro:bb_surface link="arm_b_1_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_1_1"  mu="1.5"/>
+  <xacro:bb_surface link="arm_c_1_1"  mu="1.5" soft="true"/>
   <xacro:bb_surface link="arm_a_2_1"  mu="0.6"/>
   <xacro:bb_surface link="arm_b_2_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_2_1"  mu="1.5"/>
+  <xacro:bb_surface link="arm_c_2_1"  mu="1.5" soft="true"/>
   <xacro:bb_surface link="arm_a_3_1"  mu="0.6"/>
   <xacro:bb_surface link="arm_b_3_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_3_1"  mu="1.5"/>
+  <xacro:bb_surface link="arm_c_3_1"  mu="1.5" soft="true"/>
   <xacro:bb_surface link="arm_a_4_1"  mu="0.6"/>
   <xacro:bb_surface link="arm_b_4_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_4_1"  mu="1.5"/>
+  <xacro:bb_surface link="arm_c_4_1"  mu="1.5" soft="true"/>
 
   <!-- ============================ Lidar ============================== -->
   <!-- YDLidar X2: 360 deg, ~8 m range, 5 Hz. Published on gz topic "scan",
