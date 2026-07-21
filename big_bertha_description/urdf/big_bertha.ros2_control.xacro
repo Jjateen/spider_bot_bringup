@@ -7,7 +7,7 @@
   the policy controller can stream joint torques on
   /position_controller/commands and read /joint_states. The
   <param>initial_value</param> reproduces the training default pose
-  ([0.0, 0.5, 0.0] per leg).
+  ([0.0, -0.32, 2.00] per leg, big_bertha_v1.0.0 pin-tip pose).
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
@@ -33,20 +33,20 @@
 
     <!-- Leg 4 (back-left) -->
     <xacro:bb_joint name="Revolute_110" init="0.0"/>
-    <xacro:bb_joint name="Revolute_111" init="0.5"/>
-    <xacro:bb_joint name="Revolute_112" init="0.0"/>
+    <xacro:bb_joint name="Revolute_111" init="-0.32"/>
+    <xacro:bb_joint name="Revolute_112" init="2.00"/>
     <!-- Leg 1 (front-left) -->
     <xacro:bb_joint name="Revolute_113" init="0.0"/>
-    <xacro:bb_joint name="Revolute_114" init="0.5"/>
-    <xacro:bb_joint name="Revolute_115" init="0.0"/>
+    <xacro:bb_joint name="Revolute_114" init="-0.32"/>
+    <xacro:bb_joint name="Revolute_115" init="2.00"/>
     <!-- Leg 2 (front-right) -->
     <xacro:bb_joint name="Revolute_116" init="0.0"/>
-    <xacro:bb_joint name="Revolute_117" init="0.5"/>
-    <xacro:bb_joint name="Revolute_118" init="0.0"/>
+    <xacro:bb_joint name="Revolute_117" init="-0.32"/>
+    <xacro:bb_joint name="Revolute_118" init="2.00"/>
     <!-- Leg 3 (back-right) -->
     <xacro:bb_joint name="Revolute_119" init="0.0"/>
-    <xacro:bb_joint name="Revolute_120" init="0.5"/>
-    <xacro:bb_joint name="Revolute_121" init="0.0"/>
+    <xacro:bb_joint name="Revolute_120" init="-0.32"/>
+    <xacro:bb_joint name="Revolute_121" init="2.00"/>
   </ros2_control>
 
   <!-- gz_ros2_control system plugin: loads controller_manager inside gz,

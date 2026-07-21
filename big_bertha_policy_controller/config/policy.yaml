@@ -1,17 +1,26 @@
 # Parameters for the Big Bertha policy controller (C++ ONNX gait node).
 #
-# The trained policy contract (PLAN.md section 2):
-#   obs = 48 floats, action = 12 floats
+# The trained policy contract (big_bertha_v1.0.0, PR #67):
+#   obs = 52 floats (the 48 below + 4 appended per-foot gait-clock sin dims),
+#   action = 12 floats
 #   joint_target = action_scale * action + default_joint_pos
 # Joint ORDER MUST match the Isaac articulation order the policy trained on,
 # NOT numeric Revolute_110..121. Isaac/PhysX orders joints by tree depth (all
 # hips, then all knees, then all ankles), so obs[i]/action[i] index this order:
 #   [110,113,116,119, 111,114,117,120, 112,115,118,121]
 #    \---- hips ----/  \--- knees ---/  \--- ankles --/
-# default_joint_pos is therefore [0]x4 (hips) [0.5]x4 (knees) [0]x4 (ankles).
-# Feeding numeric order scrambles the obs and lands actions on wrong joints ->
-# the policy collapses the robot. The /joint_states->obs map is by NAME, so gz
-# publish order does not matter; only this list's order does.
+# default_joint_pos is the big_bertha_v1.0.0 pin-tip pose: [0]x4 (hips)
+# [-0.32]x4 (knees) [2.00]x4 (ankles). Feeding numeric order scrambles the obs
+# and lands actions on wrong joints -> the policy collapses the robot. The
+# /joint_states->obs map is by NAME, so gz publish order does not matter;
+# only this list's order does.
+#
+# Gait clock (obs[48:52]): phase advances by gait_frequency * boost * dt each
+# control step (dt = 1/control_rate), boost = 1 + turn_clock_boost*clamp(|yaw|
+# /0.4, max=1) + speed_clock_boost*clamp(vx/0.3, max=1). Per-foot offsets
+# [0.0, 0.5, 0.25, 0.75] for legs 1/2/3/4 (arm_c_1_1..arm_c_4_1), sin-transformed:
+# obs[48+k] = sin(2*pi * ((phase + gait_offsets[k]) % 1)). Must reproduce
+# big_bertha_env.py's _pre_physics_step/_get_observations exactly.
 /**:
   ros__parameters:
     # Absolute path is supplied by the launch file (package share /models).
@@ -20,7 +29,7 @@
     control_rate: 50.0       # Hz
     start_enabled: true
     cmd_vel_timeout: 0.5     # s; stale /cmd_vel -> command zeroed (safe stop)
-    joint_limit: 1.5708      # rad; clamp joint targets to MG995 180deg hardware travel
+    joint_limit: 2.355      # rad; clamp joint targets (calf upper limit is the binding one at the new 2.00 rad default -- see big_bertha_description URDF revolute limits)
     # The node publishes 12 joint POSITION TARGETS; the effort-PD that emulates
     # Isaac's ImplicitActuatorCfg now lives in JointEffortPdController (see
     # big_bertha_description/config/ros2_control.yaml), where it runs
@@ -101,5 +110,11 @@
       - Revolute_121   # idx11 ankle leg4
     default_joint_pos:
       [0.0, 0.0, 0.0, 0.0,
-       0.5, 0.5, 0.5, 0.5,
-       0.0, 0.0, 0.0, 0.0]
+       -0.32, -0.32, -0.32, -0.32,
+       2.00, 2.00, 2.00, 2.00]
+    # Gait clock (see header comment): reproduces big_bertha_env.py's wave-gait
+    # phase so obs[48:52] matches what the policy trained on.
+    gait_frequency: 0.667
+    turn_clock_boost: 0.8
+    speed_clock_boost: 1.1
+    gait_offsets: [0.0, 0.5, 0.25, 0.75]   # legs 1/2/3/4 = arm_c_1_1..arm_c_4_1

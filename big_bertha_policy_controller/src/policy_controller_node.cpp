@@ -14,8 +14,8 @@
 //
 // big_bertha_policy_controller - C++ ONNX Runtime gait controller.
 //
-// Subscribes to /odom, /imu, /joint_states, /cmd_vel; assembles the 48-d
-// observation (PLAN.md section 2); runs the exported PPO policy via ONNX
+// Subscribes to /odom, /imu, /joint_states, /cmd_vel; assembles the 52-d
+// observation (big_bertha_v1.0.0, PR #67); runs the exported PPO policy via ONNX
 // Runtime; and publishes 12 position targets on
 // /position_controller/commands as std_msgs/Float64MultiArray
 //   joint_target = action_scale * action + default_joint_pos.
@@ -173,7 +173,7 @@ public:
                       "Revolute_114", "Revolute_115", "Revolute_116", "Revolute_117",
                       "Revolute_118", "Revolute_119", "Revolute_120", "Revolute_121"});
     auto default_pose = declare_parameter<std::vector<double>>(
-      "default_joint_pos", {0.0, 0.5, 0.0, 0.0, 0.5, 0.0, 0.0, 0.5, 0.0, 0.0, 0.5, 0.0});
+      "default_joint_pos", {0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 2.00, 2.00, 2.00, 2.00});
 
     for (int i = 0; i < bbpc::kNumJoints && i < static_cast<int>(default_pose.size()); ++i) {
       obs_.default_joint_pos[i] = default_pose[i];
@@ -181,6 +181,14 @@ public:
     }
     for (size_t i = 0; i < joint_names_.size(); ++i) {
       joint_index_[joint_names_[i]] = static_cast<int>(i);
+    }
+
+    obs_.gait_frequency = declare_parameter<double>("gait_frequency", 0.667);
+    obs_.turn_clock_boost = declare_parameter<double>("turn_clock_boost", 0.8);
+    obs_.speed_clock_boost = declare_parameter<double>("speed_clock_boost", 1.1);
+    auto gait_offsets = declare_parameter<std::vector<double>>("gait_offsets", {0.0, 0.5, 0.25, 0.75});
+    for (int i = 0; i < bbpc::kNumFeet && i < static_cast<int>(gait_offsets.size()); ++i) {
+      obs_.gait_offsets[i] = gait_offsets[i];
     }
 
     // ----------------------------- ONNX model -----------------------------
@@ -526,6 +534,10 @@ private:
       {
         std::lock_guard<std::mutex> lk(state_mutex_);
         update_commands();  // safe-stop timeout + envelope clamp + heading hold
+        // Gait clock advances every policy step regardless of moving/idle,
+        // mirroring big_bertha_env.py's _pre_physics_step (dt = 1/control_rate_,
+        // matching training's step_dt at 50 Hz).
+        obs_.advance_clock(obs_.commands[0], obs_.commands[2], 1.0 / control_rate_);
         // The policy walks forward even when commanded vx=0 (vx=0 is out of its
         // training distribution), so a "stop" command would leave the robot
         // free-drifting. Gate it: when no forward motion is commanded (idle /
