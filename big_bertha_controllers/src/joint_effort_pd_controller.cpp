@@ -115,8 +115,9 @@ controller_interface::CallbackReturn JointEffortPdController::on_deactivate(
 }
 
 controller_interface::return_type JointEffortPdController::update(
-  const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+  const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
+  const double dt = period.seconds();
   const std::size_t n = joint_names_.size();
   const std::vector<double> * targets = target_buffer_.readFromRT();
   const bool have_targets = targets != nullptr && targets->size() == n;
@@ -126,7 +127,17 @@ controller_interface::return_type JointEffortPdController::update(
     const double qd = state_interfaces_[n + i].get_optional().value_or(0.0);
     const double q_des = have_targets ? (*targets)[i] : default_positions_[i];
 
-    double tau = kp_ * (q_des - q) + kd_ * (0.0 - qd);
+    // Stable PD (Tan, Liu & Turk, "Stable Proportional-Derivative
+    // Controllers", IEEE CG&A 2011): evaluate the P-term against the
+    // PREDICTED next-step position (q + dt*qd) instead of the current q.
+    // This is unconditionally stable for kd >= kp*dt (true here by a wide
+    // margin: kp*dt ~ 0.02-0.04, kd = 2), unlike naive explicit PD, whose
+    // stability requires kp*dt^2/I to stay below ~1.4 -- a bound the
+    // v1.0.0 mass correction (lighter calf/foot link, real CAD mass) pushed
+    // past for that link, causing the calf joints to chatter at the
+    // hardware velocity limit every control tick regardless of kd or
+    // contact softness.
+    double tau = kp_ * (q_des - (q + dt * qd)) + kd_ * (0.0 - qd);
     tau = std::clamp(tau, -effort_limit_, effort_limit_);
     // Emulate Isaac's velocity_limit_sim (a hard joint-speed cap PhysX enforces
     // but DART does not): refuse torque that would accelerate a joint already

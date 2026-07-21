@@ -22,17 +22,20 @@
 <sdf version="1.10">
   <world name="obstacle_world">
 
-    <!-- 500 Hz physics (dt = 0.002 s). The controller runs the synchronous
+    <!-- 1000 Hz physics (dt = 0.001 s). The controller runs the synchronous
          effort-PD once per physics step; it is applied EXPLICITLY by DART, so it
-         is only conditionally stable: for the lightest leg link (I ~ 5.8e-5)
-         kp*dt^2/I must stay below ~2. At 200 Hz (Isaac's sim rate) that ratio is
-         ~8.6 -> the PD overshoots, which showed up as the body bouncing and the
-         walk veering. At 500 Hz it is ~1.4 (stable), so the PD tracks the policy
-         targets cleanly like Isaac's *implicit* actuator does at 200 Hz -> the
-         robot walks straight. The policy itself still runs at 50 Hz (decimated
-         in the node), matching training. -->
-    <physics name="2ms" type="ignored">
-      <max_step_size>0.002</max_step_size>
+         is only conditionally stable: kp*dt^2/I must stay below ~1.4. At 200 Hz
+         (Isaac's sim rate) that ratio was ~8.6 -> the PD overshoots, which
+         showed up as the body bouncing and the walk veering; 500 Hz (~1.4) was
+         the original fix. The v1.0.0 mass correction (real CAD mass for the
+         calf/foot link, ~half the old placeholder) dropped its inertia by the
+         same factor, pushing the ratio back to ~1.74 at 500 Hz, the calf
+         joints chattered at their velocity limit every tick, independent of PD
+         kd or contact softness. 1000 Hz (~0.43) restores a comfortable margin.
+         The policy itself still runs at 50 Hz (decimated in the node), matching
+         training. -->
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
       <real_time_factor>1.0</real_time_factor>
     </physics>
 
@@ -77,10 +80,20 @@
             </plane>
           </geometry>
           <surface>
+            <!-- mu=1.5 matches the feet's own mu (big_bertha.gazebo.xacro
+                 arm_c_*_1, mu=1.5). Gazebo/DART combines contact friction by
+                 taking the MINIMUM of the two surfaces (unlike Isaac's
+                 "multiply" combine: ground 1.0 x foot 1.5 = 1.5 effective).
+                 With ground at the old 1.0, min(1.0, 1.5) = 1.0, a third
+                 lower than Isaac's effective 1.5, the foot has measurably
+                 less grip in Gazebo, which needs more corrective calf motion
+                 to hold a planted stance and shows up as extra pose drift
+                 from the trained default under DART vs PhysX. Raising ground
+                 mu to 1.5 makes min(1.5, 1.5) = 1.5, matching Isaac. -->
             <friction>
               <ode>
-                <mu>1.0</mu>
-                <mu2>1.0</mu2>
+                <mu>1.5</mu>
+                <mu2>1.5</mu2>
               </ode>
             </friction>
           </surface>

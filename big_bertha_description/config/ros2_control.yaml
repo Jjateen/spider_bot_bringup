@@ -15,13 +15,18 @@
 # Joint order matches the policy contract: Revolute_110 .. Revolute_121.
 controller_manager:
   ros__parameters:
-    # Match the gz physics rate (500 Hz). gz_ros2_control runs the controller
-    # once per physics step, so the explicit effort-PD updates at 500 Hz, where
-    # kp*dt^2/I ~ 1.4 is stable. At Isaac's 200 Hz the explicit PD overshoots
-    # (ratio ~8.6) -> the walk bounces and veers; 500 Hz makes it track like
-    # Isaac's implicit actuator. The policy stays at 50 Hz (decimated in the
-    # node), so gait timing is unchanged. See worlds/obstacle_world.sdf.
-    update_rate: 500  # Hz
+    # Match the gz physics rate (1000 Hz). gz_ros2_control runs the controller
+    # once per physics step, so the explicit effort-PD updates at this rate,
+    # where kp*dt^2/I is the stability ratio (~1.4 is the observed ceiling).
+    # 500 Hz (ratio ~0.92) was stable for the ORIGINAL calf inertia; the
+    # v1.0.0 mass correction (real CAD mass, ~half the old placeholder) raised
+    # ratio to ~1.74 for that same rate since inertia dropped by the same
+    # factor, crossing the ceiling and making the calf/foot joints chatter at
+    # their velocity limit every tick regardless of PD kd or contact
+    # softness. 1000 Hz (ratio ~0.43) restores a comfortable margin. The
+    # policy stays at 50 Hz (decimated in the node), so gait timing is
+    # unchanged. See worlds/obstacle_world.sdf.
+    update_rate: 1000  # Hz
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
@@ -63,5 +68,5 @@ position_controller:
       - Revolute_121   # ankle leg4
     default_positions:
       [0.0, 0.0, 0.0, 0.0,
-       0.5, 0.5, 0.5, 0.5,
-       0.0, 0.0, 0.0, 0.0]
+       -0.32, -0.32, -0.32, -0.32,
+       2.00, 2.00, 2.00, 2.00]
