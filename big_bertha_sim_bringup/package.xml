@@ -17,6 +17,9 @@
   <!-- scan_ground_filter C++ node (IMU-gated ghost-wall removal). -->
   <depend>rclcpp</depend>
   <depend>sensor_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
 
   <exec_depend>big_bertha_description</exec_depend>
   <exec_depend>big_bertha_policy_controller</exec_depend>
@@ -41,7 +44,6 @@
   <exec_depend>rviz2</exec_depend>
   <exec_depend>nav2_rviz_plugins</exec_depend>
   <exec_depend>plotjuggler</exec_depend>
-  <exec_depend>tf2_ros</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
