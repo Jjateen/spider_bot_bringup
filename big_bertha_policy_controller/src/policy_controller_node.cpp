@@ -205,6 +205,7 @@ public:
     obs_.gait_frequency = declare_parameter<double>("gait_frequency", 0.667);
     obs_.turn_clock_boost = declare_parameter<double>("turn_clock_boost", 0.8);
     obs_.speed_clock_boost = declare_parameter<double>("speed_clock_boost", 1.1);
+    obs_.gait_boost_max = declare_parameter<double>("gait_boost_max", 2.1);
     auto gait_offsets = declare_parameter<std::vector<double>>("gait_offsets", {0.0, 0.5, 0.25, 0.75});
     for (int i = 0; i < bbpc::kNumFeet && i < static_cast<int>(gait_offsets.size()); ++i) {
       obs_.gait_offsets[i] = gait_offsets[i];
@@ -358,6 +359,11 @@ private:
     double wz = stale ? 0.0 : cmd_wz_;
     vx = std::clamp(vx, 0.0, max_lin_vel_x_);
     vy = std::clamp(vy, -max_lin_vel_y_, max_lin_vel_y_);
+    // Clamp yaw HERE, on the live path. The only other wz clamp sits inside the
+    // !heading_hold_ early-return below, which the shipped default never takes,
+    // so an out-of-envelope /cmd_vel yaw from Nav2 previously flowed straight
+    // into the policy command (the trained range is |yaw| <= 0.5).
+    wz = std::clamp(wz, -max_yaw_rate_, max_yaw_rate_);
 
     // Position-hold: when the robot is idle (Nav2 command gone stale, e.g. after
     // reaching the goal) it must HOLD where it stopped, not let the gated stance's
