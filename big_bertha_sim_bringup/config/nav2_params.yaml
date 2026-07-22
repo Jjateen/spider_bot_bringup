@@ -191,6 +191,12 @@ local_costmap:
         z_resolution: 0.05
         z_voxels: 16
         max_obstacle_height: 2.0
+        # LEAVE AT 0. VoxelLayer marks a column when its marked-voxel count
+        # EXCEEDS this, and a single-ray planar lidar (gazebo.xacro: vertical
+        # samples 1) puts every return from a bearing in one z-bin. Raising it
+        # to 1 would demand >=2 voxels per column and make the local costmap
+        # blind to real obstacles. Stray-return de-flicker belongs upstream in
+        # scan_ground_filter, not here.
         mark_threshold: 0
         observation_sources: scan
         scan:

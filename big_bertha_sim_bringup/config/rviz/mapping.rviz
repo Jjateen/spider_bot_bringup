@@ -32,11 +32,20 @@ Visualization Manager:
       Name: LaserScan
       Enabled: true
       Topic:
-        Value: /scan
+        Value: /scan_filtered
         Reliability Policy: Best Effort
       Size (m): 0.03
       Style: Points
       Color: 255; 255; 0
+    - Class: rviz_default_plugins/LaserScan
+      Name: LaserScan (raw, unfiltered)
+      Enabled: false
+      Topic:
+        Value: /scan
+        Reliability Policy: Best Effort
+      Size (m): 0.03
+      Style: Points
+      Color: 255; 0; 0
     - Class: rviz_default_plugins/MarkerArray
       Name: SLAM Pose Graph
       Enabled: true
