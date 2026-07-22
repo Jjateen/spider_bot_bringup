@@ -77,6 +77,10 @@ def generate_launch_description():
     y = LaunchConfiguration('y')
     z = LaunchConfiguration('z')
     yaw = LaunchConfiguration('yaw')
+    heading_hold = LaunchConfiguration('heading_hold')
+    steer_kp = LaunchConfiguration('steer_kp')
+    steer_max = LaunchConfiguration('steer_max')
+    lateral_hold = LaunchConfiguration('lateral_hold')
 
     # simulation (rsp + gz + spawn + ros2_control). Ground-truth odom tf
     # (odom_tf:=true) means gz publishes odom->base_link directly, so no EKF is
@@ -101,13 +105,18 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 os.path.join(
                     policy_pkg, 'launch', 'policy_controller.launch.py')),
-            # Lock the heading to the spawn yaw (default 0 = due East) so the gait
-            # holds a true straight line instead of the ~14 deg south-of-East
-            # heading the robot settles into during the DART warmup drop.
+            # Lock the heading to the spawn yaw (default 0 = due East) so
+            # the gait holds a true straight line instead of the ~14 deg
+            # south-of-East heading the robot settles into during the DART
+            # warmup drop.
             launch_arguments={
                 'use_sim_time': use_sim_time,
-                'heading_lock': 'true',
+                'heading_lock': LaunchConfiguration('heading_lock'),
                 'heading_lock_yaw': LaunchConfiguration('yaw'),
+                'heading_hold': heading_hold,
+                'steer_kp': steer_kp,
+                'steer_max': steer_max,
+                'lateral_hold': lateral_hold,
             }.items(),
         ),
     ], scoped=True)
@@ -221,7 +230,9 @@ def generate_launch_description():
             description='Use /clock time'),
         DeclareLaunchArgument(
             'speed', default_value='0.12',
-            description='Constant forward vx (m/s, trained range 0-0.12)'),
+            description='Constant forward vx (m/s); trained range is '
+                        '0-0.40, 0.12 here is just this demo default '
+                        'speed, not a range bound'),
         DeclareLaunchArgument(
             'vy', default_value='0.0',
             description='Constant lateral vy (m/s, +left). 0 with the bias-DR '
@@ -233,11 +244,23 @@ def generate_launch_description():
             description='Drift-cancel hip bias (rad) on /debug_hip_bias; '
                         '0.0 with the bias-DR policy (model_58998), which '
                         'holds heading on its own (yaw drift <1 deg/min) so '
-                        'no constant yaw trim is needed -- the old -0.22 was '
-                        'calibrated for the drifting policy and would curve it'),
+                        'no constant yaw trim is needed -- the old -0.22 '
+                        'was calibrated for the drifting policy and would '
+                        'curve it'),
         DeclareLaunchArgument(
             'cmd_delay', default_value='12.0',
             description='Seconds to wait for controllers before driving'),
+        # Outer-loop compensation knobs, overridable for A/B characterization
+        # (e.g. heading_hold:=false isolates the raw policy's own
+        # straight-tracking with zero correction). Defaults match
+        # policy.yaml so a bare launch is unaffected.
+        DeclareLaunchArgument('heading_hold', default_value='true'),
+        DeclareLaunchArgument('steer_kp', default_value='1.8'),
+        DeclareLaunchArgument('steer_max', default_value='0.26'),
+        DeclareLaunchArgument('lateral_hold', default_value='true'),
+        # Lock heading to the spawn yaw for a true straight line (default). Set
+        # false to let a commanded angular.z through (e.g. a turn-in-place test).
+        DeclareLaunchArgument('heading_lock', default_value='true'),
         DeclareLaunchArgument('x', default_value='-3.5'),
         DeclareLaunchArgument('y', default_value='-3.5'),
         DeclareLaunchArgument('z', default_value='0.12'),

@@ -90,7 +90,9 @@ def generate_launch_description():
             # from that arena ambiguity (the codebase's intended A->B default).
             'localization': localization,
             'rviz': LaunchConfiguration('rviz'),  # open RViz (off for GIF capture)
-            'rviz_config': 'integration',  # map + lidar + costmaps + path + robot
+            # 'integration' = whole-arena top-down; 'patrol' = close follow cam
+            # (see the gait while navigating). Overridable via rviz_config arg.
+            'rviz_config': LaunchConfiguration('rviz_config'),
             'use_sim_time': 'true',
         }.items(),
     )
@@ -152,6 +154,11 @@ def generate_launch_description():
             'rviz', default_value='true',
             description='Open RViz. Set false for headless GIF capture '
                         '(a clean-env RViz is recorded separately).'),
+        DeclareLaunchArgument(
+            'rviz_config', default_value='integration',
+            description="RViz config basename in config/rviz/. 'integration' "
+                        "(whole-arena top-down) or 'patrol' (close follow cam "
+                        "to see the gait while navigating)."),
         DeclareLaunchArgument(
             'goal_x', default_value='3.5',
             description='Goal B x (map frame, world-aligned in known-map). '
