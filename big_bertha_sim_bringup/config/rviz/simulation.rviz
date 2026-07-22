@@ -23,13 +23,24 @@ Visualization Manager:
       Name: LaserScan
       Enabled: true
       Topic:
-        Value: /scan
+        Value: /scan_filtered
         Depth: 5
         Durability Policy: Volatile
         Reliability Policy: Best Effort
       Size (m): 0.03
       Style: Points
       Color: 255; 255; 0
+    - Class: rviz_default_plugins/LaserScan
+      Name: LaserScan (raw, unfiltered)
+      Enabled: false
+      Topic:
+        Value: /scan
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Best Effort
+      Size (m): 0.03
+      Style: Points
+      Color: 255; 0; 0
     - Class: rviz_default_plugins/Odometry
       Name: Odometry
       Enabled: true
