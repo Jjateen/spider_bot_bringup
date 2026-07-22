@@ -4,6 +4,9 @@ project(big_bertha_sim_bringup)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 # Install all bringup assets into the package share directory. RViz +
 # PlotJuggler configs live under config/ (config/rviz, config/plotjuggler).
@@ -14,7 +17,8 @@ install(
 
 # Perception helper node (scan_ground_filter: IMU-gated ghost-wall removal).
 add_executable(scan_ground_filter src/scan_ground_filter.cpp)
-ament_target_dependencies(scan_ground_filter rclcpp sensor_msgs)
+ament_target_dependencies(scan_ground_filter
+  rclcpp sensor_msgs geometry_msgs tf2 tf2_ros)
 install(
   TARGETS scan_ground_filter
   DESTINATION lib/${PROJECT_NAME}
