@@ -47,7 +47,15 @@ position_controller:
     kp: 20.0            # position stiffness (Isaac stiffness=20)
     kd: 2.0             # velocity damping  (Isaac damping=2)
     effort_limit: 1.18   # N*m stall (MG995 @6.6V, 12 kgf-cm)
-    velocity_limit: 6.54  # rad/s no-load cap (MG995 @6.6V, 0.16 s/60deg)
+    # velocity_limit=0 DISABLES the over-speed torque cutoff. It was a band-aid
+    # for the pre-armature calf resonance (joints flinging to ~19 rad/s); with
+    # the calf armature now in the URDF the joints stay bounded on their own
+    # (peak ~5.9 rad/s even under a vx=0.3 command), so the cutoff is no longer
+    # needed -- and it was CAPPING top speed (vx=0.3 tracked 0.150 m/s with it,
+    # 0.185 without, vs Isaac's 0.273). Isaac's IdealPDActuator has no such
+    # cutoff either, so removing it is also the more faithful match. The cutoff
+    # code stays (gated on velocity_limit>0) for future policies that need it.
+    velocity_limit: 0.0   # 0 = no over-speed cutoff (armature bounds joints)
     # ORDER MUST match the policy controller's joint_names (Isaac articulation
     # order: all hips, all knees, all ankles) so the incoming 12-element command
     # array indexes the same joints the policy produced. Numeric Revolute order

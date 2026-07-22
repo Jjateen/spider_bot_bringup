@@ -298,20 +298,23 @@
        height, which was tuned against a stale URDF. -->
   <link name="lidar_link">
     <inertial>
-      <origin xyz="0.0045 0 0.035" rpy="0 0 0"/>
-      <!-- Plausible solid-puck inertia; the CAD export gave ~1e-8 (degenerate),
-           which DART uses verbatim (PhysX silently regularizes it) and turns
-           the mass matrix near-singular -> solver jitter. -->
+      <origin xyz="0 0.005 0.08" rpy="0 0 0"/>
       <mass value="0.15"/>
-      <inertia ixx="1.2e-04" iyy="1.2e-04" izz="1.0e-04" ixy="0.0" ixz="0.0" iyz="0.0"/>
+      <inertia ixx="7.980e-05" iyy="7.980e-05" izz="9.710e-05" ixy="0.0" ixz="0.0" iyz="0.0"/>
     </inertial>
     <visual>
-      <origin xyz="-0.05 -0.01 0.015" rpy="0 0 0"/>
+      <origin xyz="0.055 0.005 0.06" rpy="0 0 3.14"/>
       <geometry>
         <mesh filename="${mesh_pkg}/ydlidar.stl" scale="0.0001 0.0001 0.0001"/>
       </geometry>
-      <material name="dark_grey"/>
+      <material name="silver"/>
     </visual>
+    <collision>
+      <origin xyz="0.055 0.005 0.06" rpy="0 0 3.14"/>
+      <geometry>
+        <mesh filename="${mesh_pkg}/ydlidar.stl" scale="0.0001 0.0001 0.0001"/>
+      </geometry>
+    </collision>
   </link>
 
   <link name="battery_link">
@@ -325,8 +328,14 @@
       <geometry>
         <box size="0.107 0.035 0.025"/>
       </geometry>
-      <material name="dark_grey"/>
+      <material name="silver"/>
     </visual>
+    <collision>
+      <origin xyz="0 0 0.0105" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.107 0.035 0.025"/>
+      </geometry>
+    </collision>
   </link>
 
   <link name="circuit_box_base_link">
@@ -361,6 +370,7 @@
       <geometry>
         <mesh filename="${mesh_pkg}/uno_q_simplified.stl" scale="0.001 0.001 0.001"/>
       </geometry>
+      <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="-0.15 -0.435 -0.01" rpy="0 0 4.71"/>
@@ -373,6 +383,7 @@
       <geometry>
         <mesh filename="${mesh_pkg}/buck_converter_step_down.stl" scale="0.001 0.001 0.001"/>
       </geometry>
+      <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="0.045 0 0.005" rpy="0 0 -1.57"/>
@@ -398,6 +409,7 @@
       <geometry>
         <mesh filename="${mesh_pkg}/pca9685.stl" scale="0.001 0.001 0.001"/>
       </geometry>
+      <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="0.005 -0.025 0.005" rpy="1.57 0 1.57"/>
@@ -410,6 +422,7 @@
       <geometry>
         <mesh filename="${mesh_pkg}/MPU_9265.stl" scale="0.001 0.001 0.001"/>
       </geometry>
+      <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="0 0.018 0.012" rpy="0 0 1.57"/>
@@ -590,7 +603,7 @@
 
   <link name="arm_b_4_1">
     <inertial>
-      <origin xyz="0.04154098 -0.01742240 0.00107965" rpy="0 0 0"/>
+      <origin xyz="0.04154098 -0.00048149 0.00107965" rpy="0 0 0"/>
       <mass value="0.008137"/>
       <inertia ixx="0.00000479" ixy="-0.00000000" ixz="-0.00000001" iyy="0.00000378" iyz="0.00000000" izz="0.00000801"/>
     </inertial>
@@ -613,7 +626,19 @@
     <inertial>
       <origin xyz="-0.00152686 -0.01416578 -0.02679160" rpy="0 0 0"/>
       <mass value="0.063687"/>
-      <inertia ixx="0.00003866" ixy="-0.00000290" ixz="-0.00000068" iyy="0.00001100" iyz="-0.00000123" izz="0.00003408"/>
+      <!-- ARMATURE EMULATION (not the raw CAD inertia). The CAD calf inertia
+           is ~3.4e-5; we add +0.005 to model Isaac's per-joint `armature`
+           (reflected servo rotor inertia), which training pins at 0.005 in
+           clean eval and whose own note says "zero armature makes the explicit
+           PD unstable". gz-sim 8 / sdformat14 has no <armature> joint element,
+           so it is folded into the link inertia here. Added ISOTROPICALLY (all
+           three diagonals, not izz-only) to keep the tensor a valid rigid body
+           (izz-only violates ixx+iyy>=izz and NaNs DART); the joint-axis (z)
+           term is what matters. Without this the light calf resonates to ~19
+           rad/s (feet skitter, no push-off, 0.029 m/s); with it the ankle
+           stays under the 6.54 cap and straight-walk tracks 1:1 (0.125 m/s at
+           0.12 cmd, matching Isaac's 0.97 ratio). -->
+      <inertia ixx="0.00503866" ixy="-0.00000290" ixz="-0.00000068" iyy="0.00501100" iyz="-0.00000123" izz="0.00503408"/>
     </inertial>
     <visual>
       <origin xyz="0.01 -0.145 -0.053" rpy="1.57 0 -3.14"/>
@@ -704,7 +729,19 @@
     <inertial>
       <origin xyz="-0.00152686 -0.01416578 -0.02679160" rpy="0 0 0"/>
       <mass value="0.063687"/>
-      <inertia ixx="0.00003866" ixy="-0.00000290" ixz="-0.00000068" iyy="0.00001100" iyz="-0.00000123" izz="0.00003408"/>
+      <!-- ARMATURE EMULATION (not the raw CAD inertia). The CAD calf inertia
+           is ~3.4e-5; we add +0.005 to model Isaac's per-joint `armature`
+           (reflected servo rotor inertia), which training pins at 0.005 in
+           clean eval and whose own note says "zero armature makes the explicit
+           PD unstable". gz-sim 8 / sdformat14 has no <armature> joint element,
+           so it is folded into the link inertia here. Added ISOTROPICALLY (all
+           three diagonals, not izz-only) to keep the tensor a valid rigid body
+           (izz-only violates ixx+iyy>=izz and NaNs DART); the joint-axis (z)
+           term is what matters. Without this the light calf resonates to ~19
+           rad/s (feet skitter, no push-off, 0.029 m/s); with it the ankle
+           stays under the 6.54 cap and straight-walk tracks 1:1 (0.125 m/s at
+           0.12 cmd, matching Isaac's 0.97 ratio). -->
+      <inertia ixx="0.00503866" ixy="-0.00000290" ixz="-0.00000068" iyy="0.00501100" iyz="-0.00000123" izz="0.00503408"/>
     </inertial>
     <visual>
       <origin xyz="0.01 -0.145 -0.053" rpy="1.57 0 -3.14"/>
@@ -787,7 +824,10 @@
     <inertial>
       <origin xyz="-0.00122772 -0.01509700 -0.03204975" rpy="0 0 0"/>
       <mass value="0.063687"/>
-      <inertia ixx="0.00003854" ixy="-0.00000238" ixz="0.00000067" iyy="0.00001083" iyz="0.00000147" izz="0.00003352"/>
+      <!-- ARMATURE EMULATION: see arm_c_1_1 for the full rationale. CAD calf
+           inertia ~3.4e-5; +0.005 isotropic emulates Isaac's `armature` (no
+           native <armature> in gz-sim 8). Restores 1:1 straight-walk. -->
+      <inertia ixx="0.00503854" ixy="-0.00000238" ixz="0.00000067" iyy="0.00501083" iyz="0.00000147" izz="0.00503352"/>
     </inertial>
     <visual>
       <origin xyz="0.012 -0.1455 -0.040" rpy="1.57 0 -3.14"/>
@@ -870,7 +910,10 @@
     <inertial>
       <origin xyz="-0.00122772 -0.01509700 -0.03204975" rpy="0 0 0"/>
       <mass value="0.063687"/>
-      <inertia ixx="0.00003854" ixy="-0.00000238" ixz="0.00000067" iyy="0.00001083" iyz="0.00000147" izz="0.00003352"/>
+      <!-- ARMATURE EMULATION: see arm_c_1_1 for the full rationale. CAD calf
+           inertia ~3.4e-5; +0.005 isotropic emulates Isaac's `armature` (no
+           native <armature> in gz-sim 8). Restores 1:1 straight-walk. -->
+      <inertia ixx="0.00503854" ixy="-0.00000238" ixz="0.00000067" iyy="0.00501083" iyz="0.00000147" izz="0.00503352"/>
     </inertial>
     <visual>
       <origin xyz="0.012 -0.1455 -0.040" rpy="1.57 0 -3.14"/>
