@@ -68,18 +68,25 @@ struct ObservationBuilder
   double gait_frequency{0.667};
   double turn_clock_boost{0.8};
   double speed_clock_boost{1.1};
+  /// Overall cadence ceiling. training applies `.clamp(max=2.1)` to the boost
+  /// (big_bertha_env.py::_pre_physics_step, "capped 2.1x"); omitting it here
+  /// was a live transcription bug. The two terms sum to 1+0.8+1.1 = 2.9, so
+  /// without the cap the deployment ran the clock 38% faster than the policy
+  /// ever saw -- but ONLY when vx and yaw are commanded together (every Nav2
+  /// arc). Straight walk (boost 1.44) and pure turn (1.80) never reach it.
+  double gait_boost_max{2.1};
   std::array<double, kNumFeet> gait_offsets{0.0, 0.5, 0.25, 0.75};
 
   /// Advance the gait clock by one control step. Must be called once per
   /// control period (dt = 1/control_rate) with the CURRENT commanded vx/yaw,
-  /// mirroring big_bertha_env.py: boost = 1 + turn_clock_boost*clamp(|yaw|/0.4,
-  /// max=1) + speed_clock_boost*clamp(vx/0.3, max=1);
+  /// mirroring big_bertha_env.py: boost = min(1 + turn_clock_boost*clamp(
+  /// |yaw|/0.4, max=1) + speed_clock_boost*clamp(vx/0.3, max=1), 2.1);
   /// phase = (phase + gait_frequency*boost*dt) % 1.
   void advance_clock(double vx_cmd, double yaw_cmd, double dt)
   {
     const double turn_term = turn_clock_boost * std::min(std::abs(yaw_cmd) / 0.4, 1.0);
     const double speed_term = speed_clock_boost * std::min(vx_cmd / 0.3, 1.0);
-    const double boost = 1.0 + turn_term + speed_term;
+    const double boost = std::min(1.0 + turn_term + speed_term, gait_boost_max);
     gait_phase = std::fmod(gait_phase + gait_frequency * boost * dt, 1.0);
     if (gait_phase < 0.0) {
       gait_phase += 1.0;

@@ -16,8 +16,11 @@
 # only this list's order does.
 #
 # Gait clock (obs[48:52]): phase advances by gait_frequency * boost * dt each
-# control step (dt = 1/control_rate), boost = 1 + turn_clock_boost*clamp(|yaw|
-# /0.4, max=1) + speed_clock_boost*clamp(vx/0.3, max=1). Per-foot offsets
+# control step (dt = 1/control_rate), boost = min(1 + turn_clock_boost*clamp(
+# |yaw|/0.4, max=1) + speed_clock_boost*clamp(vx/0.3, max=1), gait_boost_max).
+# The outer cap is NOT optional -- training applies .clamp(max=2.1) and the
+# terms sum to 2.9, so omitting it runs the clock 38% fast whenever vx and yaw
+# are commanded together (every Nav2 arc). Per-foot offsets
 # [0.0, 0.5, 0.25, 0.75] for legs 1/2/3/4 (arm_c_1_1..arm_c_4_1), sin-transformed:
 # obs[48+k] = sin(2*pi * ((phase + gait_offsets[k]) % 1)). Must reproduce
 # big_bertha_env.py's _pre_physics_step/_get_observations exactly.
@@ -128,4 +131,7 @@
     gait_frequency: 0.667
     turn_clock_boost: 0.8
     speed_clock_boost: 1.1
+    # Cadence ceiling; mirrors big_bertha_env.py's .clamp(max=2.1). Binds only
+    # when forward speed and yaw are commanded together.
+    gait_boost_max: 2.1
     gait_offsets: [0.0, 0.5, 0.25, 0.75]   # legs 1/2/3/4 = arm_c_1_1..arm_c_4_1
