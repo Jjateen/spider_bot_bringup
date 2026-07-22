@@ -83,9 +83,12 @@ public:
     // Leave false for nav (Nav2 owns the heading via wz).
     heading_lock_ = declare_parameter<bool>("heading_lock", false);
     heading_lock_yaw_ = declare_parameter<double>("heading_lock_yaw", 0.0);
-    // Final yaw command clamp -- the policy was trained on yaw in [-0.6, 0.6],
-    // so 0.5 gives the correction real authority (the old 0.15 clamp throttled
-    // the turn so hard the drift always won).
+    // Final yaw command clamp. Verified from big_bertha_env.py::_reset_idx:
+    // the policy is trained on yaw in [-0.5, 0.5] (general sampling; a 30%
+    // turn-in-place override further biases toward |yaw| in [0.15, 0.4]).
+    // 0.5 matches that range, it isn't "extra authority beyond training" --
+    // the old 0.15 clamp undershot the real trained envelope and throttled
+    // the turn so hard the drift always won.
     heading_max_ = declare_parameter<double>("heading_max", 0.5);
     // Anti-windup: never let the setpoint lead/lag the measured heading by more
     // than this, so a turn the policy cannot keep up with does not wind up and
@@ -96,12 +99,15 @@ public:
     fwd_slow_err_ = declare_parameter<double>("fwd_slow_err", 0.5);
     fwd_min_scale_ = declare_parameter<double>("fwd_min_scale", 0.15);
     // --------------- Differential-stride steering (the real knob) ----------
-    // model_49999 barely responds to the yaw COMMAND in DART, so the heading
-    // loop also drives a hip-bias steering signal: the hips rotate about the
-    // body Z axis, so adding steer_cmd*hip_steer_sign[i] to the hip targets
-    // rotates all stance feet the same way and yaws the body. This is an
-    // output-level correction (no retrain, no sim edit). hip_steer_sign sets
-    // the per-hip polarity (calibrated empirically via /debug_hip_bias).
+    // v1.0.0 still barely self-corrects on the yaw COMMAND alone in DART
+    // (confirmed empirically: steer_kp=0 with heading_hold otherwise on
+    // drifted -20.6 deg over 23s and moved mostly sideways, dx=0.60/dy=0.81
+    // -- see demo_straight A/B data), so the heading loop also drives a
+    // hip-bias steering signal: the hips rotate about the body Z axis, so
+    // adding steer_cmd*hip_steer_sign[i] to the hip targets rotates all
+    // stance feet the same way and yaws the body. This is an output-level
+    // correction (no retrain, no sim edit). hip_steer_sign sets the per-hip
+    // polarity (calibrated empirically via /debug_hip_bias).
     steer_kp_ = declare_parameter<double>("steer_kp", 0.6);
     steer_ki_ = declare_parameter<double>("steer_ki", 0.5);
     steer_max_ = declare_parameter<double>("steer_max", 0.25);
@@ -111,6 +117,12 @@ public:
     // Below this forward command the gait is gated off and the robot holds the
     // default stance (the policy cannot stand still on its own).
     stand_vx_thresh_ = declare_parameter<double>("stand_vx_thresh", 0.02);
+    // Same idea for yaw: below this the robot holds stance rather than
+    // pivoting. v1.0.0 has a real trained turn-in-place gait (30% of envs:
+    // vx=vy=0, |yaw| in [0.15, 0.4], see big_bertha_env.py::_reset_idx), so
+    // this must stay well under that floor or a genuine turn-in-place
+    // command would be gated off and never reach the policy.
+    stand_yaw_thresh_ = declare_parameter<double>("stand_yaw_thresh", 0.05);
     // Station-keeping: while gated/idle (e.g. before the Nav2 goal arrives) the
     // gated default stance slowly PIVOTS on DART's asymmetric contact (~15 deg
     // before a goal is sent), so nav starts pointed at a wall. With this on, the
@@ -137,6 +149,13 @@ public:
     //   vy = clamp(-Kp * lateral_error, +/- max_lin_vel_y).
     // Feedback makes it robust to the drift's source/magnitude. The reference
     // line re-latches while turning so it only holds during straight segments.
+    //
+    // v1.0.0 (post calf-armature fix): a clean win -- forward stays 1:1
+    // (0.136 vs 0.127 m/s) while the residual lateral crab drops ~4x (~0.005
+    // vs ~0.02 m/s) with heading drift <0.2 deg. Default ON. (An earlier A/B,
+    // taken while the calf still resonated at ~19 rad/s, had found it harmful
+    // and defaulted it off; that regime is gone -- the resonance was the real
+    // problem, see the armature emulation on the arm_c links in the URDF.)
     lateral_hold_ = declare_parameter<bool>("lateral_hold", true);
     lateral_kp_ = declare_parameter<double>("lateral_kp", 0.25);
     // |wz| above which we treat the motion as a turn and re-latch the line.
@@ -540,11 +559,16 @@ private:
         obs_.advance_clock(obs_.commands[0], obs_.commands[2], 1.0 / control_rate_);
         // The policy walks forward even when commanded vx=0 (vx=0 is out of its
         // training distribution), so a "stop" command would leave the robot
-        // free-drifting. Gate it: when no forward motion is commanded (idle /
-        // goal reached / cmd timeout), hold the default stance instead of
-        // running the gait. Without this the robot wanders off A during the
-        // pre-goal idle window and never navigates from the right start pose.
-        moving = obs_.commands[0] > stand_vx_thresh_;
+        // free-drifting. Gate it: when no forward motion AND no turn is
+        // commanded (idle / goal reached / cmd timeout), hold the default
+        // stance instead of running the gait. Without this the robot wanders
+        // off A during the pre-goal idle window and never navigates from the
+        // right start pose. The |wz| half of this gate matters just as much:
+        // v1.0.0 has a real trained turn-in-place gait (vx=vy=0, |yaw| in
+        // [0.15, 0.4]); gating on vx alone would route every pure-yaw command
+        // into the static hold-stance branch below and never invoke it.
+        moving = obs_.commands[0] > stand_vx_thresh_ ||
+                 std::abs(obs_.commands[2]) > stand_yaw_thresh_;
         if (!moving) {
           // Gated: hold the default stance (no forward gait). With station_keep,
           // still apply the hip-bias steering so the robot actively holds its
@@ -678,11 +702,14 @@ private:
   double last_inf_ms_{0.0};
   double last_action_norm_{0.0};
   double action_clip_{1.0};
-  // Trained command ranges (big_bertha env _reset_idx sampling): vx in
-  // [0.1,0.3] forward-only, vy in [+/-0.05], yaw in [+/-0.15]. Nav2 issues
-  // commands well outside these (linear.x ~0.37, yaw ~0.44), which is
-  // out-of-distribution for the policy. Clamp /cmd_vel to the trained envelope
-  // so the policy stays in distribution (the yaw-for-nav blocker).
+  // Trained command ranges, verified from big_bertha_env.py::_reset_idx: vx
+  // in [0.0, 0.40], vy in [+/-0.05], yaw in [+/-0.5] (general sampling; 30%
+  // of envs get a turn-in-place override instead: vx=vy=0, |yaw| in
+  // [0.15, 0.4]). Nav2 can issue commands outside these; clamp /cmd_vel to
+  // the trained envelope so the policy stays in distribution. These are just
+  // constructor fallback defaults -- policy.yaml sets the real runtime
+  // values (max_lin_vel_x=0.3, max_lin_vel_y=0.06, max_yaw_rate=0.5, the
+  // last matching heading_max exactly).
   double max_lin_vel_x_{0.3};
   double max_lin_vel_y_{0.05};
   double max_yaw_rate_{0.15};
@@ -731,6 +758,7 @@ private:
   double steer_cmd_{0.0};
   std::array<double, 4> debug_hip_bias_{};
   double stand_vx_thresh_{0.02};
+  double stand_yaw_thresh_{0.05};
 
   // ROS
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_pub_;

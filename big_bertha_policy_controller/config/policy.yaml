@@ -50,7 +50,8 @@
     # corrective yaw = wz + heading_kp*(desired_yaw - odom_yaw).
     heading_hold: true
     heading_kp: 2.0          # P gain on the (weak) policy yaw command
-    heading_max: 0.5         # final yaw command clamp (trained |yaw| <= 0.6)
+    heading_max: 0.5         # final yaw command clamp (trained |yaw| <= 0.5,
+                             # see big_bertha_env.py::_reset_idx)
     heading_err_clamp: 0.4   # anti-windup: max setpoint lead/lag vs measured
     fwd_slow_err: 0.5        # |err| (rad) for forward throttle (off below)
     fwd_min_scale: 1.0       # 1.0 = no extra throttle; hip-steer does the trade
@@ -67,6 +68,16 @@
     # hold the LINE (not just the heading), bounding the residual DART crab the
     # heading loop alone leaves. Re-latches while turning (|wz|>turn_thresh) so
     # it only holds on straight segments and lets Nav2's vy pass through in turns.
+    #
+    # v1.0.0 (POST-ARMATURE, the current build): with the calf armature fix
+    # the base dynamics are healthy and this loop is a clean win. A/B at
+    # vx=0.12 cmd: OFF -> 0.127 m/s, lateral crab ~0.02 m/s (dy 0.73 m/29 s);
+    # ON -> 0.136 m/s (still 1:1) with the crab cut ~4x to ~0.005 m/s
+    # (dy 0.065 m/12 s) and heading drift <0.2 deg. Default ON.
+    #   Historical note: an EARLIER A/B (before the armature fix, while the
+    #   calf still resonated at ~19 rad/s) found this loop net-harmful and it
+    #   was defaulted OFF. That regime is gone; the resonance was the real
+    #   problem, not this loop.
     lateral_hold: true
     lateral_kp: 0.6
     # Re-latch the line ONLY on a deliberate turn (raised 0.05->0.25): under Nav2
