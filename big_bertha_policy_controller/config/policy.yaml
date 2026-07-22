@@ -132,6 +132,12 @@
     turn_clock_boost: 0.8
     speed_clock_boost: 1.1
     # Cadence ceiling; mirrors big_bertha_env.py's .clamp(max=2.1). Binds only
-    # when forward speed and yaw are commanded together.
+    # when forward speed and yaw are commanded together -- i.e. every Nav2 arc.
+    # Measured A/B on an arc (cmd vx=0.25, wz=0.35), 2.9 (the old un-clamped
+    # value) vs 2.1:
+    #   vx 0.104 -> 0.150 m/s  (+44%)
+    #   wz 0.016 -> 0.076 rad/s (4.7x)
+    # At 2.9 the robot was essentially not turning at all while moving forward.
+    # Do not raise this: 2.1 is the trained contract, not a tuning knob.
     gait_boost_max: 2.1
     gait_offsets: [0.0, 0.5, 0.25, 0.75]   # legs 1/2/3/4 = arm_c_1_1..arm_c_4_1
