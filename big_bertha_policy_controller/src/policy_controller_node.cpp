@@ -192,7 +192,8 @@ public:
                       "Revolute_114", "Revolute_115", "Revolute_116", "Revolute_117",
                       "Revolute_118", "Revolute_119", "Revolute_120", "Revolute_121"});
     auto default_pose = declare_parameter<std::vector<double>>(
-      "default_joint_pos", {0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 2.00, 2.00, 2.00, 2.00});
+      "default_joint_pos",
+      {0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 2.00, 2.00, 2.00, 2.00});
 
     for (int i = 0; i < bbpc::kNumJoints && i < static_cast<int>(default_pose.size()); ++i) {
       obs_.default_joint_pos[i] = default_pose[i];
@@ -206,7 +207,8 @@ public:
     obs_.turn_clock_boost = declare_parameter<double>("turn_clock_boost", 0.8);
     obs_.speed_clock_boost = declare_parameter<double>("speed_clock_boost", 1.1);
     obs_.gait_boost_max = declare_parameter<double>("gait_boost_max", 2.1);
-    auto gait_offsets = declare_parameter<std::vector<double>>("gait_offsets", {0.0, 0.5, 0.25, 0.75});
+    auto gait_offsets =
+      declare_parameter<std::vector<double>>("gait_offsets", {0.0, 0.5, 0.25, 0.75});
     for (int i = 0; i < bbpc::kNumFeet && i < static_cast<int>(gait_offsets.size()); ++i) {
       obs_.gait_offsets[i] = gait_offsets[i];
     }
@@ -573,8 +575,8 @@ private:
         // v1.0.0 has a real trained turn-in-place gait (vx=vy=0, |yaw| in
         // [0.15, 0.4]); gating on vx alone would route every pure-yaw command
         // into the static hold-stance branch below and never invoke it.
-        moving = obs_.commands[0] > stand_vx_thresh_ ||
-                 std::abs(obs_.commands[2]) > stand_yaw_thresh_;
+        moving =
+          obs_.commands[0] > stand_vx_thresh_ || std::abs(obs_.commands[2]) > stand_yaw_thresh_;
         if (!moving) {
           // Gated: hold the default stance (no forward gait). With station_keep,
           // still apply the hip-bias steering so the robot actively holds its

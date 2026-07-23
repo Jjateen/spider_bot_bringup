@@ -30,7 +30,7 @@ BANDS = [(0.0, 1.5), (1.5, 2.5), (2.5, 4.0), (4.0, 8.1)]
 
 
 def is_hit(x, rmax):
-    """True if this range is a real finite return (not inf/NaN/out-of-range)."""
+    """Return True if this range is a real finite return (not inf/NaN/oob)."""
     return x == x and x != float('inf') and x < rmax
 
 

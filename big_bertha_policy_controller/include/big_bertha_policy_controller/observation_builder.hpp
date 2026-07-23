@@ -15,6 +15,7 @@
 #ifndef BIG_BERTHA_POLICY_CONTROLLER__OBSERVATION_BUILDER_HPP_
 #define BIG_BERTHA_POLICY_CONTROLLER__OBSERVATION_BUILDER_HPP_
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <string>
@@ -49,8 +50,8 @@ struct ObservationBuilder
   // order, matches policy.yaml's joint_names). Overwritten at node startup
   // from the default_joint_pos ROS param; this is just the compile-time
   // fallback -- see policy_controller_node.cpp.
-  std::array<double, kNumJoints> default_joint_pos{0.0, 0.0, 0.0, 0.0, -0.32, -0.32,
-                                                   -0.32, -0.32, 2.00, 2.00, 2.00, 2.00};
+  std::array<double, kNumJoints> default_joint_pos{0.0,   0.0,   0.0,  0.0,  -0.32, -0.32,
+                                                   -0.32, -0.32, 2.00, 2.00, 2.00,  2.00};
 
   // Cached inputs (updated by subscription callbacks).
   std::array<double, 3> root_lin_vel_b{0.0, 0.0, 0.0};

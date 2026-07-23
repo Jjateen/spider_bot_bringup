@@ -156,9 +156,9 @@ def generate_launch_description():
                         '(a clean-env RViz is recorded separately).'),
         DeclareLaunchArgument(
             'rviz_config', default_value='integration',
-            description="RViz config basename in config/rviz/. 'integration' "
-                        "(whole-arena top-down) or 'patrol' (close follow cam "
-                        "to see the gait while navigating)."),
+            description='RViz config basename in config/rviz/. integration '
+                        '(whole-arena top-down) or patrol (close follow cam '
+                        'to see the gait while navigating).'),
         DeclareLaunchArgument(
             'goal_x', default_value='3.5',
             description='Goal B x (map frame, world-aligned in known-map). '
