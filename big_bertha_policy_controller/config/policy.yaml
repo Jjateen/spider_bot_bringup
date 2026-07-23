@@ -44,6 +44,11 @@
     action_clip: 1.0         # raw policy action clamp (matches env)
     # Command envelope sent to the policy (trained ranges). Yaw is widened from
     # the old 0.15 so the heading-hold loop has real turn authority.
+    # Keep max_yaw_rate at heading_max (0.5). Lowering it to 0.35 to give the
+    # heading P-term correction headroom was tested and FAILED: turn rate fell
+    # 0.279 -> 0.114 rad/s. The plant, not the command, is binding, so trading
+    # feedforward for a correction that feeds the same saturated yaw channel is
+    # a net loss. Do not reopen without changing the plant.
     max_lin_vel_x: 0.3
     max_lin_vel_y: 0.06
     max_yaw_rate: 0.5
