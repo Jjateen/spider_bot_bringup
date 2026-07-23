@@ -205,6 +205,14 @@ local_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
+          # Hold an obstacle for > one gait stride (~0.7-1.5 s). The body-fixed
+          # 2D lidar tilts with the gait, so a mid-range obstacle is only seen
+          # on the level/uphill phase of each stride and is culled on the
+          # downhill phase (scan_ground_filter). With the default persistence 0
+          # (latest scan only) it flickers out every stride and the planner
+          # thrashes in clutter. Marking uses the whole buffer and is applied
+          # after clearing, so anything seen in the last 1.5 s stays marked.
+          observation_persistence: 1.5
           raytrace_max_range: 3.0
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
@@ -254,6 +262,14 @@ global_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
+          # Hold an obstacle for > one gait stride (~0.7-1.5 s). The body-fixed
+          # 2D lidar tilts with the gait, so a mid-range obstacle is only seen
+          # on the level/uphill phase of each stride and is culled on the
+          # downhill phase (scan_ground_filter). With the default persistence 0
+          # (latest scan only) it flickers out every stride and the planner
+          # thrashes in clutter. Marking uses the whole buffer and is applied
+          # after clearing, so anything seen in the last 1.5 s stays marked.
+          observation_persistence: 1.5
           raytrace_max_range: 3.0
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
