@@ -128,16 +128,15 @@ private:
     } catch (const tf2::TransformException & e) {
       RCLCPP_WARN_THROTTLE(
         this->get_logger(), *this->get_clock(), 5000,
-        "waiting for %s->%s TF (%s); passing scan through unfiltered",
-        base_frame_.c_str(), lidar_frame_.c_str(), e.what());
+        "waiting for %s->%s TF (%s); passing scan through unfiltered", base_frame_.c_str(),
+        lidar_frame_.c_str(), e.what());
       return false;
     }
     mount_z_ = tf.transform.translation.z;
     // yaw straight from the quaternion; avoids pulling in tf2_geometry_msgs
     // for a single conversion.
     const auto & q = tf.transform.rotation;
-    lidar_yaw_ = std::atan2(
-      2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+    lidar_yaw_ = std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
     mount_ready_ = true;
     RCLCPP_INFO(
       this->get_logger(),
