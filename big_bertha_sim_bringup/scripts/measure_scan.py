@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Quantify lidar ghost walls: compare /scan against /scan_filtered.
+"""
+Quantify lidar ghost walls: compare /scan against /scan_filtered.
 
 scan_ground_filter republishes the *same* LaserScan with culled rays set to
 inf, so header.stamp is preserved and raw/filtered pairs match exactly. That
