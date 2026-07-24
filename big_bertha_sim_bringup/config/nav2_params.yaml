@@ -160,7 +160,14 @@ controller_server:
       # from an obstacle it is about to hit -- without it the slow forward-only
       # arc could not change heading fast enough and the robot stuck on contact.
       use_rotate_to_heading: true
-      rotate_to_heading_min_angle: 0.5
+      # 0.5 -> 1.0: at 0.5 rad (29 deg) the demo's spawn-to-first-goal heading
+      # error (~45 deg) triggered an in-place pivot, and with the gait tracking
+      # only ~0.28 rad/s against the 0.8 command the pivot wound into a full
+      # circle before any forward progress. At 1.0 rad the moderate headings arc
+      # out (the regime the gait-clock cap fixed tracks well: wz 0.076 @ cmd
+      # 0.35 while walking); only genuinely sharp (>57 deg) obstacle peel-aways
+      # still stop-and-rotate.
+      rotate_to_heading_min_angle: 1.0
       max_angular_accel: 3.2
       max_robot_pose_search_dist: 10.0
       allow_reversing: false
