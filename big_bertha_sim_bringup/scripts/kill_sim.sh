@@ -1,15 +1,7 @@
 #!/usr/bin/env bash
-# Tear down a Big Bertha sim stack completely.
-#
-# `ros2 launch` spawns a web of child processes (gz sim, ros_gz parameter_bridge,
-# robot_state_publisher, tf2 static_transform_publisher, nav2 lifecycle/map
-# nodes, controller_manager, rviz2). Ctrl-C on the launch does NOT always reap
-# all of them -- in particular the ros_gz parameter_bridge tends to survive, and
-# each survivor keeps republishing /clock. Several stale bridges make /clock jump
-# backwards, which makes RViz clear its TF buffer every frame (links freeze, the
-# RobotModel flashes red). Run this between launches so exactly one stack is ever
-# live. Kills by process name (grep is broader than pkill -f here) then restarts
-# the ROS 2 daemon to flush stale node registrations from the discovery cache.
+# Tear down a Big Bertha sim stack completely. Ctrl-C does not always reap
+# every child; a surviving parameter_bridge republishes /clock, which jumps
+# time backwards and makes RViz flush TF every frame. Run between launches.
 #
 # Usage: kill_sim.sh
 set -uo pipefail

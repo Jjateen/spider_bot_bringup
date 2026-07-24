@@ -192,13 +192,8 @@ def generate_launch_description():
         ],
     )
 
-    # Interim DART drift-trim: a constant drift-cancel hip bias on
-    # /debug_hip_bias (the policy controller adds it to the 4 hip targets).
-    # Together with the node's heading-hold and the small north vy above, this
-    # holds the straight line against the systematic PhysX->DART rightward push
-    # of the CURRENT policy. It is a deployment trim, not a real fix -- the
-    # principled fix is the lateral/yaw-drift reward + wider DR in training
-    # (see env). Re-tune (or set 0.0) when a new policy is deployed.
+    # Constant drift-cancel hip bias on /debug_hip_bias; deployment trim only,
+    # re-tune (or 0.0) per deployed policy.
     drift_trim = TimerAction(
         period=cmd_delay,
         actions=[
@@ -235,18 +230,12 @@ def generate_launch_description():
                         'speed, not a range bound'),
         DeclareLaunchArgument(
             'vy', default_value='0.0',
-            description='Constant lateral vy (m/s, +left). 0 with the bias-DR '
-                        'policy: its residual crab is non-directional, so a '
-                        'constant feed-forward would bias one way; the '
-                        'closed-loop lateral_hold handles it instead'),
+            description='Constant lateral vy (m/s, +left); closed-loop '
+                        'lateral_hold handles the crab instead'),
         DeclareLaunchArgument(
             'hip_bias', default_value='0.0',
             description='Drift-cancel hip bias (rad) on /debug_hip_bias; '
-                        '0.0 with the bias-DR policy (model_58998), which '
-                        'holds heading on its own (yaw drift <1 deg/min) so '
-                        'no constant yaw trim is needed -- the old -0.22 '
-                        'was calibrated for the drifting policy and would '
-                        'curve it'),
+                        '0.0 for the current policy (calibration knob)'),
         DeclareLaunchArgument(
             'cmd_delay', default_value='12.0',
             description='Seconds to wait for controllers before driving'),

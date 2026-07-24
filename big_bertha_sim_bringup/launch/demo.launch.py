@@ -82,16 +82,10 @@ def generate_launch_description():
             os.path.join(pkg, 'launch', 'bringup.launch.py')),
         launch_arguments={
             'slam': slam,              # default false: known-map mode
-            # Default 'ground_truth': static identity map->odom so Nav2 gets the
-            # true world pose and can steer the residual DART crab out via yaw.
-            # AMCL (localization:=amcl) is ambiguous in the symmetric 4-wall arena
-            # -- it converges to a wrong pose and falsely reports reaching B while
-            # the robot is metres short. Ground-truth isolates the locomotion demo
-            # from that arena ambiguity (the codebase's intended A->B default).
+            # ground_truth default: AMCL is ambiguous in the symmetric arena
+            # (wrong pose -> false goal success).
             'localization': localization,
-            'rviz': LaunchConfiguration('rviz'),  # open RViz (off for GIF capture)
-            # 'integration' = whole-arena top-down; 'patrol' = close follow cam
-            # (see the gait while navigating). Overridable via rviz_config arg.
+            'rviz': LaunchConfiguration('rviz'),
             'rviz_config': LaunchConfiguration('rviz_config'),
             'use_sim_time': 'true',
         }.items(),
@@ -117,11 +111,7 @@ def generate_launch_description():
         condition=UnlessCondition(patrol),
     )
 
-    # Patrol mode (patrol:=true): a 4-leg corner tour -- visit B (NE), then the
-    # two new goals goal2 and goal3, then return to the start A. Four goals in
-    # sequence, each blocking until reached (send_patrol.sh chains ros2 action
-    # send_goal calls). Between goals the position-hold parks the robot on the
-    # waypoint.
+    # Patrol mode: 4-goal corner tour, each goal blocking until reached.
     patrol_script = os.path.join(pkg, 'scripts', 'send_patrol.sh')
     send_patrol = TimerAction(
         period=goal_delay,
@@ -169,11 +159,8 @@ def generate_launch_description():
             description='Goal B y in the map frame (world B = -3.5)'),
         DeclareLaunchArgument(
             'goal_delay', default_value='20.0',
-            description='Seconds to wait for localization + Nav2 to activate '
-                        'before sending the goal. 20 (was 45): Nav2 is ready by '
-                        '~10 s, and the extra 25 s of idle let the gait slide ~0.8 '
-                        'm into the SW corner before nav even started -- so it '
-                        'began navigating already jammed against the walls.'),
+            description='Seconds to wait for Nav2 before sending the goal '
+                        '(45 let the idle gait slide into the SW corner).'),
         DeclareLaunchArgument(
             'patrol', default_value='false',
             description='true: 4-leg patrol -- A->B->goal2->goal3->A (corner '
