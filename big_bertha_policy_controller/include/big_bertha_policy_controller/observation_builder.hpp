@@ -45,11 +45,8 @@ constexpr int kActionDim = 12;
 /// index 8). The onnx bakes in the empirical normalizer, so feed RAW obs.
 struct ObservationBuilder
 {
-  // Default per-joint-type pose (hip, knee/thigh, ankle/calf) x4 legs, ordered
-  // [110,113,116,119, 111,114,117,120, 112,115,118,121] (Isaac tree-depth
-  // order, matches policy.yaml's joint_names). Overwritten at node startup
-  // from the default_joint_pos ROS param; this is just the compile-time
-  // fallback -- see policy_controller_node.cpp.
+  // Isaac tree-depth order [hips, knees, ankles] x4; compile-time fallback,
+  // overwritten from the default_joint_pos ROS param.
   std::array<double, kNumJoints> default_joint_pos{0.0,   0.0,   0.0,  0.0,  -0.32, -0.32,
                                                    -0.32, -0.32, 2.00, 2.00, 2.00,  2.00};
 
@@ -63,26 +60,19 @@ struct ObservationBuilder
   std::array<double, kActionDim> prev_actions{};
 
   // Wave-gait clock: reproduces big_bertha_env.py's _pre_physics_step phase
-  // advance so obs[48:52] matches what the policy trained on. Tunables are
-  // ROS params (policy.yaml); defaults here are the trained values.
+  // advance so obs[48:52] matches training. Defaults are the trained values.
   double gait_phase{0.0};
   double gait_frequency{0.667};
   double turn_clock_boost{0.8};
   double speed_clock_boost{1.1};
-  /// Overall cadence ceiling. training applies `.clamp(max=2.1)` to the boost
-  /// (big_bertha_env.py::_pre_physics_step, "capped 2.1x"); omitting it here
-  /// was a live transcription bug. The two terms sum to 1+0.8+1.1 = 2.9, so
-  /// without the cap the deployment ran the clock 38% faster than the policy
-  /// ever saw -- but ONLY when vx and yaw are commanded together (every Nav2
-  /// arc). Straight walk (boost 1.44) and pure turn (1.80) never reach it.
+  /// Cadence ceiling; training clamps the boost to 2.1 (the terms sum to 2.9).
+  /// Omitting it ran the clock 38% fast on every Nav2 arc.
   double gait_boost_max{2.1};
   std::array<double, kNumFeet> gait_offsets{0.0, 0.5, 0.25, 0.75};
 
-  /// Advance the gait clock by one control step. Must be called once per
-  /// control period (dt = 1/control_rate) with the CURRENT commanded vx/yaw,
-  /// mirroring big_bertha_env.py: boost = min(1 + turn_clock_boost*clamp(
-  /// |yaw|/0.4, max=1) + speed_clock_boost*clamp(vx/0.3, max=1), 2.1);
-  /// phase = (phase + gait_frequency*boost*dt) % 1.
+  /// Advance the clock once per control period with the CURRENT commanded
+  /// vx/yaw: boost = min(1 + turn_clock_boost*clamp(|yaw|/0.4, max=1)
+  /// + speed_clock_boost*clamp(vx/0.3, max=1), gait_boost_max).
   void advance_clock(double vx_cmd, double yaw_cmd, double dt)
   {
     const double turn_term = turn_clock_boost * std::min(std::abs(yaw_cmd) / 0.4, 1.0);

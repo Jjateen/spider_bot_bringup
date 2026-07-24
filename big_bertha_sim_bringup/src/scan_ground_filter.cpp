@@ -14,45 +14,21 @@
 //
 // IMU-gated ground-return filter for the body-mounted 2D lidar.
 //
-// Big Bertha's lidar is bolted to the body, so as the legged gait heaves/
-// pitches/rolls the lidar tilts with it. A tilted-down beam strikes the floor
-// and the 2D scan reports a near return; the costmap -- which (with EKF
-// two_d_mode) believes the lidar is perfectly level -- paints that floor hit as
-// a wall at body height. Every stride this flickers a fresh ring of 'ghost
-// walls' that box the planner in.
+// The lidar tilts with the gait; tilted-down rays strike the floor and the
+// level-TF costmap (EKF two_d_mode) paints them as walls. Per ray: rotate by
+// the live IMU attitude, drop (-> +inf) returns whose endpoint lands below the
+// floor. Real obstacles are struck at ~lidar height and survive.
 //
-// This node removes them at the perception layer, the realistic fix that also
-// works on the real robot (the Uno Q lidar tilts too): for each ray it rotates
-// the ray direction by the live IMU orientation, computes the 3D height of the
-// return's endpoint above the ground, and drops (-> +inf) any return that lands
-// at or below the floor. A real obstacle is struck at ~lidar height, so it
-// survives; only floor hits -- the ghost-wall source -- are culled. Yaw cancels
-// out of the height, so only the gait's roll/pitch matter.
+// FRAME NOTE: the scan angle is in lidar_link, the IMU in base_link, and the
+// mount chain makes them differ by Rz(pi). Ignoring that negates dir_z and the
+// filter culls the wrong half (it deleted real walls). The offset comes from
+// TF so a URDF change cannot silently re-invert it.
 //
-// FRAME NOTE (this was a live bug): the scan angle is expressed in lidar_link,
-// but the IMU orientation is base_link. Those frames are NOT aligned -- the
-// mount chain (battery_joint rpy=(pi,0,0) then circuit_box_base_joint
-// rpy=(0,pi,0)) composes to Rx(pi)*Ry(pi) = diag(-1,-1,1) = Rz(pi), a 180 deg
-// yaw offset. Feeding a lidar-frame angle into base-frame roll/pitch terms
-// negates dir_z, so the filter culled the UP-tilted half and passed every
-// down-tilted ray -- i.e. it deleted real distant walls (measured: 33
-// returns/scan at mean range 5.25 m) while removing zero floor hits. The offset
-// is now taken from TF rather than hardcoded, so a future URDF change cannot
-// silently re-invert it.
-//
-// WHAT THIS CAN AND CANNOT DO. Measured gait attitude while walking: total body
-// tilt mean 3.3 deg, p95 6.6 deg, max 8.4 deg. With the lidar only ~0.157 m
-// above ground (0.095 body + 0.0614 mount), a ray tilted down by the *mean*
-// 3.3 deg is already at floor level by ~2.0 m. So while walking the sensor is
-// physically blind past ~2 m on the downhill side -- there is no wall return to
-// be had there, only floor. This node's job is to stop that floor being
-// reported as a wall; it cannot recover range the tilt destroyed. Measured
-// per-band survival after the fix: 0-1.5 m 95%, 1.5-2.5 m 14%, 2.5-4 m 9%,
-// 4-8 m 49% (the surviving far returns are the uphill half). Near obstacles --
-// the ones that matter for collision -- are preserved.
-// The real levers for more usable range are raising the lidar or reducing gait
-// tilt (training-side: flat_orientation_l2 is only -3.0 and the declared
-// max_tilt_angle_deg is never read). See HANDOFF_TRAINING.md.
+// Physics limit: at ~0.157 m lidar height the mean 3.3 deg walking tilt puts
+// the beam on the floor by ~2 m, so the downhill side is blind past that --
+// this node stops the floor reading as walls, it cannot recover that range.
+// Measured survival post-fix: 0-1.5 m 95%, mid bands 9-14%, 4-8 m 49%.
+// Real levers: raise the lidar or reduce gait tilt (see HANDOFF_TRAINING.md).
 
 #include <cmath>
 #include <functional>
@@ -74,20 +50,14 @@ class ScanGroundFilter : public rclcpp::Node
 public:
   ScanGroundFilter() : rclcpp::Node("scan_ground_filter")
   {
-    // Body height above ground in nominal stance. TF cannot supply this: under
-    // the full stack the EKF runs two_d_mode, so odom->base_link has z == 0 by
-    // construction. 0.095 is MEASURED from gz ground-truth odometry while
-    // walking (mean 0.0956, range 0.085-0.108); it also matches training's
-    // base_height reward target of 0.09.
+    // Body height above ground (TF can't supply it: EKF two_d_mode pins z=0).
+    // 0.095 measured from gz ground-truth odometry while walking.
     body_height_ = this->declare_parameter<double>("body_height", 0.095);
-    // Cull a return when its endpoint height is below this (m); slightly
-    // positive so a near-floor grazing hit reads as ground, not wall.
-    // ponytail: also absorbs the gait's ~+/-0.03 m heave, which we do not
-    // track; revisit only if measurement shows residual gait-phase ghosting.
+    // Cull endpoints below this height (m).
+    // ponytail: also absorbs the untracked ~+/-0.03 m gait heave; revisit only
+    // if measurement shows residual gait-phase ghosting.
     floor_margin_ = this->declare_parameter<double>("floor_margin", 0.04);
-    // Ignore an IMU sample older than this vs the scan (s). Scan is 10 Hz and
-    // the gait is 0.67-1.4 Hz, so a stale attitude is a real fraction of a
-    // stride and would cull against the wrong tilt.
+    // Max IMU age vs the scan (s); a stale attitude culls against the wrong tilt.
     imu_max_age_ = this->declare_parameter<double>("imu_max_age", 0.05);
     base_frame_ = this->declare_parameter<std::string>("base_frame", "base_link");
     lidar_frame_ = this->declare_parameter<std::string>("lidar_frame", "lidar_link");
@@ -112,11 +82,8 @@ public:
   }
 
 private:
-  /// One-shot: take the lidar mount height AND the lidar->base yaw offset from
-  /// TF (a fixed joint, so this never changes at runtime). Doing both from the
-  /// same lookup is the point -- the height being hardcoded is what let it go
-  /// stale when the URDF was re-ported, and the yaw being implicit is what
-  /// inverted the filter.
+  /// One-shot: mount height AND lidar->base yaw offset from TF (fixed joint).
+  /// Hardcoding either is what previously staled the height / inverted the yaw.
   bool resolveMount()
   {
     if (mount_ready_) {
@@ -159,9 +126,7 @@ private:
 
   void onScan(const sensor_msgs::msg::LaserScan::SharedPtr msg)
   {
-    // Fail OPEN, never silently mis-filter: without a resolved mount or a fresh
-    // attitude we cannot know which rays point at the floor, and passing the
-    // raw scan through is strictly safer than culling against a wrong tilt.
+    // Fail OPEN: passing raw through beats culling against a wrong tilt.
     if (!resolveMount() || !have_imu_) {
       if (!have_imu_) {
         RCLCPP_WARN_THROTTLE(

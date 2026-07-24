@@ -60,130 +60,66 @@ public:
     cmd_timeout_ = declare_parameter<double>("cmd_vel_timeout", 0.5);
     joint_limit_ = declare_parameter<double>("joint_limit", 3.14159);
     action_clip_ = declare_parameter<double>("action_clip", 1.0);
-    // /cmd_vel clamp to the policy's trained command envelope (yaw-for-nav
-    // fix).
+    // /cmd_vel clamp to the policy's trained command envelope.
     max_lin_vel_x_ = declare_parameter<double>("max_lin_vel_x", 0.3);
     max_lin_vel_y_ = declare_parameter<double>("max_lin_vel_y", 0.05);
     max_yaw_rate_ = declare_parameter<double>("max_yaw_rate", 0.15);
-    // --------------------- Heading-hold outer loop ----------------------
-    // The PhysX->DART contact asymmetry gives a systematic yaw drift (the
-    // robot curves right even when commanded straight). It is a steady
-    // disturbance, so a closed-loop heading controller in the deployment node
-    // rejects it WITHOUT retraining or touching the sim: integrate Nav2's
-    // commanded yaw rate into a heading setpoint, then feed the policy a
-    // CORRECTIVE yaw command  yaw = wz_ff + Kp*(desired_yaw - odom_yaw),
-    // clamped to the trained turn envelope. When the heading error is large we
-    // also throttle forward speed so the (weak) in-place turn authority can
-    // realign before pushing on. heading_hold:=false restores raw passthrough.
+    // Heading-hold outer loop: rejects the systematic DART contact yaw drift
+    // without retraining. yaw = wz + Kp*(desired_yaw - odom_yaw), clamped.
     heading_hold_ = declare_parameter<bool>("heading_hold", true);
     heading_kp_ = declare_parameter<double>("heading_kp", 2.0);
-    // Absolute heading lock for the straight-line demo: hold heading_lock_yaw_
-    // (world rad, 0 = +x East) instead of latching the heading the robot settles
-    // into during the DART warmup drop, so the gait walks a true straight line.
-    // Leave false for nav (Nav2 owns the heading via wz).
+    // heading_lock: hold a FIXED world heading (demo_straight); false for nav.
     heading_lock_ = declare_parameter<bool>("heading_lock", false);
     heading_lock_yaw_ = declare_parameter<double>("heading_lock_yaw", 0.0);
-    // Final yaw command clamp. Verified from big_bertha_env.py::_reset_idx:
-    // the policy is trained on yaw in [-0.5, 0.5] (general sampling; a 30%
-    // turn-in-place override further biases toward |yaw| in [0.15, 0.4]).
-    // 0.5 matches that range, it isn't "extra authority beyond training" --
-    // the old 0.15 clamp undershot the real trained envelope and throttled
-    // the turn so hard the drift always won.
+    // Trained yaw envelope is [-0.5, 0.5] (big_bertha_env.py::_reset_idx).
     heading_max_ = declare_parameter<double>("heading_max", 0.5);
-    // Anti-windup: never let the setpoint lead/lag the measured heading by more
-    // than this, so a turn the policy cannot keep up with does not wind up and
-    // overshoot when the command relaxes.
+    // Anti-windup: max setpoint lead/lag vs the measured heading.
     heading_err_clamp_ = declare_parameter<double>("heading_err_clamp", 0.4);
-    // Forward speed is scaled to fwd_min_scale at |err| = fwd_slow_err (turn in
-    // place) and to 1.0 at zero error (full forward while tracking straight).
+    // Forward scaled to fwd_min_scale at |err|=fwd_slow_err, 1.0 at zero error.
     fwd_slow_err_ = declare_parameter<double>("fwd_slow_err", 0.5);
     fwd_min_scale_ = declare_parameter<double>("fwd_min_scale", 0.15);
-    // --------------- Differential-stride steering (the real knob) ----------
-    // v1.0.0 still barely self-corrects on the yaw COMMAND alone in DART
-    // (confirmed empirically: steer_kp=0 with heading_hold otherwise on
-    // drifted -20.6 deg over 23s and moved mostly sideways, dx=0.60/dy=0.81
-    // -- see demo_straight A/B data), so the heading loop also drives a
-    // hip-bias steering signal: the hips rotate about the body Z axis, so
-    // adding steer_cmd*hip_steer_sign[i] to the hip targets rotates all
-    // stance feet the same way and yaws the body. This is an output-level
-    // correction (no retrain, no sim edit). hip_steer_sign sets the per-hip
-    // polarity (calibrated empirically via /debug_hip_bias).
+    // Differential-stride steering: the policy yaw command barely turns the
+    // gait in DART, so the heading loop also injects steer_cmd*hip_steer_sign
+    // into the hip targets (rotates the stance feet -> yaws the body).
     steer_kp_ = declare_parameter<double>("steer_kp", 0.6);
     steer_ki_ = declare_parameter<double>("steer_ki", 0.5);
     steer_max_ = declare_parameter<double>("steer_max", 0.25);
     hip_steer_sign_ =
       declare_parameter<std::vector<double>>("hip_steer_sign", {1.0, 1.0, 1.0, 1.0});
     hip_steer_sign_.resize(4, 0.0);
-    // Below this forward command the gait is gated off and the robot holds the
-    // default stance (the policy cannot stand still on its own).
+    // Gait gates off below these thresholds (the policy cannot stand still on
+    // its own). stand_yaw must stay under the trained turn-in-place floor
+    // (|yaw| in [0.15, 0.4]) or pure-yaw commands would never reach the policy.
     stand_vx_thresh_ = declare_parameter<double>("stand_vx_thresh", 0.02);
-    // Same idea for yaw: below this the robot holds stance rather than
-    // pivoting. v1.0.0 has a real trained turn-in-place gait (30% of envs:
-    // vx=vy=0, |yaw| in [0.15, 0.4], see big_bertha_env.py::_reset_idx), so
-    // this must stay well under that floor or a genuine turn-in-place
-    // command would be gated off and never reach the policy.
     stand_yaw_thresh_ = declare_parameter<double>("stand_yaw_thresh", 0.05);
-    // Station-keeping: while gated/idle (e.g. before the Nav2 goal arrives) the
-    // gated default stance slowly PIVOTS on DART's asymmetric contact (~15 deg
-    // before a goal is sent), so nav starts pointed at a wall. With this on, the
-    // heading setpoint is latched the moment the robot stops (not re-latched
-    // every idle frame, which would just track the creep) and the hip-bias
-    // steering is applied even while gated, so the robot actively holds its
-    // heading without walking. Off restores the fully-passive gated stance.
+    // Station-keeping: latch the heading on stop and keep the hip-bias steering
+    // active while gated, so DART contact creep cannot pivot the idle stance.
     station_keep_ = declare_parameter<bool>("station_keep", true);
-    // Position-hold: when idle, actively return to the latched stop point so the
-    // gated stance's DART contact creep cannot wander the robot into a wall after
-    // the goal. deadband: only correct drifts beyond this (m); speed: cap the
-    // return crawl (m/s). Off restores the plain gated stance.
+    // Position-hold: when idle, walk back to the latched stop point if contact
+    // creep drifts the robot beyond the deadband (m); speed caps the crawl.
     position_hold_ = declare_parameter<bool>("position_hold", true);
     pos_hold_deadband_ = declare_parameter<double>("pos_hold_deadband", 0.30);
     pos_hold_speed_ = declare_parameter<double>("pos_hold_speed", 0.08);
-    // ------------------- Lateral-hold outer loop ------------------------
-    // The heading loop holds yaw, but the gait still slides off its LINE in
-    // DART (the systematic sideways crab + the residual yaw the weak turn
-    // authority cannot fully undo). Training an Isaac velocity penalty did not
-    // close this -- Isaac never reproduces DART's sustained sideways push -- so
-    // reject it the same way as the yaw: a closed-loop controller on the
-    // PERPENDICULAR offset from the line through the latched start pose along
-    // the heading setpoint, commanding the policy's lateral velocity
-    //   vy = clamp(-Kp * lateral_error, +/- max_lin_vel_y).
-    // Feedback makes it robust to the drift's source/magnitude. The reference
-    // line re-latches while turning so it only holds during straight segments.
-    //
-    // v1.0.0 (post calf-armature fix): a clean win -- forward stays 1:1
-    // (0.136 vs 0.127 m/s) while the residual lateral crab drops ~4x (~0.005
-    // vs ~0.02 m/s) with heading drift <0.2 deg. Default ON. (An earlier A/B,
-    // taken while the calf still resonated at ~19 rad/s, had found it harmful
-    // and defaulted it off; that regime is gone -- the resonance was the real
-    // problem, see the armature emulation on the arm_c links in the URDF.)
+    // Lateral-hold outer loop: closed-loop on the perpendicular offset from
+    // the latched line, vy = clamp(-Kp*offset). Re-latches while turning.
+    // A/B (post armature fix): forward 1:1, crab cut ~4x. Default ON.
     lateral_hold_ = declare_parameter<bool>("lateral_hold", true);
     lateral_kp_ = declare_parameter<double>("lateral_kp", 0.25);
-    // |wz| above which we treat the motion as a turn and re-latch the line.
+    // |wz| above which the motion is a turn -> re-latch the reference line.
     lateral_turn_thresh_ = declare_parameter<double>("lateral_turn_thresh", 0.05);
-    // Cross-track STEERING gain: lateral offset -> heading-error bias, so the
-    // strong hip-bias steering (not the weak vy) drives the robot back to the
-    // line. rad of heading bias per metre of offset, clamped to lateral_yaw_max.
+    // Cross-track steering: lateral offset -> heading-error bias, so the strong
+    // hip-bias steering (not the weak vy) pulls the robot back to the line.
     lateral_yaw_kp_ = declare_parameter<double>("lateral_yaw_kp", 0.6);
     lateral_yaw_max_ = declare_parameter<double>("lateral_yaw_max", 0.4);
-    // Effort-PD actuator emulation of Isaac's ImplicitActuatorCfg
-    // (stiffness=20, damping=2): output joint torque
-    //   tau = kp*(q_des - q) + kd*(0 - qd), torque-limited,
-    // so the legs swing with momentum like in training instead of snapping to
-    // a pose. Kp is softened to 10 (from the Isaac 20) and the effort limit
-    // raised to 12 so the torque is not pinned bang-bang at the rail: at
-    // kp=20/limit=8 the PD railed +/-8 on most joints, while kp=10/limit=12
-    // keeps it inside the band (measured |tau| <= ~5.6) for clean damping.
+    // Effort-PD emulation of Isaac's ImplicitActuatorCfg:
+    // tau = kp*(q_des - q) - kd*qd, clamped to effort_limit (Isaac trains
+    // against 1 Nm exactly; more authority overshoots).
     use_effort_ = declare_parameter<bool>("use_effort", true);
     kp_ = declare_parameter<double>("kp", 20.0);
     kd_ = declare_parameter<double>("kd", 2.0);
-    // Match Isaac's effort_limit_sim = 1 Nm exactly: the implicit PD there
-    // clamps tau to [-1, 1], so the policy is trained against torque bounded
-    // at 1 Nm. Giving the legs more authority (e.g. 12) makes them overshoot.
     effort_limit_ = declare_parameter<double>("effort_limit", 1.0);
-    // The PD torque is evaluated at pd_rate_ (200 Hz) while the policy only
-    // runs every policy_decimation_ ticks, so its effective rate matches
-    // training (control_rate_ = 50 Hz, decimation 4). Evaluating the PD at the
-    // policy rate (50 Hz) under-damps and oscillates -> the in-place jitter.
+    // PD runs at pd_rate_ (200 Hz), policy decimated to control_rate_ (50 Hz,
+    // matching training). PD at 50 Hz under-damps -> in-place jitter.
     pd_rate_ = declare_parameter<double>("pd_rate", 200.0);
     warmup_sec_ = declare_parameter<double>("warmup_sec", 3.0);
     policy_decimation_ = std::max(1, static_cast<int>(std::round(pd_rate_ / control_rate_)));
@@ -236,9 +172,7 @@ public:
     cmd_sub_ = create_subscription<geometry_msgs::msg::Twist>(
       "/cmd_vel", rclcpp::QoS(1),
       std::bind(&PolicyControllerNode::on_cmd, this, std::placeholders::_1));
-    // Debug-only: inject a constant per-hip bias (rad) added to the policy's
-    // hip targets, to calibrate the differential-stride steering knob. The
-    // closed-loop demo uses the heading-driven steering, not this topic.
+    // Debug-only: constant per-hip bias (rad) for calibrating the steering.
     hip_bias_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       "/debug_hip_bias", rclcpp::QoS(1),
       [this](const std_msgs::msg::Float64MultiArray::SharedPtr m) {
@@ -336,9 +270,7 @@ private:
   void on_cmd(const geometry_msgs::msg::Twist::SharedPtr msg)
   {
     std::lock_guard<std::mutex> lk(state_mutex_);
-    // Store the raw Nav2 command; the trained-envelope clamp and the
-    // heading-hold correction are applied in update_commands() at the policy
-    // rate (so the heading integrator advances on a regular dt).
+    // Raw command; clamping + heading hold happen in update_commands().
     cmd_vx_ = msg->linear.x;
     cmd_vy_ = msg->linear.y;
     cmd_wz_ = msg->angular.z;
@@ -347,11 +279,8 @@ private:
 
   static double wrap_pi(double a) { return std::atan2(std::sin(a), std::cos(a)); }
 
-  // Build obs_.commands from the latest Nav2 command. Caller must hold
-  // state_mutex_. Applies the safe-stop timeout, clamps to the trained command
-  // envelope, and (when heading_hold_) replaces the yaw command with a
-  // heading-setpoint tracking correction that rejects the systematic contact
-  // drift. Returns nothing; writes obs_.commands.
+  // Build obs_.commands: safe-stop timeout, trained-envelope clamp, and (when
+  // heading_hold_) the heading/lateral corrections. Caller holds state_mutex_.
   void update_commands()
   {
     const double dt = 1.0 / control_rate_;
@@ -361,18 +290,12 @@ private:
     double wz = stale ? 0.0 : cmd_wz_;
     vx = std::clamp(vx, 0.0, max_lin_vel_x_);
     vy = std::clamp(vy, -max_lin_vel_y_, max_lin_vel_y_);
-    // Clamp yaw HERE, on the live path. The only other wz clamp sits inside the
-    // !heading_hold_ early-return below, which the shipped default never takes,
-    // so an out-of-envelope /cmd_vel yaw from Nav2 previously flowed straight
-    // into the policy command (the trained range is |yaw| <= 0.5).
+    // Clamp yaw on the live path (the !heading_hold_ branch below is the only
+    // other clamp and the shipped default never takes it).
     wz = std::clamp(wz, -max_yaw_rate_, max_yaw_rate_);
 
-    // Position-hold: when the robot is idle (Nav2 command gone stale, e.g. after
-    // reaching the goal) it must HOLD where it stopped, not let the gated stance's
-    // DART contact creep wander it across the arena into a wall. Latch the stop
-    // point on the moving->idle transition; beyond a deadband, steer back to it
-    // (face it, then walk -- the gait has no reverse). Within the deadband, fall
-    // through to vx=0 so the gait gates and holds the stance.
+    // Position-hold: latch the stop point on the moving->idle transition;
+    // beyond the deadband, face it then walk back (the gait has no reverse).
     if (position_hold_ && have_odom_yaw_) {
       if (stale && !prev_stale_) {
         hold_x_ = current_x_;
@@ -402,12 +325,9 @@ private:
       return;
     }
 
-    // Latch the heading setpoint + lateral-hold line origin. Without
-    // station_keep this re-latches every idle frame (never corrects toward a
-    // stale heading). With station_keep it latches only at startup and on the
-    // moving->idle transition, then HOLDS the latched heading through the idle
-    // window so the steering corrects the gated stance's contact creep instead
-    // of tracking it (which left the robot pivoting ~15 deg before the goal).
+    // Latch the heading setpoint + lateral line origin at startup and on the
+    // moving->idle transition. With station_keep the latched heading is HELD
+    // through idle so the steering corrects contact creep instead of tracking it.
     const bool idle = std::abs(vx) < 0.01 && std::abs(wz) < 0.01;
     const bool just_stopped = idle && !prev_idle_;
     if (!heading_init_ || just_stopped || (idle && !station_keep_)) {
@@ -418,14 +338,10 @@ private:
       heading_init_ = true;
     }
     prev_idle_ = idle;
-    // Heading setpoint. Normally integrate the commanded yaw rate, then clamp to
-    // stay within heading_err_clamp_ of the measured heading (anti-windup).
-    // heading_lock (demo_straight) instead holds a FIXED world heading
-    // (heading_lock_yaw_, e.g. 0 = due East): the robot settles ~14 deg south of
-    // East during the warmup drop in DART, and latching that drifted heading made
-    // "straight" walk south-East. Locking the setpoint lets the hip-bias steering
-    // + cross-track null the settle and crab so the gait holds a true straight
-    // line. (Disabled for nav, where Nav2 owns the heading via wz.)
+    // Heading setpoint: integrate the commanded yaw rate, anti-windup clamped
+    // to heading_err_clamp_ of the measured heading. heading_lock instead holds
+    // a fixed world heading (demo_straight; the warmup drop settles ~14 deg off
+    // and latching that made "straight" walk south-East).
     double err;
     if (heading_lock_) {
       desired_yaw_ = heading_lock_yaw_;
@@ -439,14 +355,9 @@ private:
         desired_yaw_ = wrap_pi(current_yaw_ + err);
       }
     }
-    // Lateral-hold + cross-track steering. Compute the perpendicular offset from
-    // the latched line (through ref_{x,y} along desired_yaw_). Command vy toward
-    // the line AND -- since the policy's vy authority is too weak in DART to null
-    // the systematic lateral crab via sideways motion -- fold a cross-track bias
-    // into the heading error so the (strong) hip-bias steering + policy yaw aim
-    // the gait's forward walk back onto the line. Catching the drift early this
-    // way keeps the robot off the wall it otherwise crabs into. Re-latch the line
-    // while turning (|wz| above threshold) and pass /cmd_vel vy through otherwise.
+    // Lateral hold: perpendicular offset from the latched line -> vy toward the
+    // line, plus a cross-track bias folded into the heading error so the strong
+    // hip-bias steering (not the weak vy) walks the robot back onto it.
     double vy_out = vy;
     if (lateral_hold_) {
       if (std::abs(wz) > lateral_turn_thresh_) {
@@ -465,10 +376,8 @@ private:
       }
     }
     const double yaw_cmd = std::clamp(wz + heading_kp_ * err, -heading_max_, heading_max_);
-    // The hip-bias steering does the real turning work (the policy yaw command
-    // barely moves the gait in DART). PI control: the P term reacts fast, the I
-    // term removes the steady-state heading offset. With the cross-track bias
-    // folded into err above, this same steering now also nulls the lateral crab.
+    // PI hip-bias steering does the real turning work; I removes the
+    // steady-state offset against the constant drift.
     if (steer_ki_ > 1e-6) {
       steer_i_ += err * dt;
       // Anti-windup: clamp the integral so its contribution stays within range.
@@ -476,8 +385,7 @@ private:
       steer_i_ = std::clamp(steer_i_, -i_lim, i_lim);
     }
     steer_cmd_ = std::clamp(steer_kp_ * err + steer_ki_ * steer_i_, -steer_max_, steer_max_);
-    // Slow forward while a large heading error is being corrected so the
-    // steering has room to realign before pushing forward again.
+    // Slow forward while a large heading error is being corrected.
     double fwd_scale = 1.0;
     if (fwd_slow_err_ > 1e-3) {
       fwd_scale = std::clamp(1.0 - std::abs(err) / fwd_slow_err_, fwd_min_scale_, 1.0);
@@ -528,24 +436,15 @@ private:
       return;
     }
 
-    // ===== Startup warmup: for the first warmup_sec_ after joint state first
-    // arrives (i.e. once the controller is active), just hold the default pose
-    // (action = 0). The robot free-falls during the ~3 s gz_ros2_control load
-    // gap because the gait must run frictionless (any stiction freezes it); the
-    // stiff PD then pulls the splayed legs back to the default stance before
-    // the policy takes over, so the policy starts from a clean upright pose
-    // instead of crawling out of a collapse.
+    // Startup warmup: hold the default pose so the PD recovers the stance from
+    // the spawn drop before the policy takes over.
     if (warmup_start_.nanoseconds() == 0) {
       warmup_start_ = now();
     }
     const bool warming = warmup_sec_ > 0.0 && (now() - warmup_start_).seconds() < warmup_sec_;
 
-    // ===== Policy step (decimated to ~control_rate_): update joint targets.
-    // The timer fires at pd_rate_ (200 Hz); the policy only runs every
-    // policy_decimation_ ticks so its effective rate matches training
-    // (50 Hz, decimation 4). This keeps the gait timing right while letting
-    // the PD below damp at the full physics rate -- without the split, a
-    // 50 Hz torque held for 20 ms overshoots and oscillates (the jitter).
+    // Policy step, decimated to control_rate_ (50 Hz, matching training);
+    // the PD below damps at the full pd_rate_.
     if (warming) {
       std::lock_guard<std::mutex> lk(state_mutex_);
       for (int i = 0; i < bbpc::kNumJoints; ++i) {
@@ -560,28 +459,18 @@ private:
       bool moving;
       {
         std::lock_guard<std::mutex> lk(state_mutex_);
-        update_commands();  // safe-stop timeout + envelope clamp + heading hold
-        // Gait clock advances every policy step regardless of moving/idle,
-        // mirroring big_bertha_env.py's _pre_physics_step (dt = 1/control_rate_,
-        // matching training's step_dt at 50 Hz).
+        update_commands();
+        // Clock advances every policy step, moving or idle, mirroring
+        // big_bertha_env.py's _pre_physics_step.
         obs_.advance_clock(obs_.commands[0], obs_.commands[2], 1.0 / control_rate_);
-        // The policy walks forward even when commanded vx=0 (vx=0 is out of its
-        // training distribution), so a "stop" command would leave the robot
-        // free-drifting. Gate it: when no forward motion AND no turn is
-        // commanded (idle / goal reached / cmd timeout), hold the default
-        // stance instead of running the gait. Without this the robot wanders
-        // off A during the pre-goal idle window and never navigates from the
-        // right start pose. The |wz| half of this gate matters just as much:
-        // v1.0.0 has a real trained turn-in-place gait (vx=vy=0, |yaw| in
-        // [0.15, 0.4]); gating on vx alone would route every pure-yaw command
-        // into the static hold-stance branch below and never invoke it.
+        // Gate the gait when neither forward nor turn is commanded (the policy
+        // cannot stand still). The |wz| half matters: gating on vx alone would
+        // swallow the trained turn-in-place commands.
         moving =
           obs_.commands[0] > stand_vx_thresh_ || std::abs(obs_.commands[2]) > stand_yaw_thresh_;
         if (!moving) {
-          // Gated: hold the default stance (no forward gait). With station_keep,
-          // still apply the hip-bias steering so the robot actively holds its
-          // latched heading against the contact creep (no walking); otherwise go
-          // fully passive (steer off).
+          // Hold the default stance; with station_keep the hip-bias steering
+          // stays active to hold the latched heading against contact creep.
           if (!station_keep_) {
             steer_cmd_ = 0.0;
           }
@@ -654,9 +543,7 @@ private:
       }  // end if (moving)
     }
 
-    // ===== PD step every tick (pd_rate_): torque toward the held targets.
-    // tau = Kp*(q_des - q) + Kd*(0 - qd), torque-limited -- Isaac's implicit
-    // PD actuator, now evaluated at the full rate so it actually damps.
+    // PD step every tick: tau = Kp*(q_des - q) - Kd*qd, torque-limited.
     std_msgs::msg::Float64MultiArray cmd;
     cmd.data.resize(bbpc::kNumJoints);
     {
@@ -710,14 +597,8 @@ private:
   double last_inf_ms_{0.0};
   double last_action_norm_{0.0};
   double action_clip_{1.0};
-  // Trained command ranges, verified from big_bertha_env.py::_reset_idx: vx
-  // in [0.0, 0.40], vy in [+/-0.05], yaw in [+/-0.5] (general sampling; 30%
-  // of envs get a turn-in-place override instead: vx=vy=0, |yaw| in
-  // [0.15, 0.4]). Nav2 can issue commands outside these; clamp /cmd_vel to
-  // the trained envelope so the policy stays in distribution. These are just
-  // constructor fallback defaults -- policy.yaml sets the real runtime
-  // values (max_lin_vel_x=0.3, max_lin_vel_y=0.06, max_yaw_rate=0.5, the
-  // last matching heading_max exactly).
+  // Trained envelope (big_bertha_env.py::_reset_idx): vx [0, 0.40],
+  // vy +/-0.05, yaw +/-0.5. Fallback defaults; policy.yaml sets runtime values.
   double max_lin_vel_x_{0.3};
   double max_lin_vel_y_{0.05};
   double max_yaw_rate_{0.15};
