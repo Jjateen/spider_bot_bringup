@@ -111,7 +111,8 @@ def generate_launch_description():
         condition=UnlessCondition(patrol),
     )
 
-    # Patrol mode: 4-goal corner tour, each goal blocking until reached.
+    # Patrol mode: 4-goal perimeter tour (SE -> NE -> NW -> A), each goal
+    # blocking until reached. Every leg is a clear wall-parallel corridor.
     patrol_script = os.path.join(pkg, 'scripts', 'send_patrol.sh')
     send_patrol = TimerAction(
         period=goal_delay,
@@ -119,10 +120,10 @@ def generate_launch_description():
             ExecuteProcess(
                 cmd=[
                     'bash', patrol_script,
-                    [goal_x, ',', goal_y],      # B  (NE, the diagonal goal)
-                    [goal2_x, ',', goal2_y],    # C  (2nd new goal)
-                    [goal3_x, ',', goal3_y],    # D  (3rd new goal)
-                    [start_x, ',', start_y],    # A  (back to the start point)
+                    [goal_x, ',', goal_y],      # B  (SE, shared with 1-goal)
+                    [goal2_x, ',', goal2_y],    # C  (NE)
+                    [goal3_x, ',', goal3_y],    # D  (NW)
+                    [start_x, ',', start_y],    # A  (back to the start)
                 ],
                 output='screen',
             ),
@@ -155,8 +156,10 @@ def generate_launch_description():
                         'A=(-3.5,-3.5) facing +x; B=(3.5,-3.5) is a straight '
                         'East traverse of the clear bottom corridor.'),
         DeclareLaunchArgument(
-            'goal_y', default_value='3.5',
-            description='Goal B y in the map frame (world B = -3.5)'),
+            'goal_y', default_value='-3.5',
+            description='Goal B y in the map frame. Default matches the '
+                        'documented B=(3.5,-3.5); the old 3.5 default sent '
+                        'the single-goal demo into the walled-off diagonal.'),
         DeclareLaunchArgument(
             'goal_delay', default_value='20.0',
             description='Seconds to wait for Nav2 before sending the goal '
@@ -167,16 +170,16 @@ def generate_launch_description():
                         'tour back to the start), each reached in sequence; '
                         'false: the single A->B goal (default).'),
         DeclareLaunchArgument(
-            'goal2_x', default_value='-3.5',
-            description='Patrol 2nd goal x (map frame; default NW corner).'),
+            'goal2_x', default_value='3.5',
+            description='Patrol 2nd goal x (map frame; default NE corner).'),
         DeclareLaunchArgument(
             'goal2_y', default_value='3.5',
-            description='Patrol 2nd goal y (map frame; default NW corner).'),
+            description='Patrol 2nd goal y (map frame; default NE corner).'),
         DeclareLaunchArgument(
-            'goal3_x', default_value='3.5',
-            description='Patrol 3rd goal x (map frame; default SE corner).'),
+            'goal3_x', default_value='-3.5',
+            description='Patrol 3rd goal x (map frame; default NW corner).'),
         DeclareLaunchArgument(
-            'goal3_y', default_value='-3.5',
+            'goal3_y', default_value='3.5',
             description='Patrol 3rd goal y (map frame; default SE corner).'),
         DeclareLaunchArgument(
             'start_x', default_value='-3.5',
