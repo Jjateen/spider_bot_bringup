@@ -12,7 +12,7 @@
     - a gz_ros2_control system plugin,
     - a 12-joint position ros2_control block,
     - a gz 2D lidar sensor on lidar_link (YDLidar X2),
-    - a gz IMU sensor on imu_link (MPU9265, identity rotation vs base_link,
+    - a gz IMU sensor on imu_link (MPU6050, identity rotation vs base_link,
       matching training's ImuCfg convention),
     - gz friction/material surface properties.
 
@@ -549,7 +549,7 @@
     </collision>
   </link>
 
-  <!-- IMU frame (MPU9265 on the body). No mesh; small massless frame.
+  <!-- IMU frame (MPU6050 on the body; hardware BOM name). No mesh.
        Identity rotation vs base_link, matching training's ImuCfg
        convention (not the MPU_9265 mesh's own cosmetic mount rotation). -->
   <link name="imu_link">

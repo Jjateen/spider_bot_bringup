@@ -51,8 +51,8 @@
        topic, decoupled from the legs. This is a verification aid for the
        mapping / localization / planning gates: it lets a scripted /cmd_vel
        drive build a map and run A->B navigation independently of the gait
-       policy (which does not transfer to Gazebo, see issue #5). The real
-       robot and the locomotion demo do not use it (sim_drive defaults off). -->
+       policy. The real robot and the locomotion demo do not use it
+       (sim_drive defaults off). -->
   <xacro:arg name="sim_drive" default="false"/>
   <xacro:property name="sim_drive" value="$(arg sim_drive)"/>
   <xacro:if value="${sim_drive}">

@@ -33,12 +33,15 @@ bash scripts/install_jazzy.sh
 source /opt/ros/jazzy/setup.bash
 colcon build && source install/setup.bash
 
-# 3. Bring up the full sim (obstacle world + gait + state est + Nav2)
-#    known-map mode (AMCL) by default; add rviz:=true for the live view
-ros2 launch big_bertha_sim_bringup bringup.launch.py rviz:=true
+# 3. One-command A->B demo (full stack + RViz + auto-sent Nav2 goal;
+#    known-map mode with ground-truth localization by default)
+ros2 launch big_bertha_sim_bringup demo.launch.py
 
-# SLAM mode (build the map live instead of loading the saved one)
-ros2 launch big_bertha_sim_bringup bringup.launch.py slam:=true rviz:=true
+# 4-goal perimeter patrol instead of the single goal
+ros2 launch big_bertha_sim_bringup demo.launch.py patrol:=true rviz_config:=patrol
+
+# Stack only, no auto goal (add slam:=true to map live instead of known-map)
+ros2 launch big_bertha_sim_bringup bringup.launch.py rviz:=true
 ```
 
 `bringup.launch.py` chains every module and takes `slam:=` (SLAM vs known-map),
