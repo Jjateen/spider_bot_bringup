@@ -9,6 +9,11 @@ set -uo pipefail
 PATTERNS='parameter_bridge|ros_gz|gz sim|ruby.*gz|rviz2|policy_controller_node'
 PATTERNS+='|robot_state_publisher|static_transform_publisher|nav2_|map_server'
 PATTERNS+='|lifecycle_manager|controller_manager|ros2 launch|scan_ground_filter'
+# ekf_node was missing here: a surviving EKF wakes on the NEXT run's /odom and
+# publishes odom->base_link with old-epoch stamps, poisoning every TF cache
+# (goals rejected, "message earlier than all data in cache"). Same class of
+# survivor: slam_toolbox, amcl, a mid-tour send_patrol loop.
+PATTERNS+='|ekf_node|slam_toolbox|amcl|send_patrol'
 
 pids="$(ps ax -o pid=,command= | grep -E "${PATTERNS}" | grep -v grep \
         | awk '{print $1}')"
