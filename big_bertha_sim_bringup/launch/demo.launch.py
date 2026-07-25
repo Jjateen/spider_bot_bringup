@@ -111,8 +111,12 @@ def generate_launch_description():
         condition=UnlessCondition(patrol),
     )
 
-    # Patrol mode: 4-goal perimeter tour (SE -> NE -> NW -> A), each goal
-    # blocking until reached. Every leg is a clear wall-parallel corridor.
+    # Patrol mode: 3-goal tour A -> NE -> NW -> A, each goal blocking until
+    # reached. The A->NE leg crosses the obstacle diagonal on purpose -- the
+    # patrol exists to exercise planning AROUND obstacles, not corridor
+    # walking (the single-goal demo covers that). Deliberately does NOT reuse
+    # the single-goal B: that would either break the tour or turn it into an
+    # obstacle-free perimeter walk.
     patrol_script = os.path.join(pkg, 'scripts', 'send_patrol.sh')
     send_patrol = TimerAction(
         period=goal_delay,
@@ -120,10 +124,9 @@ def generate_launch_description():
             ExecuteProcess(
                 cmd=[
                     'bash', patrol_script,
-                    [goal_x, ',', goal_y],      # B  (SE, shared with 1-goal)
-                    [goal2_x, ',', goal2_y],    # C  (NE)
-                    [goal3_x, ',', goal3_y],    # D  (NW)
-                    [start_x, ',', start_y],    # A  (back to the start)
+                    [goal2_x, ',', goal2_y],    # NE, through the obstacle field
+                    [goal3_x, ',', goal3_y],    # NW
+                    [start_x, ',', start_y],    # A (back to the start)
                 ],
                 output='screen',
             ),
@@ -166,21 +169,22 @@ def generate_launch_description():
                         '(45 let the idle gait slide into the SW corner).'),
         DeclareLaunchArgument(
             'patrol', default_value='false',
-            description='true: 4-leg patrol -- A->B->goal2->goal3->A (corner '
-                        'tour back to the start), each reached in sequence; '
-                        'false: the single A->B goal (default).'),
+            description='true: 3-goal patrol A->NE->NW->A whose first leg '
+                        'crosses the obstacle field (plans around boxes/'
+                        'pillars); false: the single A->B goal (default).'),
         DeclareLaunchArgument(
             'goal2_x', default_value='3.5',
-            description='Patrol 2nd goal x (map frame; default NE corner).'),
+            description='Patrol 1st goal x (map frame; default NE corner, '
+                        'reached through the obstacle diagonal).'),
         DeclareLaunchArgument(
             'goal2_y', default_value='3.5',
-            description='Patrol 2nd goal y (map frame; default NE corner).'),
+            description='Patrol 1st goal y (map frame; default NE corner).'),
         DeclareLaunchArgument(
             'goal3_x', default_value='-3.5',
-            description='Patrol 3rd goal x (map frame; default NW corner).'),
+            description='Patrol 2nd goal x (map frame; default NW corner).'),
         DeclareLaunchArgument(
             'goal3_y', default_value='3.5',
-            description='Patrol 3rd goal y (map frame; default SE corner).'),
+            description='Patrol 2nd goal y (map frame; default NW corner).'),
         DeclareLaunchArgument(
             'start_x', default_value='-3.5',
             description='Patrol return point x (the spawn/start; world A).'),
