@@ -24,7 +24,11 @@ position_controller:
     # MUST match the deployed policy's Isaac actuator (stiffness=20, damping=2).
     kp: 20.0
     kd: 2.0
-    effort_limit: 1.18   # N*m stall (MG995 @6.6V, 12 kgf-cm)
+    # 1.18 (MG995 @6.6V stall) > the trained 1.0 Nm is DELIBERATE: A/B on the
+    # straight walk measured 1.18 faster at both speeds (0.138 vs 0.132 m/s at
+    # cmd 0.12; 0.164 vs 0.145 at cmd 0.30) -- the headroom offsets DART's
+    # contact losses. Not train/deploy drift.
+    effort_limit: 1.18
     # 0 disables the over-speed cutoff: it was a band-aid for the pre-armature
     # calf resonance and CAPPED top speed (0.150 vs 0.185 m/s at cmd 0.3).
     # Isaac has no such cutoff; the code stays gated on velocity_limit>0.
