@@ -111,10 +111,12 @@ public:
     // hip-bias steering (not the weak vy) pulls the robot back to the line.
     lateral_yaw_kp_ = declare_parameter<double>("lateral_yaw_kp", 0.6);
     lateral_yaw_max_ = declare_parameter<double>("lateral_yaw_max", 0.4);
-    // Effort-PD emulation of Isaac's ImplicitActuatorCfg:
-    // tau = kp*(q_des - q) - kd*qd, clamped to effort_limit (Isaac trains
-    // against 1 Nm exactly; more authority overshoots).
-    use_effort_ = declare_parameter<bool>("use_effort", true);
+    // In-node effort-PD (tau = kp*(q_des - q) - kd*qd) is UNUSED in the
+    // shipped path: JointEffortPdController does the PD and reads this topic
+    // as POSITION targets, so use_effort=true would feed it torques as
+    // positions. Default false to match the wiring; kp/kd/effort_limit below
+    // only matter if use_effort is deliberately re-enabled.
+    use_effort_ = declare_parameter<bool>("use_effort", false);
     kp_ = declare_parameter<double>("kp", 20.0);
     kd_ = declare_parameter<double>("kd", 2.0);
     effort_limit_ = declare_parameter<double>("effort_limit", 1.0);
@@ -584,7 +586,7 @@ private:
   double control_rate_{50.0};
   double cmd_timeout_{0.5};
   double joint_limit_{3.14159};
-  bool use_effort_{true};
+  bool use_effort_{false};
   double kp_{20.0};
   double kd_{2.0};
   double effort_limit_{1.0};
