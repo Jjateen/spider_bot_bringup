@@ -174,9 +174,11 @@ def generate_launch_description():
             'slam', default_value='false',
             description='true: SLAM (mapping); false: known-map (localization)'),
         DeclareLaunchArgument(
-            'localization', default_value='amcl',
-            description="known-map map->odom provider: 'amcl' (scan-match, "
-                        "default) or 'ground_truth' (static, experimental)"),
+            'localization', default_value='ground_truth',
+            description="known-map map->odom provider: 'ground_truth' (static "
+                        "identity, honest pose, default) or 'amcl' "
+                        "(scan-match; ambiguous in the symmetric 4-wall arena "
+                        "-- converges to a wrong pose)"),
         DeclareLaunchArgument(
             'rviz', default_value='false',
             description='Also launch RViz'),
