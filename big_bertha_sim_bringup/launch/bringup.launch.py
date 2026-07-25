@@ -142,7 +142,7 @@ def generate_launch_description():
 
     # perception: IMU-gated ghost-wall filter. The body lidar tilts with the
     # gait; this drops floor hits so the costmap stops seeing flickering walls.
-    # Costmaps + collision monitor consume /scan_filtered (see nav2_params.yaml).
+    # Costmaps consume /scan_filtered (see nav2_params.yaml).
     scan_filter = Node(
         package='big_bertha_sim_bringup',
         executable='scan_ground_filter',
