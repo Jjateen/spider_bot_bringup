@@ -105,7 +105,9 @@ controller_server:
       min_lookahead_dist: 0.5
       max_lookahead_dist: 1.0
       lookahead_time: 1.5
-      rotate_to_heading_angular_vel: 0.8  # match the gait's trained yaw cap (+/-0.8 rad/s)
+      # 0.5 = the real trained yaw envelope; the policy node clamps wz there,
+      # so 0.8 made RPP plan pivots 60% faster than the plant can go.
+      rotate_to_heading_angular_vel: 0.5
       transform_tolerance: 0.2
       use_velocity_scaled_lookahead_dist: false
       min_approach_linear_velocity: 0.05
