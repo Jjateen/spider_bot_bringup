@@ -38,11 +38,12 @@ use_sim_time   Use the ``/clock`` topic. Default: ``true``.
 gui            Run the Gazebo GUI client. Default: ``false`` (headless).
 world          World SDF basename in ``worlds/``. Default: ``obstacle_world.sdf``.
 sim_drive      Enable the sim-only kinematic gz VelocityControl drive (a
-               verification aid; the learned gait does not transfer to Gazebo,
-               see issue #5). Default: ``false``.
+               verification aid for the mapping/localization/planning gates,
+               independent of the gait). Default: ``false``.
 map            Saved map YAML for known-map mode. Default: the bundled
                ``maps/obstacle_world.yaml``.
-x, y, z, yaw   Spawn pose (demo point A). Defaults: ``-3.5 -3.5 0.12 0.785``.
+x, y, z, yaw   Spawn pose (demo point A). Defaults: ``-3.5 -3.5 0.12 0.0``
+               (facing +x East).
 """
 
 import os
@@ -177,8 +178,8 @@ def generate_launch_description():
             'localization', default_value='ground_truth',
             description="known-map map->odom provider: 'ground_truth' (static "
                         "identity, honest pose, default) or 'amcl' "
-                        "(scan-match; ambiguous in the symmetric 4-wall arena "
-                        "-- converges to a wrong pose)"),
+                        '(scan-match; ambiguous in the symmetric 4-wall arena '
+                        '-- converges to a wrong pose)'),
         DeclareLaunchArgument(
             'rviz', default_value='false',
             description='Also launch RViz'),

@@ -205,7 +205,8 @@ def generate_launch_description():
         DeclareLaunchArgument('x', default_value='-3.5'),
         DeclareLaunchArgument('y', default_value='-3.5'),
         DeclareLaunchArgument('z', default_value='0.12'),
-        DeclareLaunchArgument('yaw', default_value='0.785'),
+        # Face +x (East), the convention everywhere else (bringup, AMCL seed).
+        DeclareLaunchArgument('yaw', default_value='0.0'),
 
         set_resource_path,
         rsp,
