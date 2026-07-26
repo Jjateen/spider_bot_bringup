@@ -45,6 +45,7 @@
   <exec_depend>nav2_rviz_plugins</exec_depend>
   <exec_depend>plotjuggler</exec_depend>
 
+  <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 
