@@ -3,15 +3,15 @@
 # the map is saved, then the SAME patrol runs against the freshly built map
 # with AMCL localizing on it (known-map mode).
 #
-# Phase 1  bringup slam:=true; the 3-goal tour doubles as autonomous
-#          exploration (planner allows unknown space, rolling costmap); the
-#          map grows behind the robot and loop-closes on the return leg.
+# Phase 1  bringup slam:=true; a COVERAGE loop around the arena (all four
+#          corners, ending back at the start point for loop closure) builds
+#          the map -- exploration, deliberately not the patrol route.
 #          slam_toolbox anchors the map at the world spawn (map_start_pose in
-#          slam_toolbox.yaml), so the built map is world-aligned and the same
+#          slam_toolbox.yaml), so the built map is world-aligned and world
 #          goal coordinates work in both phases.
 # Phase 2  demo.launch.py patrol:=true localization:=amcl map:=<built map>.
 #          AMCL is seeded at spawn (amcl.yaml) and localizes against the map
-#          from phase 1.
+#          from phase 1 while the patrol plans through the obstacle field.
 #
 # Usage: demo_slam_patrol.sh [work_dir] [rviz]
 #   work_dir  where the built map + phase logs land (default /tmp/slam_patrol)
@@ -25,14 +25,16 @@ mkdir -p "$WORK"
 
 teardown() { bash "$PKG_SHARE/scripts/kill_sim.sh" >/dev/null 2>&1; }
 
-echo "=== PHASE1 mapping tour start $(date +%s) ==="
+echo "=== PHASE1 mapping coverage loop start $(date +%s) ==="
 teardown
 sleep 3
 ros2 launch big_bertha_sim_bringup bringup.launch.py \
   slam:=true rviz:="$RVIZ" rviz_config:=mapping use_sim_time:=true \
   > "$WORK/phase1.log" 2>&1 &
 sleep 25  # controllers + Nav2 up; send_goal also blocks on the action server
-bash "$PKG_SHARE/scripts/send_patrol.sh" "3.5,3.5" "-3.5,3.5" "-3.5,-3.5" \
+# Coverage loop: SE -> NE -> NW -> back to the start (loop closure at A).
+bash "$PKG_SHARE/scripts/send_patrol.sh" \
+  "3.5,-3.5" "3.5,3.5" "-3.5,3.5" "-3.5,-3.5" \
   2>&1 | tee "$WORK/phase1_goals.log"
 N1=$(grep -c "Goal accepted" "$WORK/phase1_goals.log")
 echo "=== PHASE1 tour done ($N1 goals sent) ==="
