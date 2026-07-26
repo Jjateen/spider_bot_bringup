@@ -37,7 +37,7 @@ colcon build && source install/setup.bash
 #    known-map mode with ground-truth localization by default)
 ros2 launch big_bertha_sim_bringup demo.launch.py
 
-# 4-goal perimeter patrol instead of the single goal
+# 3-goal patrol through the obstacle field instead of the single goal
 ros2 launch big_bertha_sim_bringup demo.launch.py patrol:=true rviz_config:=patrol
 
 # Stack only, no auto goal (add slam:=true to map live instead of known-map)
@@ -47,6 +47,20 @@ ros2 launch big_bertha_sim_bringup bringup.launch.py rviz:=true
 `bringup.launch.py` chains every module and takes `slam:=` (SLAM vs known-map),
 `rviz:=` / `rviz_config:=` (simulation|mapping|planning|integration),
 `use_sim_time:=`, `gui:=`, `world:=`, `sim_drive:=`, `map:=`, and the spawn pose.
+
+## Demos
+
+Straight 1:1 walk (real-time):
+
+![straight walk](verification_artifacts/demo_straight_v1.0.0_clock_obs.gif)
+
+3-goal patrol planning through the obstacle field:
+
+![patrol](verification_artifacts/demo_patrol_v1.0.0_clock_obs.gif)
+
+SLAM coverage loop builds the map, then AMCL patrols on it:
+
+![slam then patrol](verification_artifacts/demo_slam_patrol_v1.0.0.gif)
 
 ## Autonomy stack (functional modules)
 
