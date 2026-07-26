@@ -139,9 +139,6 @@ local_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
-      static_layer:
-        plugin: "nav2_costmap_2d::StaticLayer"
-        map_subscribe_transient_local: True
       always_send_full_costmap: True
 
 global_costmap:
@@ -154,16 +151,21 @@ global_costmap:
       robot_base_frame: base_link
       robot_radius: 0.18
       resolution: 0.05
-      # 24 m rolling window: a static grid sized to the live SLAM map left far
-      # goals outside the costmap -> "failed to create plan".
-      rolling_window: true
-      width: 24
-      height: 24
+      # Non-rolling grid sized from /map by the static layer. The old "no
+      # static layer, 24 m rolling window" setup left the planner blind past
+      # the lidar's 2.5 m: initial plans went straight through the boxes. The
+      # rolling-window workaround dated from pre-world-anchored SLAM maps
+      # (slam_toolbox map_start_pose); both modes now serve a world-aligned
+      # /map, so one static-layer config covers known-map AND SLAM.
+      rolling_window: false
       # Unknown = free so the planner can route through unmapped open space.
       track_unknown_space: false
-      # No static_layer: it fights a rolling_window grid (resizes/anchors to
-      # /map) and left the costmap unplannable.
-      plugins: ["obstacle_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+        # Saved-map unknown (-1) cells read as free, not walls.
+        track_unknown_space: false
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -180,12 +182,6 @@ global_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
-      static_layer:
-        plugin: "nav2_costmap_2d::StaticLayer"
-        map_subscribe_transient_local: True
-        # Treat the saved map's unknown (-1) cells as free space so the
-        # partially explored map does not wall the planner in.
-        track_unknown_space: false
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
