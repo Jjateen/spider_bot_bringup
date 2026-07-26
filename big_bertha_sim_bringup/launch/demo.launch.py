@@ -82,8 +82,9 @@ def generate_launch_description():
             os.path.join(pkg, 'launch', 'bringup.launch.py')),
         launch_arguments={
             'slam': slam,              # default false: known-map mode
-            # ground_truth default: AMCL is ambiguous in the symmetric arena
-            # (wrong pose -> false goal success).
+            # ground_truth default: honest pose for the locomotion demo.
+            # AMCL works but the low lidar limits its observability (see
+            # localization.launch.py).
             'localization': localization,
             'rviz': LaunchConfiguration('rviz'),
             'rviz_config': LaunchConfiguration('rviz_config'),
@@ -143,7 +144,7 @@ def generate_launch_description():
             'localization', default_value='ground_truth',
             description='known-map map->odom provider: ground_truth (static '
                         'identity, honest pose, the A->B default) or amcl '
-                        '(scan-match, ambiguous in the symmetric arena)'),
+                        '(scan-match; observability-limited by the low lidar)'),
         DeclareLaunchArgument(
             'rviz', default_value='true',
             description='Open RViz. Set false for headless GIF capture '
