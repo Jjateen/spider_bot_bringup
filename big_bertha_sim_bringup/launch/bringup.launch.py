@@ -178,8 +178,8 @@ def generate_launch_description():
             'localization', default_value='ground_truth',
             description="known-map map->odom provider: 'ground_truth' (static "
                         "identity, honest pose, default) or 'amcl' "
-                        '(scan-match; ambiguous in the symmetric 4-wall arena '
-                        '-- converges to a wrong pose)'),
+                        '(scan-match; observability-limited by the low lidar, '
+                        'see localization.launch.py)'),
         DeclareLaunchArgument(
             'rviz', default_value='false',
             description='Also launch RViz'),
