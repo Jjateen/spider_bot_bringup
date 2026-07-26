@@ -28,7 +28,8 @@ Two map->odom providers, selected by ``localization``:
   a zero map->odom. Nav2 still plans and controls; it just gets a correct pose,
   isolating the locomotion demo from AMCL's arena ambiguity.
 
-Both keep map_server (Nav2's global costmap needs the static map).
+Both keep map_server: AMCL localizes against /map and the global costmap's
+static layer plans on it.
 """
 
 import os

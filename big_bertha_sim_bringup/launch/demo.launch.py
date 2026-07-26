@@ -22,9 +22,9 @@ global + local costmaps, planned path, robot).
 Localization mode
 -----------------
 By default the demo runs in KNOWN-MAP mode (``slam:=false``): map_server serves
-the saved ``maps/obstacle_world.yaml`` (which covers the whole arena) and AMCL
-localizes against it. The global costmap is therefore fully populated from the
-static map, so a goal at world B is plannable and the A->B run is repeatable.
+the saved ``maps/obstacle_world.yaml`` and the global costmap's static layer
+feeds it to the planner, so obstacles are planned around from the first plan
+(not discovered at lidar range) and the A->B run is repeatable.
 
 Pass ``slam:=true`` to run live SLAM (slam_toolbox) instead. In SLAM mode the
 map only covers the area explored so far, so a goal far outside it may be
