@@ -110,7 +110,7 @@
   <xacro:bb_surface link="arm_c_4_1"  mu="1.5" soft="true"/>
 
   <!-- ============================ Lidar ============================== -->
-  <!-- YDLidar X2: 360 deg, ~8 m range, 5 Hz. Published on gz topic "scan",
+  <!-- YDLidar X2: 360 deg, ~8 m range, 10 Hz in sim (hardware ~7 Hz). Published on gz topic "scan",
        frame_id = lidar_link. -->
   <gazebo reference="lidar_link">
     <material>Gazebo/DarkGrey</material>
