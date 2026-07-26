@@ -42,8 +42,9 @@ controller_server:
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.05
-      # Generous for the ~0.1 m/s crawl (45 s aborted mid-turn).
-      movement_time_allowance: 150.0
+      # 35 s ~ 75x the time to cover the radius at crawl speed; 150 let a
+      # wedged robot burn minutes before recovery.
+      movement_time_allowance: 35.0
     # Goal checker parameters
     #precise_goal_checker:
     #  plugin: "nav2_controller::SimpleGoalChecker"
@@ -65,13 +66,12 @@ controller_server:
       desired_linear_vel: 0.12
       # Short carrot (was 2.5): keeps the robot ON the path's bends through the
       # ~0.8-1.1 m obstacle gaps instead of cutting corners into walls.
-      lookahead_dist: 0.7
-      min_lookahead_dist: 0.5
-      max_lookahead_dist: 1.0
-      lookahead_time: 1.5
-      # 0.5 = the real trained yaw envelope; the policy node clamps wz there,
-      # so 0.8 made RPP plan pivots 60% faster than the plant can go.
-      rotate_to_heading_angular_vel: 0.5
+      # 0.45 ~ 2.5x robot radius; 0.7 was 5.8 s of travel at 0.12 m/s and
+      # still corner-cut the 0.8-1.1 m gaps.
+      lookahead_dist: 0.45
+      # 0.28 = the MEASURED in-place yaw rate. Commanding the 0.5 clamp
+      # ceiling kept the command saturated and made RPP's pivot timing a lie.
+      rotate_to_heading_angular_vel: 0.28
       transform_tolerance: 0.2
       use_velocity_scaled_lookahead_dist: false
       min_approach_linear_velocity: 0.05
@@ -99,7 +99,7 @@ local_costmap:
   local_costmap:
     ros__parameters:
       use_sim_time: true
-      update_frequency: 5.0
+      update_frequency: 10.0  # match the 10 Hz lidar (was 4 collision checks per refresh)
       publish_frequency: 2.0
       global_frame: odom
       robot_base_frame: base_link
@@ -145,7 +145,7 @@ global_costmap:
   global_costmap:
     ros__parameters:
       use_sim_time: true
-      update_frequency: 1.0
+      update_frequency: 2.0  # cheap now the grid is map-sized, halves plan staleness
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
