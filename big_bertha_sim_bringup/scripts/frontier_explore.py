@@ -93,9 +93,10 @@ class FrontierExplorer(Node):
 
     def pick_goal(self, robot):
         """Nearest non-blacklisted frontier cluster, or None when done."""
+        clear_cells = int(round(self.args.goal_clearance / self.map.info.resolution))
         clusters = find_frontiers(
             self.map.data, self.map.info.width, self.map.info.height,
-            self.args.min_frontier)
+            self.args.min_frontier, clear_cells)
         candidates = []
         for rep, size in clusters:
             x, y = self.cell_to_world(rep)
@@ -126,8 +127,26 @@ class FrontierExplorer(Node):
             return False
         result = handle.get_result_async()
         deadline = time.time() + self.args.goal_timeout
+        # Stuck watchdog: the controller stops dead when it predicts a
+        # collision, then loops abort -> clear costmap -> replan -> stop. Left
+        # alone that burns the whole goal timeout in one spot, which is what
+        # makes the demo look frozen. Give up as soon as the robot stops
+        # closing on the goal instead of waiting out the clock.
+        best = None
+        best_at = time.time()
         while rclpy.ok() and not result.done():
             rclpy.spin_once(self, timeout_sec=0.5)
+            here = self.robot_xy()
+            if here:
+                dist = math.hypot(x - here[0], y - here[1])
+                if best is None or dist < best - self.args.progress_dist:
+                    best, best_at = dist, time.time()
+                elif time.time() - best_at > self.args.stuck_timeout:
+                    handle.cancel_goal_async()
+                    print(f'=== {label} ({x:.2f}, {y:.2f}) STUCK '
+                          f'({self.args.stuck_timeout:.0f}s without progress) ===',
+                          flush=True)
+                    return False
             if time.time() > deadline:
                 handle.cancel_goal_async()
                 print(f'=== {label} ({x:.2f}, {y:.2f}) TIMEOUT ===', flush=True)
@@ -184,7 +203,16 @@ def main():
     parser.add_argument('--min-frontier', type=int, default=12,
                         help='ignore clusters smaller than this many cells')
     parser.add_argument('--goal-timeout', type=float, default=90.0,
-                        help='seconds before abandoning one frontier goal')
+                        help='hard cap on one frontier goal (s)')
+    parser.add_argument('--stuck-timeout', type=float, default=25.0,
+                        help='abandon a goal after this long without progress')
+    parser.add_argument('--progress-dist', type=float, default=0.15,
+                        help='metres of closing that counts as progress')
+    parser.add_argument('--goal-clearance', type=float, default=0.25,
+                        help='required free radius (m) around a frontier goal; '
+                             'robot_radius is 0.18 and the costmap inflates to '
+                             '0.38, so a goal tight against a wall cannot be '
+                             'driven to')
     parser.add_argument('--blacklist-radius', type=float, default=0.6,
                         help='skip frontiers within this radius of a failed one')
     args, ros_args = parser.parse_known_args()

@@ -20,7 +20,7 @@ import sys
 sys.path.insert(
     0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts'))
 
-from frontier_lib import find_frontiers  # noqa: E402
+from frontier_lib import find_frontiers, has_clearance  # noqa: E402
 
 W = H = 8
 
@@ -78,6 +78,25 @@ def test_separate_regions_cluster_separately():
         data[y * W + 6] = 0
         data[y * W + 6 + 1] = -1
     assert len(find_frontiers(data, W, H, 1)) == 2
+
+
+def test_clearance_rejects_cells_beside_a_wall():
+    """The goal must not sit inside costmap inflation."""
+    data = grid(0)
+    data[4 * W + 4] = 100
+    assert not has_clearance(data, W, H, 4 * W + 2, 2)  # 2 cells away
+    assert has_clearance(data, W, H, 4 * W + 1, 2)      # 3 cells away
+
+
+def test_clearance_filter_drops_wall_hugging_frontiers():
+    """A frontier with no standable cell is skipped, not sent as a goal."""
+    data = grid(-1)
+    for y in range(H):          # free column beside...
+        data[y * W + 4] = 0
+    for y in range(H):          # ...a solid wall right next to it
+        data[y * W + 5] = 100
+    assert find_frontiers(data, W, H, 1, 0)       # found without the filter
+    assert find_frontiers(data, W, H, 1, 3) == []  # dropped with it
 
 
 def test_representative_is_a_free_cell():

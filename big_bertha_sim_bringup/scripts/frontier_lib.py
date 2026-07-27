@@ -17,10 +17,32 @@
 from collections import deque
 
 FREE_MAX = 25  # occupancy <= this is free enough to stand on
+OCC_MIN = 65   # occupancy >= this is a wall
 UNKNOWN = -1
 
 
-def find_frontiers(data, width, height, min_size):
+def has_clearance(data, width, height, index, radius):
+    """
+    Report whether no occupied cell lies within `radius` cells of `index`.
+
+    A frontier cell is free but often sits right against the wall that hides
+    the unknown space behind it. Standing the robot there puts it inside the
+    costmap inflation, where the controller refuses to move and grinds until
+    the goal times out. Requiring clearance keeps goals somewhere the robot
+    can actually stand.
+    """
+    x0, y0 = index % width, index // width
+    for dy in range(-radius, radius + 1):
+        for dx in range(-radius, radius + 1):
+            if dx * dx + dy * dy > radius * radius:
+                continue
+            x, y = x0 + dx, y0 + dy
+            if 0 <= x < width and 0 <= y < height and data[y * width + x] >= OCC_MIN:
+                return False
+    return True
+
+
+def find_frontiers(data, width, height, min_size, min_clear=0):
     """
     Cluster frontier cells in an occupancy grid.
 
@@ -67,6 +89,15 @@ def find_frontiers(data, width, height, min_size):
             continue
         cx = sum(c % width for c in cells) / len(cells)
         cy = sum(c // width for c in cells) / len(cells)
-        rep = min(cells, key=lambda c: (c % width - cx) ** 2 + (c // width - cy) ** 2)
-        clusters.append((rep, len(cells)))
+        ranked = sorted(
+            cells, key=lambda c: (c % width - cx) ** 2 + (c // width - cy) ** 2)
+        if min_clear > 0:
+            # Nearest-the-centroid cell the robot can actually stand in. A
+            # cluster with no such cell is hard against a wall -- skip it
+            # rather than send a goal the controller will grind on.
+            ranked = [c for c in ranked
+                      if has_clearance(data, width, height, c, min_clear)]
+            if not ranked:
+                continue
+        clusters.append((ranked[0], len(cells)))
     return clusters
