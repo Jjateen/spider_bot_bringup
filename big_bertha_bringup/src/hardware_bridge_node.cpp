@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "big_bertha_bringup/hardware_bridge_node.hpp"
+
 #include <signal.h>
 
 #include <algorithm>
@@ -19,8 +21,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "big_bertha_bringup/hardware_bridge_node.hpp"
 
 namespace big_bertha_bringup
 {
@@ -54,28 +54,28 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
     }
   };
 
-  validate12("servo_lower_limit", scp.servo_lower_limit,
+  validate12(
+    "servo_lower_limit", scp.servo_lower_limit,
     std::vector<double>{45, 30, 180, 140, 135, 140, 50, 50, 40, 180, 150, 0});
-  validate12("servo_upper_limit", scp.servo_upper_limit,
+  validate12(
+    "servo_upper_limit", scp.servo_upper_limit,
     std::vector<double>{180, 150, 50, 0, 0, 0, 180, 180, 180, 40, 0, 150});
-  validate12("servo_offset", scp.servo_offset,
-    std::vector<double>{0, 0, 0, 0, 0, 0, 10, 10, 0, 8, 2, 5});
-  validate12("servo_channel", scp.servo_channel,
-    std::vector<int>{14, 10, 2, 6, 13, 9, 1, 5, 12, 8, 0, 4});
-  validate12("servo_direction", scp.servo_direction,
+  validate12(
+    "servo_offset", scp.servo_offset, std::vector<double>{0, 0, 0, 0, 0, 0, 10, 10, 0, 8, 2, 5});
+  validate12(
+    "servo_channel", scp.servo_channel, std::vector<int>{14, 10, 2, 6, 13, 9, 1, 5, 12, 8, 0, 4});
+  validate12(
+    "servo_direction", scp.servo_direction,
     std::vector<int>{1, 1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1});
   scp.policy_center = declare_parameter<std::vector<double>>(
-    "policy_center",
-    {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.57, 1.57, 1.57, 1.57});
+    "policy_center", {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.57, 1.57, 1.57, 1.57});
 
   orient_cov_ = declare_parameter<std::vector<double>>(
     "orientation_covariance", {-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
   accel_cov_ = declare_parameter<std::vector<double>>(
-    "linear_acceleration_covariance",
-    {0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001});
+    "linear_acceleration_covariance", {0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001});
   gyro_cov_ = declare_parameter<std::vector<double>>(
-    "angular_velocity_covariance",
-    {0.00001, 0.0, 0.0, 0.0, 0.00001, 0.0, 0.0, 0.0, 0.00001});
+    "angular_velocity_covariance", {0.00001, 0.0, 0.0, 0.0, 0.00001, 0.0, 0.0, 0.0, 0.00001});
   {
     std::vector<double> def_sign = {-1.0, 1.0, -1.0};
     imu_axis_sign_ = declare_parameter<std::vector<double>>("imu_axis_sign", def_sign);
@@ -97,7 +97,8 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
 
   // ── TCP connects ──────────────────────────────────────────────────────
   if (!servo_client_.connect(servo_host_, servo_port_)) {
-    RCLCPP_WARN(get_logger(), "servo relay connect to %s:%d failed", servo_host_.c_str(), servo_port_);
+    RCLCPP_WARN(
+      get_logger(), "servo relay connect to %s:%d failed", servo_host_.c_str(), servo_port_);
   } else {
     RCLCPP_INFO(get_logger(), "connected servo relay at %s:%d", servo_host_.c_str(), servo_port_);
   }
@@ -109,8 +110,7 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
 
   // ── ROS ───────────────────────────────────────────────────────────────
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("/imu", rclcpp::SensorDataQoS());
-  mag_pub_ = create_publisher<sensor_msgs::msg::MagneticField>(
-    "/imu/mag", rclcpp::SensorDataQoS());
+  mag_pub_ = create_publisher<sensor_msgs::msg::MagneticField>("/imu/mag", rclcpp::SensorDataQoS());
   cmd_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
     "/position_controller/commands", rclcpp::QoS(1),
     std::bind(&HardwareBridgeNode::on_cmd, this, std::placeholders::_1));
@@ -174,7 +174,9 @@ void HardwareBridgeNode::reader_loop()
       continue;
     }
 
-    if (!imu_client_.send(R"({"cmd":"imu"})" "\n")) continue;
+    if (!imu_client_.send(R"({"cmd":"imu"})"
+                          "\n"))
+      continue;
 
     {
       std::string line;
@@ -214,7 +216,9 @@ bool HardwareBridgeNode::calibrate_sensors()
   int collected = 0;
 
   while (running_ && collected < samples) {
-    if (!imu_client_.send(R"({"cmd":"imu"})" "\n")) return false;
+    if (!imu_client_.send(R"({"cmd":"imu"})"
+                          "\n"))
+      return false;
 
     std::string line;
     if (!imu_client_.read_line(line)) return false;
@@ -236,14 +240,13 @@ bool HardwareBridgeNode::calibrate_sensors()
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
 
-  if (collected == 0 ||
-      (std::abs(gx_sum) < 1e-9 && std::abs(gy_sum) < 1e-9 && std::abs(gz_sum) < 1e-9 &&
-       std::abs(ax_sum) < 1e-9 && std::abs(ay_sum) < 1e-9 && std::abs(az_sum) < 1e-9))
-  {
+  if (
+    collected == 0 ||
+    (std::abs(gx_sum) < 1e-9 && std::abs(gy_sum) < 1e-9 && std::abs(gz_sum) < 1e-9 &&
+     std::abs(ax_sum) < 1e-9 && std::abs(ay_sum) < 1e-9 && std::abs(az_sum) < 1e-9)) {
     RCLCPP_ERROR(
       get_logger(),
-      "IMU appears to be missing — all %d samples were zero. Check wiring and I2C bus.",
-      collected);
+      "IMU appears to be missing — all %d samples were zero. Check wiring and I2C bus.", collected);
     gyro_calibration_enabled_ = false;
     accel_calibration_enabled_ = false;
     return true;
@@ -254,8 +257,8 @@ bool HardwareBridgeNode::calibrate_sensors()
     gyro_bias_y_ = gy_sum / collected;
     gyro_bias_z_ = gz_sum / collected;
     RCLCPP_INFO(
-      get_logger(), "gyro bias: gx=%.6f gy=%.6f gz=%.6f rad/s",
-      gyro_bias_x_, gyro_bias_y_, gyro_bias_z_);
+      get_logger(), "gyro bias: gx=%.6f gy=%.6f gz=%.6f rad/s", gyro_bias_x_, gyro_bias_y_,
+      gyro_bias_z_);
   }
 
   if (accel_calibration_enabled_) {
@@ -271,11 +274,10 @@ bool HardwareBridgeNode::calibrate_sensors()
     double az_var = az_sq_sum / collected - az_mean * az_mean;
 
     RCLCPP_INFO(
-      get_logger(), "accel bias: ax=%.6f ay=%.6f az=%.6f m/s²",
-      accel_bias_x_, accel_bias_y_, accel_bias_z_);
+      get_logger(), "accel bias: ax=%.6f ay=%.6f az=%.6f m/s²", accel_bias_x_, accel_bias_y_,
+      accel_bias_z_);
     RCLCPP_INFO(
-      get_logger(), "accel var:  ax=%.6e ay=%.6e az=%.6e (m/s²)²",
-      ax_var, ay_var, az_var);
+      get_logger(), "accel var:  ax=%.6e ay=%.6e az=%.6e (m/s²)²", ax_var, ay_var, az_var);
   }
 
   auto cal_end = std::chrono::steady_clock::now();
@@ -284,16 +286,15 @@ bool HardwareBridgeNode::calibrate_sensors()
   cal_finish_time_ = cal_end;
 
   RCLCPP_INFO(
-    get_logger(), "calibration took %ld ms (%d samples, ~%.1f Hz)",
-    cal_duration_ms_, collected, collected / (cal_duration_ms_ / 1000.0));
+    get_logger(), "calibration took %ld ms (%d samples, ~%.1f Hz)", cal_duration_ms_, collected,
+    collected / (cal_duration_ms_ / 1000.0));
 
   if (gyro_calibration_enabled_) {
     double drift_x = gyro_bias_x_ * (cal_duration_ms_ / 1000.0);
     double drift_y = gyro_bias_y_ * (cal_duration_ms_ / 1000.0);
     double drift_z = gyro_bias_z_ * (cal_duration_ms_ / 1000.0);
     RCLCPP_INFO(
-      get_logger(), "gyro drift over cal period:  %.3e  %.3e  %.3e rad",
-      drift_x, drift_y, drift_z);
+      get_logger(), "gyro drift over cal period:  %.3e  %.3e  %.3e rad", drift_x, drift_y, drift_z);
   }
 
   return true;
