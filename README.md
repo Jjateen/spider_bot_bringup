@@ -64,12 +64,6 @@ ros2 launch big_bertha_sim_bringup rviz.launch.py config:=planning
 #                     control: /cmd_vel vs /odom + spider_msgs/PolicyStatus)
 ros2 launch big_bertha_sim_bringup plotjuggler.launch.py layout:=control
 
-# AHRS 3D visualizer (real hardware — orientation from /filtered/imu)
-ros2 launch ahrs visualizer.launch.py use_hardware:=true
-
-# AHRS 3D visualizer (simulation — orientation from /imu directly)
-ros2 run ahrs ahrs_visualizer --topic /imu
-```
 
 Configs live under `big_bertha_sim_bringup/config/{rviz,plotjuggler}/`.
 
