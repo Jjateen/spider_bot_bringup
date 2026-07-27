@@ -68,9 +68,11 @@ controller_server:
       desired_linear_vel: 0.12
       # Short carrot (was 2.5): keeps the robot ON the path's bends through the
       # ~0.8-1.1 m obstacle gaps instead of cutting corners into walls.
-      # 0.45 ~ 2.5x robot radius; 0.7 was 5.8 s of travel at 0.12 m/s and
-      # still corner-cut the 0.8-1.1 m gaps.
-      lookahead_dist: 0.45
+      # Do NOT shorten further: 0.45 was tested and FAILED -- the crawl weaves
+      # instead of converging and never finishes the obstacle leg (patrol 0/3).
+      # A slow, weak-yaw platform needs a LONGER carrot for stability, not a
+      # shorter one.
+      lookahead_dist: 0.7
       # 0.27 = the MEASURED in-place yaw rate of the deployed v1.1.0 policy
       # on the torque-speed plant. Commanding the 0.5 clamp ceiling kept the
       # command saturated and made RPP's pivot timing a lie.
@@ -154,12 +156,10 @@ global_costmap:
       robot_base_frame: base_link
       robot_radius: 0.18
       resolution: 0.05
-      # Non-rolling grid sized from /map by the static layer. The old "no
-      # static layer, 24 m rolling window" setup left the planner blind past
-      # the lidar's 2.5 m: initial plans went straight through the boxes. The
-      # rolling-window workaround dated from pre-world-anchored SLAM maps
-      # (slam_toolbox map_start_pose); both modes now serve a world-aligned
-      # /map, so one static-layer config covers known-map AND SLAM.
+      # Non-rolling grid sized from /map by the static layer, so the planner
+      # plans around mapped obstacles instead of discovering them at lidar
+      # range. Both modes now serve a world-aligned /map (slam_toolbox
+      # map_start_pose), so one config covers known-map AND SLAM.
       rolling_window: false
       # Unknown = free so the planner can route through unmapped open space.
       track_unknown_space: false
