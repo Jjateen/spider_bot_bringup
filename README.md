@@ -50,13 +50,13 @@ ros2 launch big_bertha_sim_bringup bringup.launch.py rviz:=true
 
 ## Demos
 
-Straight 1:1 walk (real-time):
+Straight 1:1 walk (real-time), commanded at 0.29 m/s like the training gif:
 
-![straight walk](verification_artifacts/demo_straight_v1.0.0_clock_obs.gif)
+![straight walk](verification_artifacts/demo_straight_v1.1.0.gif)
 
 3-goal patrol planning through the obstacle field:
 
-![patrol](verification_artifacts/demo_patrol_v1.0.0_clock_obs.gif)
+![patrol](verification_artifacts/demo_patrol_v1.1.0.gif)
 
 SLAM coverage loop builds the map, then AMCL patrols on it:
 
