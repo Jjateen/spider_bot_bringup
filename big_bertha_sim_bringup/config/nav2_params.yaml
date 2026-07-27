@@ -69,9 +69,10 @@ controller_server:
       # 0.45 ~ 2.5x robot radius; 0.7 was 5.8 s of travel at 0.12 m/s and
       # still corner-cut the 0.8-1.1 m gaps.
       lookahead_dist: 0.45
-      # 0.28 = the MEASURED in-place yaw rate. Commanding the 0.5 clamp
-      # ceiling kept the command saturated and made RPP's pivot timing a lie.
-      rotate_to_heading_angular_vel: 0.28
+      # 0.27 = the MEASURED in-place yaw rate of the deployed v1.1.0 policy
+      # on the torque-speed plant. Commanding the 0.5 clamp ceiling kept the
+      # command saturated and made RPP's pivot timing a lie.
+      rotate_to_heading_angular_vel: 0.27
       transform_tolerance: 0.2
       use_velocity_scaled_lookahead_dist: false
       min_approach_linear_velocity: 0.05
