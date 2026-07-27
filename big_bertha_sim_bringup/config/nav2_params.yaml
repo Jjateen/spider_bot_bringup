@@ -64,8 +64,10 @@ controller_server:
       yaw_goal_tolerance: 3.15
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      # The gait tracks ~0.08-0.12 m/s; a higher command just saturates it.
-      desired_linear_vel: 0.12
+      # v1.1.0 on the torque-speed plant tracks 0.20 m/s at a 0.29 command
+      # (0.135 at 0.12), so the old "higher just saturates it" note is stale --
+      # that was v1.0.0 on the optimistic actuator.
+      desired_linear_vel: 0.29
       # Short carrot (was 2.5): keeps the robot ON the path's bends through the
       # ~0.8-1.1 m obstacle gaps instead of cutting corners into walls.
       # Do NOT shorten further: 0.45 was tested and FAILED -- the crawl weaves
