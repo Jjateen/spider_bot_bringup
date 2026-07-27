@@ -62,6 +62,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     params_file = LaunchConfiguration('params_file')
     autostart = LaunchConfiguration('autostart')
+    nav_speed = LaunchConfiguration('nav_speed')
 
     # Point the bt_navigator at the in-package behavior trees and force the
     # use_sim_time value through every server (RewrittenYaml resolves these at
@@ -73,6 +74,7 @@ def generate_launch_description():
             'use_sim_time': use_sim_time,
             'default_nav_to_pose_bt_xml': bt_to_pose,
             'default_nav_through_poses_bt_xml': bt_through_poses,
+            'desired_linear_vel': nav_speed,
         },
         convert_types=True,
     )
@@ -123,6 +125,12 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         DeclareLaunchArgument('params_file', default_value=default_params),
         DeclareLaunchArgument('autostart', default_value='true'),
+        # Overrides FollowPath desired_linear_vel. Mapping runs slower than the
+        # 0.29 default: the coverage loop drives into the arena corners while
+        # the map is still forming, where 0.29 tripped RPP's collision
+        # projection and the progress checker (goal aborts, see
+        # demo_slam_patrol.sh).
+        DeclareLaunchArgument('nav_speed', default_value='0.29'),
 
         *server_nodes,
         lifecycle_manager,
