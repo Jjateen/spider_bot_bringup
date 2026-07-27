@@ -58,9 +58,10 @@ Straight 1:1 walk (real-time), commanded at 0.29 m/s like the training gif:
 
 ![patrol](verification_artifacts/demo_patrol_v1.1.0.gif)
 
-SLAM coverage loop builds the map, then AMCL patrols on it:
+SLAM explores the arena frontier-by-frontier to build the map and returns to
+its start, then AMCL patrols on the map it just built:
 
-![slam then patrol](verification_artifacts/demo_slam_patrol_v1.0.0.gif)
+![slam then patrol](verification_artifacts/demo_slam_patrol_v1.1.0.gif)
 
 ## Autonomy stack (functional modules)
 

@@ -40,6 +40,11 @@ if(BUILD_TESTING)
   ament_add_gtest(test_ground_ray test/test_ground_ray.cpp)
   target_include_directories(test_ground_ray PRIVATE include)
 
+  # Frontier maths behind the SLAM demo: it also decides when the map is
+  # complete, so a wrong "no frontiers" answer ends exploration early.
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_frontier test/test_frontier.py)
+
   find_package(ament_lint_auto REQUIRED)
   # The world SDF and saved maps are generated/3rd-party formatting; skip
   # copyright/lint on data dirs, lint only launch + config python/yaml.

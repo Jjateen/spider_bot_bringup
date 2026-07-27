@@ -155,7 +155,8 @@ def generate_launch_description():
     # planning: Nav2 servers (planner/controller/costmaps/BT).
     planning = include(
         os.path.join('planning', 'nav2.launch.py'),
-        {'use_sim_time': use_sim_time},
+        {'use_sim_time': use_sim_time,
+         'nav_speed': LaunchConfiguration('nav_speed')},
     )
 
     # Optional RViz view (the visualization module's rviz.launch.py picks the
@@ -180,6 +181,11 @@ def generate_launch_description():
                         "identity, honest pose, default) or 'amcl' "
                         '(scan-match; observability-limited by the low lidar, '
                         'see localization.launch.py)'),
+        DeclareLaunchArgument(
+            'nav_speed', default_value='0.29',
+            description='Nav2 FollowPath desired_linear_vel (m/s). 0.29 '
+                        'matches the trained demo speed; mapping passes a '
+                        'lower value (see nav2.launch.py)'),
         DeclareLaunchArgument(
             'rviz', default_value='false',
             description='Also launch RViz'),

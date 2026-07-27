@@ -1,0 +1,72 @@
+# Copyright 2026 Jjateen Gundesha
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Frontier detection on an occupancy grid. ROS-free so it can be unit-tested."""
+
+from collections import deque
+
+FREE_MAX = 25  # occupancy <= this is free enough to stand on
+UNKNOWN = -1
+
+
+def find_frontiers(data, width, height, min_size):
+    """
+    Cluster frontier cells in an occupancy grid.
+
+    A frontier cell is free and 4-adjacent to unknown space -- the edge of
+    what the robot has seen. Clusters are 8-connected; each is returned as
+    (representative_cell_index, size). The representative is the cluster cell
+    nearest the centroid, so a goal built from it always lands on a known-free
+    cell: a raw centroid can fall inside the unknown region the arc wraps
+    around, which the planner would refuse.
+    """
+    is_frontier = bytearray(width * height)
+    for i, v in enumerate(data):
+        if v < 0 or v > FREE_MAX:
+            continue
+        x, y = i % width, i // width
+        if ((x > 0 and data[i - 1] == UNKNOWN)
+                or (x < width - 1 and data[i + 1] == UNKNOWN)
+                or (y > 0 and data[i - width] == UNKNOWN)
+                or (y < height - 1 and data[i + width] == UNKNOWN)):
+            is_frontier[i] = 1
+
+    clusters = []
+    seen = bytearray(width * height)
+    for start in range(width * height):
+        if not is_frontier[start] or seen[start]:
+            continue
+        cells = []
+        queue = deque([start])
+        seen[start] = 1
+        while queue:
+            i = queue.popleft()
+            cells.append(i)
+            x, y = i % width, i // width
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    nx, ny = x + dx, y + dy
+                    if not (0 <= nx < width and 0 <= ny < height):
+                        continue
+                    j = ny * width + nx
+                    if is_frontier[j] and not seen[j]:
+                        seen[j] = 1
+                        queue.append(j)
+        if len(cells) < min_size:
+            continue
+        cx = sum(c % width for c in cells) / len(cells)
+        cy = sum(c // width for c in cells) / len(cells)
+        rep = min(cells, key=lambda c: (c % width - cx) ** 2 + (c // width - cy) ** 2)
+        clusters.append((rep, len(cells)))
+    return clusters
