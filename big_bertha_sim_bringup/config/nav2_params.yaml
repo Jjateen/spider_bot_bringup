@@ -42,9 +42,11 @@ controller_server:
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.05
-      # 35 s ~ 75x the time to cover the radius at crawl speed; 150 let a
-      # wedged robot burn minutes before recovery.
-      movement_time_allowance: 35.0
+      # Generous on purpose: the crawl legitimately spends many seconds
+      # pivoting with near-zero translation, and this checker only sees
+      # translation. 35 s tripped mid-pivot and escalated into recoveries the
+      # platform cannot execute (no reverse -> BackUp always fails).
+      movement_time_allowance: 150.0
     # Goal checker parameters
     #precise_goal_checker:
     #  plugin: "nav2_controller::SimpleGoalChecker"
