@@ -133,6 +133,14 @@ install(DIRECTORY launch config models
   DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
+  # Contract test: obs layout + gait-clock clamp (header-only, no ONNX dep).
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_observation_builder test/test_observation_builder.cpp)
+  target_include_directories(test_observation_builder PRIVATE include)
+  # Outer-loop command shaping (clamps, holds, PI steering).
+  ament_add_gtest(test_command_shaper test/test_command_shaper.cpp)
+  target_include_directories(test_command_shaper PRIVATE include)
+
   find_package(ament_lint_auto REQUIRED)
   # clang-format (.clang-format + the pre-commit hook) is the canonical C++
   # style for this repo. ament_uncrustify uses a different, conflicting style

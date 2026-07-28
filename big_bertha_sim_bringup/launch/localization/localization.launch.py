@@ -18,9 +18,10 @@ Localization bringup for Big Bertha known-map mode: map_server + map->odom.
 Two map->odom providers, selected by ``localization``:
 
 * ``amcl`` -- nav2_amcl localizes against the saved map from /scan and
-  odom->base_link, publishing map->odom. Realistic, but in the symmetric
-  4-wall obstacle_world the scan match is ambiguous and AMCL can converge to a
-  wrong heading, steering Nav2 off course.
+  odom->base_link, publishing map->odom. Realistic; its historical failure
+  here was OBSERVABILITY, not arena symmetry (the obstacle layout is unique):
+  the low tilt-blind lidar often sees only one near wall, which constrains
+  nothing along the wall direction. Seeded from the spawn args below.
 
 * ``ground_truth`` (default for the A->B demo) -- a static identity map->odom.
   The gz OdometryPublisher already reports the WORLD pose and the EKF passes it
@@ -28,7 +29,8 @@ Two map->odom providers, selected by ``localization``:
   a zero map->odom. Nav2 still plans and controls; it just gets a correct pose,
   isolating the locomotion demo from AMCL's arena ambiguity.
 
-Both keep map_server (Nav2's global costmap needs the static map).
+Both keep map_server: AMCL localizes against /map and the global costmap's
+static layer plans on it.
 """
 
 import os
@@ -45,6 +47,7 @@ from launch.substitutions import (
 )
 
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -76,6 +79,9 @@ def generate_launch_description():
         }],
     )
 
+    # Seed AMCL from the spawn launch args (the yaml's hardcoded pose silently
+    # diverged whenever the spawn changed; with recovery injection off that
+    # was terminal).
     amcl = Node(
         package='nav2_amcl',
         executable='amcl',
@@ -84,7 +90,15 @@ def generate_launch_description():
         condition=use_amcl,
         parameters=[
             amcl_config,
-            {'use_sim_time': use_sim_time},
+            {
+                'use_sim_time': use_sim_time,
+                'initial_pose.x': ParameterValue(
+                    LaunchConfiguration('x'), value_type=float),
+                'initial_pose.y': ParameterValue(
+                    LaunchConfiguration('y'), value_type=float),
+                'initial_pose.yaw': ParameterValue(
+                    LaunchConfiguration('yaw'), value_type=float),
+            },
         ],
     )
 

@@ -29,6 +29,7 @@
        e.g. the Arduino Uno Q). See big_bertha_policy_controller/CMakeLists.txt. (#39) -->
 
 
+  <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

@@ -7,7 +7,7 @@
   the policy controller can stream joint torques on
   /position_controller/commands and read /joint_states. The
   <param>initial_value</param> reproduces the training default pose
-  ([0.0, 0.5, 0.0] per leg).
+  ([0.0, -0.32, 2.00] per leg, big_bertha_v1.0.0 pin-tip pose).
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 

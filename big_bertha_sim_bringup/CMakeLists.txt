@@ -4,8 +4,9 @@ project(big_bertha_sim_bringup)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(tf2_ros REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 # Install all bringup assets into the package share directory. RViz +
 # PlotJuggler configs live under config/ (config/rviz, config/plotjuggler).
@@ -16,19 +17,11 @@ install(
 
 # Perception helper node (scan_ground_filter: IMU-gated ghost-wall removal).
 add_executable(scan_ground_filter src/scan_ground_filter.cpp)
-ament_target_dependencies(scan_ground_filter rclcpp sensor_msgs)
+target_include_directories(scan_ground_filter PRIVATE include)
+ament_target_dependencies(scan_ground_filter
+  rclcpp sensor_msgs geometry_msgs tf2 tf2_ros)
 install(
   TARGETS scan_ground_filter
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-# Periodic identity map->odom tf publisher (ground-truth localisation mode).
-# Re-publishes every 10 s so the transform survives tf2_ros::Buffer clock-
-# activation clears that destroy the one-shot static_transform_publisher output.
-add_executable(map_to_odom_publisher src/map_to_odom_publisher.cpp)
-ament_target_dependencies(map_to_odom_publisher rclcpp tf2_ros geometry_msgs)
-install(
-  TARGETS map_to_odom_publisher
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -42,6 +35,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/maps")
 endif()
 
 if(BUILD_TESTING)
+  # Ground-cull sign conventions (the historical inversion deleted real walls).
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_ground_ray test/test_ground_ray.cpp)
+  target_include_directories(test_ground_ray PRIVATE include)
+
+  # Frontier maths behind the SLAM demo: it also decides when the map is
+  # complete, so a wrong "no frontiers" answer ends exploration early.
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(test_frontier test/test_frontier.py)
+
   find_package(ament_lint_auto REQUIRED)
   # The world SDF and saved maps are generated/3rd-party formatting; skip
   # copyright/lint on data dirs, lint only launch + config python/yaml.

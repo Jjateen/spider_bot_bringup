@@ -38,11 +38,12 @@ use_sim_time   Use the ``/clock`` topic. Default: ``true``.
 gui            Run the Gazebo GUI client. Default: ``false`` (headless).
 world          World SDF basename in ``worlds/``. Default: ``obstacle_world.sdf``.
 sim_drive      Enable the sim-only kinematic gz VelocityControl drive (a
-               verification aid; the learned gait does not transfer to Gazebo,
-               see issue #5). Default: ``false``.
+               verification aid for the mapping/localization/planning gates,
+               independent of the gait). Default: ``false``.
 map            Saved map YAML for known-map mode. Default: the bundled
                ``maps/obstacle_world.yaml``.
-x, y, z, yaw   Spawn pose (demo point A). Defaults: ``-3.5 -3.5 0.12 0.785``.
+x, y, z, yaw   Spawn pose (demo point A). Defaults: ``-3.5 -3.5 0.12 0.0``
+               (facing +x East).
 """
 
 import os
@@ -141,7 +142,7 @@ def generate_launch_description():
 
     # perception: IMU-gated ghost-wall filter. The body lidar tilts with the
     # gait; this drops floor hits so the costmap stops seeing flickering walls.
-    # Costmaps + collision monitor consume /scan_filtered (see nav2_params.yaml).
+    # Costmaps consume /scan_filtered (see nav2_params.yaml).
     scan_filter = Node(
         package='big_bertha_sim_bringup',
         executable='scan_ground_filter',
@@ -153,7 +154,8 @@ def generate_launch_description():
     # planning: Nav2 servers (planner/controller/costmaps/BT).
     planning = include(
         os.path.join('planning', 'nav2.launch.py'),
-        {'use_sim_time': use_sim_time},
+        {'use_sim_time': use_sim_time,
+         'nav_speed': LaunchConfiguration('nav_speed')},
     )
 
     # Optional RViz view (the visualization module's rviz.launch.py picks the
@@ -173,9 +175,16 @@ def generate_launch_description():
             'slam', default_value='false',
             description='true: SLAM (mapping); false: known-map (localization)'),
         DeclareLaunchArgument(
-            'localization', default_value='amcl',
-            description="known-map map->odom provider: 'amcl' (scan-match, "
-                        "default) or 'ground_truth' (static, experimental)"),
+            'localization', default_value='ground_truth',
+            description="known-map map->odom provider: 'ground_truth' (static "
+                        "identity, honest pose, default) or 'amcl' "
+                        '(scan-match; observability-limited by the low lidar, '
+                        'see localization.launch.py)'),
+        DeclareLaunchArgument(
+            'nav_speed', default_value='0.29',
+            description='Nav2 FollowPath desired_linear_vel (m/s). 0.29 '
+                        'matches the trained demo speed; mapping passes a '
+                        'lower value (see nav2.launch.py)'),
         DeclareLaunchArgument(
             'rviz', default_value='false',
             description='Also launch RViz'),

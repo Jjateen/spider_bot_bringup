@@ -33,17 +33,35 @@ bash scripts/install_jazzy.sh
 source /opt/ros/jazzy/setup.bash
 colcon build && source install/setup.bash
 
-# 3. Bring up the full sim (obstacle world + gait + state est + Nav2)
-#    known-map mode (AMCL) by default; add rviz:=true for the live view
-ros2 launch big_bertha_sim_bringup bringup.launch.py rviz:=true
+# 3. One-command A->B demo (full stack + RViz + auto-sent Nav2 goal;
+#    known-map mode with ground-truth localization by default)
+ros2 launch big_bertha_sim_bringup demo.launch.py
 
-# SLAM mode (build the map live instead of loading the saved one)
-ros2 launch big_bertha_sim_bringup bringup.launch.py slam:=true rviz:=true
+# 3-goal patrol through the obstacle field instead of the single goal
+ros2 launch big_bertha_sim_bringup demo.launch.py patrol:=true rviz_config:=patrol
+
+# Stack only, no auto goal (add slam:=true to map live instead of known-map)
+ros2 launch big_bertha_sim_bringup bringup.launch.py rviz:=true
 ```
 
 `bringup.launch.py` chains every module and takes `slam:=` (SLAM vs known-map),
 `rviz:=` / `rviz_config:=` (simulation|mapping|planning|integration),
 `use_sim_time:=`, `gui:=`, `world:=`, `sim_drive:=`, `map:=`, and the spawn pose.
+
+## Demos
+
+Straight 1:1 walk (real-time), commanded at 0.29 m/s like the training gif:
+
+![straight walk](verification_artifacts/demo_straight_v1.1.0.gif)
+
+3-goal patrol planning through the obstacle field:
+
+![patrol](verification_artifacts/demo_patrol_v1.1.0.gif)
+
+SLAM explores the arena frontier-by-frontier to build the map and returns to
+its start, then AMCL patrols on the map it just built:
+
+![slam then patrol](verification_artifacts/demo_slam_patrol_v1.1.0.gif)
 
 ## Autonomy stack (functional modules)
 

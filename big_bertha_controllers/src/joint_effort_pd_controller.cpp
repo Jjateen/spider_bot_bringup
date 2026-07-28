@@ -19,6 +19,7 @@ controller_interface::CallbackReturn JointEffortPdController::on_init()
     auto_declare<double>("kd", 2.0);
     auto_declare<double>("effort_limit", 4.0);
     auto_declare<double>("velocity_limit", 0.0);
+    auto_declare<double>("saturation_effort", 0.0);
   } catch (const std::exception & e) {
     fprintf(stderr, "JointEffortPdController on_init failed: %s\n", e.what());
     return controller_interface::CallbackReturn::ERROR;
@@ -38,6 +39,7 @@ controller_interface::CallbackReturn JointEffortPdController::on_configure(
   kd_ = get_node()->get_parameter("kd").as_double();
   effort_limit_ = get_node()->get_parameter("effort_limit").as_double();
   velocity_limit_ = get_node()->get_parameter("velocity_limit").as_double();
+  saturation_effort_ = get_node()->get_parameter("saturation_effort").as_double();
 
   default_positions_ = get_node()->get_parameter("default_positions").as_double_array();
   if (default_positions_.size() != joint_names_.size()) {
@@ -115,8 +117,9 @@ controller_interface::CallbackReturn JointEffortPdController::on_deactivate(
 }
 
 controller_interface::return_type JointEffortPdController::update(
-  const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+  const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
+  const double dt = period.seconds();
   const std::size_t n = joint_names_.size();
   const std::vector<double> * targets = target_buffer_.readFromRT();
   const bool have_targets = targets != nullptr && targets->size() == n;
@@ -138,12 +141,30 @@ controller_interface::return_type JointEffortPdController::update(
     const double qd = qd_opt.value_or(0.0);
     const double q_des = have_targets ? (*targets)[i] : default_positions_[i];
 
-    double tau = kp_ * (q_des - q) + kd_ * (0.0 - qd);
+    // Stable PD (Tan, Liu & Turk, "Stable Proportional-Derivative
+    // Controllers", IEEE CG&A 2011): evaluate the P-term against the
+    // PREDICTED next-step position (q + dt*qd) instead of the current q.
+    // This is unconditionally stable for kd >= kp*dt (true here by a wide
+    // margin: kp*dt ~ 0.02-0.04, kd = 2), unlike naive explicit PD, whose
+    // stability requires kp*dt^2/I to stay below ~1.4 -- a bound the
+    // v1.0.0 mass correction (lighter calf/foot link, real CAD mass) pushed
+    // past for that link, causing the calf joints to chatter at the
+    // hardware velocity limit every control tick regardless of kd or
+    // contact softness.
+    double tau = kp_ * (q_des - (q + dt * qd)) + kd_ * (0.0 - qd);
     tau = std::clamp(tau, -effort_limit_, effort_limit_);
-    // Emulate Isaac's velocity_limit_sim (a hard joint-speed cap PhysX enforces
-    // but DART does not): refuse torque that would accelerate a joint already
-    // past the cap. Without this the explicit PD lets legs spin up and flail.
-    if (velocity_limit_ > 0.0) {
+    // Torque-speed curve, matching training's DCMotor actuator: available
+    // torque falls linearly from the stall value at zero speed to zero at the
+    // no-load speed, like a real MG995. Without it the sim servo delivers full
+    // torque at any speed, which the policy learns to exploit and hardware
+    // cannot honour. saturation_effort <= 0 keeps the older hard cutoff.
+    if (saturation_effort_ > 0.0 && velocity_limit_ > 0.0) {
+      double hi = std::min(saturation_effort_ * (1.0 - qd / velocity_limit_), effort_limit_);
+      const double lo =
+        std::max(saturation_effort_ * (-1.0 - qd / velocity_limit_), -effort_limit_);
+      hi = std::max(hi, lo);  // extreme over-speed: braking torque only
+      tau = std::clamp(tau, lo, hi);
+    } else if (velocity_limit_ > 0.0) {
       if (qd > velocity_limit_ && tau > 0.0) {
         tau = 0.0;
       }

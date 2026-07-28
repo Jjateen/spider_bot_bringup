@@ -1,27 +1,13 @@
-# ros2_control configuration for Big Bertha under gz_ros2_control.
-#
-# Loaded by the gz_ros2_control system plugin (declared in
-# urdf/big_bertha.ros2_control.xacro). Spawns:
-#   - joint_state_broadcaster -> /joint_states (position + velocity)
-#   - position_controller     -> JointEffortPdController
-#     (subscribes /position_controller/commands = 12 position targets)
-#
-# The controller runs a synchronous effort-PD at update_rate, emulating the
-# Isaac Lab implicit actuator (stiffness=20, damping=2) the policy trained
-# against. Computing the PD here -- in the controller_manager loop, reading
-# q/qd with zero latency -- is what removes the jitter; the same PD done in
-# the policy node and shipped over a topic damps against stale velocity.
-#
-# Joint order matches the policy contract: Revolute_110 .. Revolute_121.
+# ros2_control under gz_ros2_control: joint_state_broadcaster + a synchronous
+# effort-PD (JointEffortPdController) emulating the Isaac implicit actuator.
+# PD in the controller_manager loop reads q/qd with zero latency; the same PD
+# over a topic damps stale velocity -> jitter.
 controller_manager:
   ros__parameters:
-    # Match the gz physics rate (500 Hz). gz_ros2_control runs the controller
-    # once per physics step, so the explicit effort-PD updates at 500 Hz, where
-    # kp*dt^2/I ~ 1.4 is stable. At Isaac's 200 Hz the explicit PD overshoots
-    # (ratio ~8.6) -> the walk bounces and veers; 500 Hz makes it track like
-    # Isaac's implicit actuator. The policy stays at 50 Hz (decimated in the
-    # node), so gait timing is unchanged. See worlds/obstacle_world.sdf.
-    update_rate: 500  # Hz
+    # Match the gz physics rate. Stability ratio kp*dt^2/I ceiling is ~1.4;
+    # the v1.0.0 mass correction pushed 500 Hz past it (calf chatter), 1000 Hz
+    # restores margin. Policy stays 50 Hz via decimation.
+    update_rate: 1000  # Hz
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
@@ -35,19 +21,23 @@ joint_state_broadcaster:
 
 position_controller:
   ros__parameters:
-    # These MUST match the deployed policy's Isaac actuator. The deployed
-    # policy is the retrained run big_bertha/2026-06-11_10-00-20, whose env.yaml
-    # actuator is stiffness=20, damping=2, effort_limit_sim=1.0,
-    # velocity_limit_sim=5.55.
-    kp: 20.0            # position stiffness (Isaac stiffness=20)
-    kd: 2.0             # velocity damping  (Isaac damping=2)
-    effort_limit: 1.18   # N*m stall (MG995 @6.6V, 12 kgf-cm)
-    velocity_limit: 6.54  # rad/s no-load cap (MG995 @6.6V, 0.16 s/60deg)
-    # ORDER MUST match the policy controller's joint_names (Isaac articulation
-    # order: all hips, all knees, all ankles) so the incoming 12-element command
-    # array indexes the same joints the policy produced. Numeric Revolute order
-    # scrambles obs/actions and collapses the gait. See
-    # big_bertha_policy_controller/config/policy.yaml.
+    # MUST match the deployed policy's Isaac actuator (stiffness=20, damping=2).
+    kp: 20.0
+    kd: 2.0
+    # 1.18 (MG995 @6.6V stall) > the trained 1.0 Nm is DELIBERATE: A/B on the
+    # straight walk measured 1.18 faster at both speeds (0.138 vs 0.132 m/s at
+    # cmd 0.12; 0.164 vs 0.145 at cmd 0.30) -- the headroom offsets DART's
+    # contact losses. Not train/deploy drift.
+    effort_limit: 1.18
+    # Torque-speed curve matching training's DCMotor actuator: stall torque at
+    # zero speed falling linearly to zero at the no-load speed. The sim servo
+    # used to deliver full torque at any speed, which a policy trained against
+    # the real curve cannot exploit (measured: -18% top speed for such a
+    # policy). Set saturation_effort 0 to fall back to the old hard cutoff.
+    velocity_limit: 7.2      # rad/s no-load (MG995 @6.6V)
+    saturation_effort: 1.18  # N*m stall
+    # ORDER = Isaac articulation order (hips, knees, ankles); numeric Revolute
+    # order scrambles the command array. See policy.yaml.
     joints:
       - Revolute_110   # hip  leg4 (back-left)
       - Revolute_113   # hip  leg1 (front-left)
@@ -63,5 +53,5 @@ position_controller:
       - Revolute_121   # ankle leg3 (back-right)
     default_positions:
       [0.0, 0.0, 0.0, 0.0,
-      -0.32, -0.32, -0.32, -0.32,
-      2.00, 2.00, 2.00, 2.00]
+       -0.32, -0.32, -0.32, -0.32,
+       2.00, 2.00, 2.00, 2.00]

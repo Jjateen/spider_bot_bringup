@@ -154,12 +154,16 @@ def generate_launch_description():
     )
 
     # ros2_control spawners (loaded by gz_ros2_control inside the sim).
+    # --switch-timeout raised from the 5 s default: the full-fidelity URDF
+    # (all of training's circuit-box detail meshes, including a 13 MB scan)
+    # takes gz longer to load/activate than the default allows.
     jsb_spawner = Node(
         package='controller_manager',
         executable='spawner',
         name='joint_state_broadcaster_spawner',
         arguments=['joint_state_broadcaster',
-                   '--controller-manager', '/controller_manager'],
+                   '--controller-manager', '/controller_manager',
+                   '--switch-timeout', '30'],
         output='screen',
         condition=IfCondition(spawn_controllers),
     )
@@ -169,7 +173,8 @@ def generate_launch_description():
         executable='spawner',
         name='position_controller_spawner',
         arguments=['position_controller',
-                   '--controller-manager', '/controller_manager'],
+                   '--controller-manager', '/controller_manager',
+                   '--switch-timeout', '30'],
         output='screen',
         condition=IfCondition(spawn_controllers),
     )
@@ -210,7 +215,8 @@ def generate_launch_description():
         DeclareLaunchArgument('x', default_value='-3.5'),
         DeclareLaunchArgument('y', default_value='-3.5'),
         DeclareLaunchArgument('z', default_value='0.12'),
-        DeclareLaunchArgument('yaw', default_value='0.785'),
+        # Face +x (East), the convention everywhere else (bringup, AMCL seed).
+        DeclareLaunchArgument('yaw', default_value='0.0'),
 
         set_resource_path,
         rsp,

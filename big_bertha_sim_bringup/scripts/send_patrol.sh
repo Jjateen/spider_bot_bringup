@@ -5,12 +5,27 @@
 # Usage: send_patrol.sh "x1,y1" "x2,y2" ...   (map frame, metres)
 set +u
 i=0
+ok=0
 for wp in "$@"; do
   i=$((i + 1))
   x="${wp%,*}"
   y="${wp#*,}"
   echo "=== patrol goal ${i} -> (${x}, ${y}) ==="
-  ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
-    "{pose: {header: {frame_id: map}, pose: {position: {x: ${x}, y: ${y}, z: 0.0}, orientation: {w: 1.0}}}}"
+  # Retry rejected goals: Nav2 accepts connections before its servers are
+  # active, so a goal sent during bringup is rejected instead of queued.
+  for try in 1 2 3 4 5 6; do
+    out=$(ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
+      "{pose: {header: {frame_id: map}, pose: {position: {x: ${x}, y: ${y}, z: 0.0}, orientation: {w: 1.0}}}}" 2>&1)
+    echo "${out}" | grep -E "Goal accepted|Goal was rejected|Goal finished|status"
+    echo "${out}" | grep -q "Goal was rejected" || break
+    echo "=== goal ${i} rejected (try ${try}); retrying in 10s ==="
+    sleep 10
+  done
+  echo "${out}" | grep -q "Goal accepted" && ok=$((ok + 1))
 done
-echo "=== patrol complete: ${i} goals, robot back at the start ==="
+if [ "${ok}" -eq "${i}" ]; then
+  echo "=== patrol complete: ${i} goals, robot back at the start ==="
+else
+  echo "=== patrol INCOMPLETE: ${ok}/${i} goals accepted ==="
+  exit 1
+fi

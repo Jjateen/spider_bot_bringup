@@ -22,9 +22,9 @@ global + local costmaps, planned path, robot).
 Localization mode
 -----------------
 By default the demo runs in KNOWN-MAP mode (``slam:=false``): map_server serves
-the saved ``maps/obstacle_world.yaml`` (which covers the whole arena) and AMCL
-localizes against it. The global costmap is therefore fully populated from the
-static map, so a goal at world B is plannable and the A->B run is repeatable.
+the saved ``maps/obstacle_world.yaml`` and the global costmap's static layer
+feeds it to the planner, so obstacles are planned around from the first plan
+(not discovered at lidar range) and the A->B run is repeatable.
 
 Pass ``slam:=true`` to run live SLAM (slam_toolbox) instead. In SLAM mode the
 map only covers the area explored so far, so a goal far outside it may be
@@ -57,7 +57,7 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration
 
 
 def generate_launch_description():
@@ -82,27 +82,22 @@ def generate_launch_description():
             os.path.join(pkg, 'launch', 'bringup.launch.py')),
         launch_arguments={
             'slam': slam,              # default false: known-map mode
-            # Default 'ground_truth': static identity map->odom so Nav2 gets the
-            # true world pose and can steer the residual DART crab out via yaw.
-            # AMCL (localization:=amcl) is ambiguous in the symmetric 4-wall arena
-            # -- it converges to a wrong pose and falsely reports reaching B while
-            # the robot is metres short. Ground-truth isolates the locomotion demo
-            # from that arena ambiguity (the codebase's intended A->B default).
+            # ground_truth default: honest pose for the locomotion demo.
+            # AMCL works but the low lidar limits its observability (see
+            # localization.launch.py).
             'localization': localization,
-            'rviz': LaunchConfiguration('rviz'),  # open RViz (off for GIF capture)
-            'rviz_config': 'integration',  # map + lidar + costmaps + path + robot
+            'rviz': LaunchConfiguration('rviz'),
+            'rviz_config': LaunchConfiguration('rviz_config'),
             'use_sim_time': 'true',
         }.items(),
     )
 
     # Single-goal mode (patrol:=false, default): one NavigateToPose to B.
-    goal_yaml = PythonExpression([
-        "'{pose: {header: {frame_id: map}, pose: {position: {x: ' + '",
-        goal_x,
-        "' + ', y: ' + '",
-        goal_y,
-        "' + ', z: 0.0}, orientation: {w: 1.0}}}'"
-    ])
+    goal_yaml = [
+        '{pose: {header: {frame_id: map}, pose: {position: {x: ',
+        goal_x, ', y: ', goal_y,
+        ', z: 0.0}, orientation: {w: 1.0}}}}',
+    ]
     send_goal = TimerAction(
         period=goal_delay,
         actions=[
@@ -117,11 +112,12 @@ def generate_launch_description():
         condition=UnlessCondition(patrol),
     )
 
-    # Patrol mode (patrol:=true): a 4-leg corner tour -- visit B (NE), then the
-    # two new goals goal2 and goal3, then return to the start A. Four goals in
-    # sequence, each blocking until reached (send_patrol.sh chains ros2 action
-    # send_goal calls). Between goals the position-hold parks the robot on the
-    # waypoint.
+    # Patrol mode: 3-goal tour A -> NE -> NW -> A, each goal blocking until
+    # reached. The A->NE leg crosses the obstacle diagonal on purpose -- the
+    # patrol exists to exercise planning AROUND obstacles, not corridor
+    # walking (the single-goal demo covers that). Deliberately does NOT reuse
+    # the single-goal B: that would either break the tour or turn it into an
+    # obstacle-free perimeter walk.
     patrol_script = os.path.join(pkg, 'scripts', 'send_patrol.sh')
     send_patrol = TimerAction(
         period=goal_delay,
@@ -129,10 +125,9 @@ def generate_launch_description():
             ExecuteProcess(
                 cmd=[
                     'bash', patrol_script,
-                    PythonExpression([goal_x, "+','+", goal_y]),      # B
-                    PythonExpression([goal2_x, "+','+", goal2_y]),  # C
-                    PythonExpression([goal3_x, "+','+", goal3_y]),  # D
-                    PythonExpression([start_x, "+','+", start_y]),  # A
+                    [goal2_x, ',', goal2_y],    # NE, through the obstacle field
+                    [goal3_x, ',', goal3_y],    # NW
+                    [start_x, ',', start_y],    # A (back to the start)
                 ],
                 output='screen',
             ),
@@ -149,11 +144,16 @@ def generate_launch_description():
             'localization', default_value='ground_truth',
             description='known-map map->odom provider: ground_truth (static '
                         'identity, honest pose, the A->B default) or amcl '
-                        '(scan-match, ambiguous in the symmetric arena)'),
+                        '(scan-match; observability-limited by the low lidar)'),
         DeclareLaunchArgument(
             'rviz', default_value='true',
             description='Open RViz. Set false for headless GIF capture '
                         '(a clean-env RViz is recorded separately).'),
+        DeclareLaunchArgument(
+            'rviz_config', default_value='integration',
+            description='RViz config basename in config/rviz/. integration '
+                        '(whole-arena top-down) or patrol (close follow cam '
+                        'to see the gait while navigating).'),
         DeclareLaunchArgument(
             'goal_x', default_value='3.5',
             description='Goal B x (map frame, world-aligned in known-map). '
@@ -161,31 +161,31 @@ def generate_launch_description():
                         'East traverse of the clear bottom corridor.'),
         DeclareLaunchArgument(
             'goal_y', default_value='-3.5',
-            description='Goal B y in the map frame (world B = -3.5)'),
+            description='Goal B y in the map frame. Default matches the '
+                        'documented B=(3.5,-3.5); the old 3.5 default sent '
+                        'the single-goal demo into the walled-off diagonal.'),
         DeclareLaunchArgument(
             'goal_delay', default_value='20.0',
-            description='Seconds to wait for localization + Nav2 to activate '
-                        'before sending the goal. 20 (was 45): Nav2 is ready by '
-                        '~10 s, and the extra 25 s of idle let the gait slide ~0.8 '
-                        'm into the SW corner before nav even started -- so it '
-                        'began navigating already jammed against the walls.'),
+            description='Seconds to wait for Nav2 before sending the goal '
+                        '(45 let the idle gait slide into the SW corner).'),
         DeclareLaunchArgument(
             'patrol', default_value='false',
-            description='true: 4-leg patrol -- A->B->goal2->goal3->A (corner '
-                        'tour back to the start), each reached in sequence; '
-                        'false: the single A->B goal (default).'),
+            description='true: 3-goal patrol A->NE->NW->A whose first leg '
+                        'crosses the obstacle field (plans around boxes/'
+                        'pillars); false: the single A->B goal (default).'),
         DeclareLaunchArgument(
-            'goal2_x', default_value='-3.5',
-            description='Patrol 2nd goal x (map frame; default NW corner).'),
+            'goal2_x', default_value='3.5',
+            description='Patrol 1st goal x (map frame; default NE corner, '
+                        'reached through the obstacle diagonal).'),
         DeclareLaunchArgument(
             'goal2_y', default_value='3.5',
+            description='Patrol 1st goal y (map frame; default NE corner).'),
+        DeclareLaunchArgument(
+            'goal3_x', default_value='-3.5',
+            description='Patrol 2nd goal x (map frame; default NW corner).'),
+        DeclareLaunchArgument(
+            'goal3_y', default_value='3.5',
             description='Patrol 2nd goal y (map frame; default NW corner).'),
-        DeclareLaunchArgument(
-            'goal3_x', default_value='3.5',
-            description='Patrol 3rd goal x (map frame; default SE corner).'),
-        DeclareLaunchArgument(
-            'goal3_y', default_value='-3.5',
-            description='Patrol 3rd goal y (map frame; default SE corner).'),
         DeclareLaunchArgument(
             'start_x', default_value='-3.5',
             description='Patrol return point x (the spawn/start; world A).'),

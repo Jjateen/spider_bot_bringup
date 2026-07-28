@@ -1,17 +1,13 @@
-# Parameters for the Big Bertha policy controller (C++ ONNX gait node).
+# Big Bertha policy controller (C++ ONNX gait node).
 #
-# The trained policy contract (PLAN.md section 2):
-#   obs = 48 floats, action = 12 floats
-#   joint_target = action_scale * action + default_joint_pos
-# Joint ORDER MUST match the Isaac articulation order the policy trained on,
-# NOT numeric Revolute_110..121. Isaac/PhysX orders joints by tree depth (all
-# hips, then all knees, then all ankles), so obs[i]/action[i] index this order:
+# Trained contract (big_bertha_v1.1.0): obs = 52 floats, action = 12,
+# joint_target = action_scale * action + default_joint_pos.
+# Joint ORDER is Isaac tree-depth (hips, knees, ankles), NOT numeric:
 #   [110,113,116,119, 111,114,117,120, 112,115,118,121]
-#    \---- hips ----/  \--- knees ---/  \--- ankles --/
-# default_joint_pos is therefore [0]x4 (hips) [-0.32]x4 (knees) [1.82]x4 (ankles).
-# Feeding numeric order scrambles the obs and lands actions on wrong joints ->
-# the policy collapses the robot. The /joint_states->obs map is by NAME, so gz
-# publish order does not matter; only this list's order does.
+# Numeric order scrambles obs/actions and collapses the robot. The
+# /joint_states->obs map is by NAME; only this list's order matters.
+# Gait clock obs[48:52]: see observation_builder.hpp; must reproduce
+# big_bertha_env.py's _pre_physics_step/_get_observations exactly.
 /**:
   ros__parameters:
     # Absolute path is supplied by the launch file (package share /models).
@@ -21,73 +17,48 @@
     start_enabled: true
     cmd_vel_timeout: 0.5     # s; stale /cmd_vel -> command zeroed (safe stop)
     joint_limit: 3.14159     # rad; full ±180deg for MG995, raised from 1.57 to not clip training ankle default (2.00 rad)
-    # The node publishes 12 joint POSITION TARGETS; the effort-PD that emulates
-    # Isaac's ImplicitActuatorCfg now lives in JointEffortPdController (see
-    # big_bertha_description/config/ros2_control.yaml), where it runs
-    # synchronously in the controller_manager loop and reads q/qd with zero
-    # latency. Doing the PD in this node and shipping torque over a topic damps
-    # against stale velocity -> jitter; hence use_effort=false here.
+    # PD lives in JointEffortPdController (ros2_control.yaml): synchronous,
+    # zero-latency q/qd. PD here over a topic damps stale velocity -> jitter.
     use_effort: false        # publish position targets, controller does the PD
     pd_rate: 50.0            # Hz; timer/publish rate, matches control_rate_ since use_effort=false
     action_clip: 1.0         # raw policy action clamp (matches env)
-    # Command envelope sent to the policy (trained ranges). Yaw is widened from
-    # the old 0.15 so the heading-hold loop has real turn authority.
+    # Trained command envelope. max_yaw_rate must stay at heading_max (0.5):
+    # 0.35 was tested and FAILED (turn fell 0.279 -> 0.114 rad/s) -- the plant,
+    # not the command, is binding.
     max_lin_vel_x: 0.3
     max_lin_vel_y: 0.06
     max_yaw_rate: 0.5
-    # ---- Heading-hold outer loop: rejects the systematic PhysX->DART contact
-    # yaw drift in the deployment node (no retrain, no sim edit). It integrates
-    # Nav2's commanded yaw rate into a heading setpoint and feeds the policy a
-    # corrective yaw = wz + heading_kp*(desired_yaw - odom_yaw).
+    # Heading-hold: yaw = wz + heading_kp*(desired_yaw - odom_yaw); rejects the
+    # systematic DART contact yaw drift without retraining.
     heading_hold: true
-    heading_kp: 0.5          # P gain on the (weak) policy yaw command.
-                             # Reduced from 2.0 to avoid combined overshoot with
-                             # hip-bias steering and lateral yaw bias.
-    heading_max: 0.5         # final yaw command clamp (trained |yaw| <= 0.6)
+    heading_kp: 2.0          # P gain on the (weak) policy yaw command
+    heading_max: 0.5         # final yaw clamp = trained |yaw| <= 0.5
     heading_err_clamp: 0.4   # anti-windup: max setpoint lead/lag vs measured
     fwd_slow_err: 0.5        # |err| (rad) for forward throttle (off below)
     fwd_min_scale: 1.0       # 1.0 = no extra throttle; hip-steer does the trade
-    # Hip-bias steering: calibration showed a uniform NEGATIVE hip bias cancels
-    # the systematic right drift (b=-0.25 took yaw -0.086 -> +0.002), so all
-    # four signs are -1 and steer_cmd = steer_kp*heading_err drives it.
-    steer_kp: 1.2            # rad of hip bias per rad of heading error.
-                             # Reduced from 1.8 to lower combined loop gain.
-    steer_ki: 0.4            # integral: reduced from 0.8 to prevent windup overshoot
-    steer_max: 0.26          # max |hip bias| (b=-0.24 ~ fully cancels drift)
+    # Hip-bias steering: uniform negative bias cancels the right drift
+    # (calibrated: b=-0.25 took yaw -0.086 -> +0.002), hence all signs -1.
+    steer_kp: 1.8            # rad of hip bias per rad of heading error
+    steer_ki: 0.8            # removes the steady heading offset vs drift
+    steer_max: 0.26          # max |hip bias|
     steer_rate_limit: 0.01   # rad/step at 50 Hz (0.5 rad/s) — prevents sudden hip jerks
     hip_steer_sign: [-1.0, -1.0, -1.0, -1.0]
-    # Lateral-hold outer loop: closed-loop on the perpendicular offset from the
-    # line through the latched start pose along the heading setpoint. Commands
-    # the policy's lateral velocity vy = clamp(-lateral_kp*offset, +/-max_vy) to
-    # hold the LINE (not just the heading), bounding the residual DART crab the
-    # heading loop alone leaves. Re-latches while turning (|wz|>turn_thresh) so
-    # it only holds on straight segments and lets Nav2's vy pass through in turns.
+    # Lateral-hold: vy = clamp(-lateral_kp*line_offset); holds the LINE, not
+    # just the heading. A/B post armature fix: forward 1:1 (0.136 m/s), crab
+    # cut ~4x to ~0.005 m/s. Default ON.
     lateral_hold: true
     lateral_kp: 0.6
-    # Re-latch the line ONLY on a deliberate turn (raised 0.05->0.25): under Nav2
-    # the RegulatedPurePursuit controller streams small path-following wz, which
-    # at 0.05 kept resetting the lateral-hold reference every cycle so the loop
-    # never accumulated the correction for the systematic DART south-crab. 0.25
-    # ignores those corrections and only re-latches on a real commanded turn.
+    # Re-latch only on a deliberate turn (0.05 -> 0.25: RPP's small
+    # path-following wz kept resetting the reference every cycle).
     lateral_turn_thresh: 0.25
-    # Cross-track STEERING: convert the lateral line-offset into a heading-error
-    # bias so the strong hip-bias steering (not the weak, vy<=0.06-capped lateral
-    # command) pulls the robot back to the line. This is the real cure for the
-    # systematic DART south-crab -- it steers the gait's forward walk into the
-    # drift ("crab into the wind") and catches it before the robot pins on a wall.
-    lateral_yaw_kp: 0.2     # rad of heading bias per metre of lateral offset.
-                            # Reduced from 0.4 to lower combined loop aggressiveness
-                            # with heading_kp and steer_kp acting on the same error.
-    lateral_yaw_max: 0.3    # max |cross-track heading bias| (rad, ~17 deg)
-    # Gate the gait off below this forward command so the robot stands still
-    # when idle (the policy walks forward even at vx=0, so without this it
-    # free-drifts off the start before Nav2 sends the goal).
+    # Cross-track steering: line offset -> heading bias, so the strong hip-bias
+    # steering pulls back to the line.
+    lateral_yaw_kp: 0.4     # rad of heading bias per metre of offset
+    lateral_yaw_max: 0.3    # max |cross-track bias| (rad)
+    # Gate the gait below this vx (the policy walks even at vx=0).
     stand_vx_thresh: 0.02
-    # Station-keeping while gated/idle: the gated stance still slowly PIVOTS on
-    # DART's asymmetric contact (~15 deg before the goal arrives), so nav starts
-    # pointed at a wall. With this on, the heading is latched when the robot
-    # stops and the hip-steering holds it (no walking) instead of letting it
-    # creep. The forward gait stays gated either way.
+    # Hold the latched heading while gated/idle (contact creep pivots the
+    # stance ~15 deg otherwise).
     station_keep: true
     joint_names:
       - Revolute_110   # idx0  hip  leg4 (back-left)
@@ -104,5 +75,13 @@
       - Revolute_121   # idx11 ankle leg3 (back-right)
     default_joint_pos:
       [0.0, 0.0, 0.0, 0.0,
-        -0.32, -0.32, -0.32, -0.32,
-        2.00, 2.00, 2.00, 2.00]
+       -0.32, -0.32, -0.32, -0.32,
+       2.00, 2.00, 2.00, 2.00]
+    # Gait clock: must match big_bertha_env.py's wave-gait phase exactly.
+    gait_frequency: 0.667
+    turn_clock_boost: 0.8
+    speed_clock_boost: 1.1
+    # Trained cadence ceiling, NOT a tuning knob. Arc A/B, 2.9 vs 2.1:
+    # vx 0.104 -> 0.150 m/s (+44%), wz 0.016 -> 0.076 rad/s (4.7x).
+    gait_boost_max: 2.1
+    gait_offsets: [0.0, 0.5, 0.25, 0.75]   # legs 1/2/3/4 = arm_c_1_1..arm_c_4_1

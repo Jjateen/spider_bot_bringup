@@ -7,8 +7,9 @@ position targets to `gz_ros2_control`.
 ## Data flow
 
     /odom, /imu, /joint_states, /cmd_vel
-        -> 48-d observation (PLAN.md section 2)
-        -> policy.onnx (ONNX Runtime, input "obs"[1,48] -> output "actions"[1,12])
+        -> 52-d observation (48 state dims + 4 gait-clock sin dims;
+           see include/.../observation_builder.hpp for the exact layout)
+        -> policy.onnx (ONNX Runtime, input "obs"[1,52] -> output "actions"[1,12])
         -> joint_target = 0.25 * action + default_joint_pos  (clamped)
         -> /position_controller/commands  (std_msgs/Float64MultiArray, 12)
 
@@ -37,10 +38,9 @@ committed directly, **not** via Git LFS.
 
 ## Sim-transfer status
 
-The node is verified to load the policy, build the 48-d observation, run
-inference at 50 Hz, and produce correct topic/service I/O. The Isaac-Lab
-trained weights, however, do **not** transfer cleanly to Gazebo Harmonic: the
-raw action diverges (norm ~1e13) and the targets saturate at the joint clamp.
-The node guards against NaN/divergence (obs sanitization + target clamping) so
-the controller stays stable, but a Gazebo-side gait demo needs either a
-fine-tuned/retrained policy or a sim-to-sim adaptation. Tracked on issue #5.
+The v1.0.0 policy transfers to Gazebo Harmonic and walks 1:1 at the demo
+speed (0.136 vs Isaac 0.165 m/s at cmd 0.12) after the calf-armature
+emulation and mass corrections in big_bertha_description. Higher-speed
+tracking still trails Isaac (0.185 vs 0.273 m/s at cmd 0.30) -- a
+training-side issue documented in the training repo's HANDOFF_TRAINING.md.
+The node guards against NaN/divergence (obs sanitization + target clamping).

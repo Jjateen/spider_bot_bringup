@@ -120,13 +120,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 18
-      Pitch: 1.0
+      # Follow the robot up close so the gait (leg stepping) is visible while
+      # it navigates, instead of the whole-arena top-down overview.
+      Target Frame: base_link
+      Distance: 2.6
+      Pitch: 0.55
       Yaw: 0.785
       Focal Point:
         X: 0
         Y: 0
-        Z: 0
+        Z: 0.1
 Window Geometry:
   Height: 850
   Width: 1300

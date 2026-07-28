@@ -17,9 +17,16 @@ slam_toolbox:
     odom_frame: odom
     map_frame: map
     base_frame: base_link
+    # Filtered, not raw: the body-fixed lidar tilts with the gait and its floor
+    # strikes would otherwise be BAKED INTO the saved map, which AMCL then
+    # localizes against (AMCL and both costmaps already use /scan_filtered).
     scan_topic: /scan_filtered
     use_map_saver: true
     mode: mapping
+    # Anchor the map frame at the world spawn (demo point A) so a SLAM-built
+    # map is world-aligned: the same goal coordinates work in SLAM mode and
+    # when the saved map is reused in known-map mode (demo_slam_patrol.sh).
+    map_start_pose: [-3.5, -3.5, 0.0]
 
     # General
     debug_logging: false
