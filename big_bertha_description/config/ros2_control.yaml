@@ -29,10 +29,13 @@ position_controller:
     # cmd 0.12; 0.164 vs 0.145 at cmd 0.30) -- the headroom offsets DART's
     # contact losses. Not train/deploy drift.
     effort_limit: 1.18
-    # 0 disables the over-speed cutoff: it was a band-aid for the pre-armature
-    # calf resonance and CAPPED top speed (0.150 vs 0.185 m/s at cmd 0.3).
-    # Isaac has no such cutoff; the code stays gated on velocity_limit>0.
-    velocity_limit: 0.0
+    # Torque-speed curve matching training's DCMotor actuator: stall torque at
+    # zero speed falling linearly to zero at the no-load speed. The sim servo
+    # used to deliver full torque at any speed, which a policy trained against
+    # the real curve cannot exploit (measured: -18% top speed for such a
+    # policy). Set saturation_effort 0 to fall back to the old hard cutoff.
+    velocity_limit: 7.2      # rad/s no-load (MG995 @6.6V)
+    saturation_effort: 1.18  # N*m stall
     # ORDER = Isaac articulation order (hips, knees, ankles); numeric Revolute
     # order scrambles the command array. See policy.yaml.
     joints:

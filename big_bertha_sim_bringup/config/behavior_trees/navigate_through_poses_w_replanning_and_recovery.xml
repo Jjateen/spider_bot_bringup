@@ -41,9 +41,12 @@
               <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
               <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
             </Sequence>
-            <Spin spin_dist="1.57" error_code_id="{spin_error_code}"/>
+            <!-- Small spin: 1.57 rad at the crawl's ~0.27 rad/s overruns the
+                 behavior's own time allowance and always "fails". -->
+            <Spin spin_dist="0.6" error_code_id="{spin_error_code}"/>
             <Wait wait_duration="5.0"/>
-            <BackUp backup_dist="0.30" backup_speed="0.15" error_code_id="{backup_error_code}"/>
+            <!-- No BackUp: this gait has no reverse (allow_reversing false,
+                 policy clamps vx >= 0), so it could only ever fail. -->
           </RoundRobin>
         </ReactiveFallback>
       </Sequence>
