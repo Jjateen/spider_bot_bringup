@@ -304,6 +304,13 @@ static bool ak8963_init()
 // Result byte per candidate address 0x0C..0x0F; 0x48 = AK8963 answering.
 static uint8_t g_aux_probe[4] = {0, 0, 0, 0};
 
+// Every aux address that ACKed, and how many. A magnetometer need not be an
+// AK8963 at 0x0C: HMC5883L/QMC5883L sit at 0x1E/0x0D, LIS3MDL at 0x1C/0x1E,
+// BMM150 at 0x10..0x13. Sweeping only the AK8963 range would miss all of them
+// if bypass were also broken, so the whole bus gets swept.
+static uint8_t g_aux_found[4] = {0, 0, 0, 0};
+static int g_aux_found_count = 0;
+
 static void aux_bus_probe()
 {
   // Take the aux bus off bypass and hand it to the internal master.
@@ -314,15 +321,28 @@ static void aux_bus_probe()
   i2c_write_byte(MPU9250_ADDR, 0x24, 0x0D);          // I2C_MST_CTRL: 400 kHz aux
   delay(5);
 
-  for (uint8_t i = 0; i < 4; ++i) {
-    const uint8_t addr = 0x0C + i;
+  g_aux_found_count = 0;
+  for (uint8_t addr = 0x08; addr <= 0x77; ++addr) {
     i2c_write_byte(MPU9250_ADDR, 0x25, 0x80 | addr); // I2C_SLV0_ADDR, read bit
-    i2c_write_byte(MPU9250_ADDR, 0x26, 0x00);        // I2C_SLV0_REG = WIA
+    i2c_write_byte(MPU9250_ADDR, 0x26, 0x00);        // I2C_SLV0_REG
     i2c_write_byte(MPU9250_ADDR, 0x27, 0x81);        // I2C_SLV0_CTRL: enable, 1 byte
-    delay(20);                                        // let the master run a cycle
-    i2c_read_bytes(MPU9250_ADDR, 0x49, &g_aux_probe[i], 1);   // EXT_SENS_DATA_00
+    delay(6);                                         // several master cycles at 1 kHz
+
+    // I2C_MST_STATUS bit 0 I2C_SLV0_NACK: set when the addressed slave did not
+    // acknowledge. This is a real presence test — reading EXT_SENS_DATA only
+    // shows a stale byte when nothing is there. The register clears on read.
+    uint8_t st = 0xFF;
+    i2c_read_bytes(MPU9250_ADDR, 0x36, &st, 1);
+    if (!(st & 0x01) && g_aux_found_count < 4) {
+      g_aux_found[g_aux_found_count] = addr;
+    }
+    if (!(st & 0x01)) ++g_aux_found_count;
+
+    // Keep the AK8963-range identity bytes for reporting.
+    if (addr >= 0x0C && addr <= 0x0F) {
+      i2c_read_bytes(MPU9250_ADDR, 0x49, &g_aux_probe[addr - 0x0C], 1);
+    }
     i2c_write_byte(MPU9250_ADDR, 0x27, 0x00);        // disable slave 0
-    delay(5);
   }
 
   // Hand the bus back: master off, bypass on, so ak8963_read() still works if
@@ -652,7 +672,10 @@ void loop()
                   (int)g_mpu_whoami,
                   // aux-bus WIA readback for 0x0C..0x0F (0x48 = AK8963)
                   (int)g_aux_probe[0], (int)g_aux_probe[1],
-                  (int)g_aux_probe[2], (int)g_aux_probe[3]);
+                  (int)g_aux_probe[2], (int)g_aux_probe[3],
+                  // how many aux addresses ACKed across the full 0x08..0x77
+                  // sweep, and the first few of them
+                  g_aux_found_count, (int)g_aux_found[0], (int)g_aux_found[1]);
   }
 
   // LED blink codes (non-blocking)
