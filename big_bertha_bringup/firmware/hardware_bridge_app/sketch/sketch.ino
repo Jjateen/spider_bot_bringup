@@ -310,6 +310,30 @@ static uint8_t g_aux_probe[4] = {0, 0, 0, 0};
 // if bypass were also broken, so the whole bus gets swept.
 static uint8_t g_aux_found[4] = {0, 0, 0, 0};
 static int g_aux_found_count = 0;
+// Proof the sweep ran: successful I2C_MST_STATUS reads, and the OR of every
+// status byte. An empty bus is only meaningful if these show the master was
+// actually transacting and the slaves were NACKing.
+static int g_aux_status_reads_ok = 0;
+static uint8_t g_aux_status_or = 0x00;
+// Config registers the published scaling depends on.
+static uint8_t g_reg_accel_cfg = 0xFF, g_reg_accel_cfg2 = 0xFF;
+static uint8_t g_reg_gyro_cfg = 0xFF, g_reg_user_ctrl = 0xFF;
+static uint8_t g_reg_int_pin = 0xFF, g_reg_pwr1 = 0xFF, g_reg_pwr2 = 0xFF;
+
+static void read_config_registers()
+{
+  // Re-read WHO_AM_I here rather than trusting the copy taken during init:
+  // the aux-bus probe reconfigures USER_CTRL/INT_PIN_CFG in between, and this
+  // is the byte the whole part identification rests on.
+  i2c_read_bytes(MPU9250_ADDR, 0x75, &g_mpu_whoami, 1);
+  i2c_read_bytes(MPU9250_ADDR, 0x1C, &g_reg_accel_cfg, 1);
+  i2c_read_bytes(MPU9250_ADDR, 0x1D, &g_reg_accel_cfg2, 1);
+  i2c_read_bytes(MPU9250_ADDR, 0x1B, &g_reg_gyro_cfg, 1);
+  i2c_read_bytes(MPU9250_ADDR, 0x6A, &g_reg_user_ctrl, 1);
+  i2c_read_bytes(MPU9250_ADDR, 0x37, &g_reg_int_pin, 1);
+  i2c_read_bytes(MPU9250_ADDR, 0x6B, &g_reg_pwr1, 1);
+  i2c_read_bytes(MPU9250_ADDR, 0x6C, &g_reg_pwr2, 1);
+}
 
 static void aux_bus_probe()
 {
@@ -322,6 +346,8 @@ static void aux_bus_probe()
   delay(5);
 
   g_aux_found_count = 0;
+  g_aux_status_reads_ok = 0;
+  g_aux_status_or = 0x00;
   for (uint8_t addr = 0x08; addr <= 0x77; ++addr) {
     i2c_write_byte(MPU9250_ADDR, 0x25, 0x80 | addr); // I2C_SLV0_ADDR, read bit
     i2c_write_byte(MPU9250_ADDR, 0x26, 0x00);        // I2C_SLV0_REG
@@ -332,7 +358,12 @@ static void aux_bus_probe()
     // acknowledge. This is a real presence test — reading EXT_SENS_DATA only
     // shows a stale byte when nothing is there. The register clears on read.
     uint8_t st = 0xFF;
-    i2c_read_bytes(MPU9250_ADDR, 0x36, &st, 1);
+    if (i2c_read_bytes(MPU9250_ADDR, 0x36, &st, 1)) {
+      ++g_aux_status_reads_ok;
+      g_aux_status_or |= st;
+    } else {
+      st = 0x01;   // read failed: do NOT count the address as present
+    }
     if (!(st & 0x01) && g_aux_found_count < 4) {
       g_aux_found[g_aux_found_count] = addr;
     }
@@ -494,6 +525,7 @@ void setup()
   // Bypass found nothing -- confirm on the aux bus itself before
   // concluding the magnetometer is absent rather than unreachable.
   if (!g_mag_present) aux_bus_probe();
+  read_config_registers();
   g_ai_ok = pca9685_init() && pca9685_verify_init();
 
   // Initialize Bridge RPC.  If begin() fails, started=false and the
@@ -659,23 +691,43 @@ void loop()
       g_i2c_consecutive_fails = 0;
     }
 
+    // Back to the original 11 arguments. Bridge RPC drops arguments past a
+    // limit (~12, see the servo path at set_servo_pwms), and a dropped
+    // argument arrives on the Python side as its default — which for the IMU
+    // diagnostics is 0, i.e. indistinguishable from a real "nothing found".
+    // Everything added since goes out as one string instead, below.
     Bridge.notify("hw_status", g_i2c_scan, ai ? 1 : 0, g_servo_calls, g_ping_count,
                   g_pwm_write_attempts, g_pwm_write_fails, g_pwm_last_fail_ch,
                   g_pwm_last_fail_code, g_set_servo_last_len, g_set_servo_last_idx,
-                  g_pwm_readback_ch0,
-                  // Magnetometer health: present flag, the WIA identity byte
-                  // (0x48 = AK8963 answered) and whether the last read
-                  // overflowed. Reported so a zero field can be told apart
-                  // from an absent chip without reflashing.
-                  g_mag_present ? 1 : 0, (int)g_mag_wia, g_mag_overflow ? 1 : 0,
-                  // 0x71=MPU-9250, 0x73=MPU-9255, 0x70=MPU-6500 (no mag die)
-                  (int)g_mpu_whoami,
-                  // aux-bus WIA readback for 0x0C..0x0F (0x48 = AK8963)
-                  (int)g_aux_probe[0], (int)g_aux_probe[1],
-                  (int)g_aux_probe[2], (int)g_aux_probe[3],
-                  // how many aux addresses ACKed across the full 0x08..0x77
-                  // sweep, and the first few of them
-                  g_aux_found_count, (int)g_aux_found[0], (int)g_aux_found[1]);
+                  g_pwm_readback_ch0);
+
+    // IMU diagnostics as a single string: identity, magnetometer state, the
+    // aux-bus sweep AND proof the sweep actually ran, plus the config
+    // registers the accel/gyro scaling depends on. One argument, so nothing
+    // can be silently truncated.
+    String d = "whoami=0x" + String(g_mpu_whoami, HEX);
+    d += ",whoami_dec=" + String((int)g_mpu_whoami);
+    d += ",mag_present=" + String(g_mag_present ? 1 : 0);
+    d += ",mag_wia=0x" + String(g_mag_wia, HEX);
+    d += ",aux_n=" + String(g_aux_found_count);
+    d += ",aux0=0x" + String(g_aux_found[0], HEX);
+    // Proof of life for the sweep: how many I2C_MST_STATUS reads succeeded
+    // (should be 112) and the OR of every status byte seen. status_or bit 0
+    // set means slaves were genuinely NACKing; 0x00 with reads_ok 0 would
+    // mean the probe never ran and the empty result is meaningless.
+    d += ",st_ok=" + String(g_aux_status_reads_ok);
+    d += ",st_or=0x" + String(g_aux_status_or, HEX);
+    // Scaling registers: accel is decoded as +-2g (16384 LSB/g) and gyro as
+    // +-250 dps (131 LSB/dps). If ACCEL_CONFIG/GYRO_CONFIG are not 0x00 those
+    // divisors are wrong and every published value is mis-scaled.
+    d += ",accel_cfg=0x" + String(g_reg_accel_cfg, HEX);
+    d += ",accel_cfg2=0x" + String(g_reg_accel_cfg2, HEX);
+    d += ",gyro_cfg=0x" + String(g_reg_gyro_cfg, HEX);
+    d += ",user_ctrl=0x" + String(g_reg_user_ctrl, HEX);
+    d += ",int_pin=0x" + String(g_reg_int_pin, HEX);
+    d += ",pwr1=0x" + String(g_reg_pwr1, HEX);
+    d += ",pwr2=0x" + String(g_reg_pwr2, HEX);
+    Bridge.notify("imu_diag", d);
   }
 
   // LED blink codes (non-blocking)

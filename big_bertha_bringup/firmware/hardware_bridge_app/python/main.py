@@ -22,6 +22,7 @@ TCP_HOST = "0.0.0.0"
 cache = {
     "imu": None,         # most recent IMU reading
     "hw_status": None,   # most recent hardware health check
+    "imu_diag": None,    # IMU identity/magnetometer/aux-sweep, one string
     "i2c_scan": None,    # None = never scanned, [] = scanned but empty
     "servo_pwms": None,  # latest servo PWM targets, flushed from main thread
     "servo_diag": None,  # latest servo diagnostic report
@@ -109,6 +110,10 @@ def handle_imu_client(conn):
                     else:
                         conn.sendall(json.dumps({"error": "no imu data yet"}).encode() + b"\n")
 
+                elif cmd == "imu_diag":
+                    with cache_lock:
+                        d = cache["imu_diag"]
+                    conn.sendall(json.dumps({"imu_diag": d}).encode() + b"\n")
                 elif cmd == "status":
                     with cache_lock:
                         hw = cache["hw_status"]
@@ -203,15 +208,22 @@ def on_imu(ax, ay, az, gx, gy, gz, mx=0.0, my=0.0, mz=0.0, sample_id=None, times
         }
 
 
+def on_imu_diag(text):
+    """IMU diagnostics arrive as ONE string.
+
+    Bridge RPC silently drops arguments past ~12, and a dropped argument shows
+    up on this side as its default -- for these fields that is 0, which is
+    indistinguishable from a real "nothing detected". Sending one string keeps
+    the result honest. Same reason set_servo_pwms packs 12 values into a string.
+    """
+    with cache_lock:
+        cache["imu_diag"] = text
+
+
 def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0,
                  pwm_attempts=0, pwm_fails=0, pwm_last_fail_ch=-1,
                  pwm_last_fail_code=0, set_servo_last_len=0, set_servo_last_idx=0,
-                 pwm_readback_ch0=-1,
-                 # Defaulted so an MCU running older firmware (which sends 11
-                 # args) still populates the cache instead of raising.
-                 mag_present=0, mag_wia=0, mag_overflow=0, mpu_whoami=0,
-                 aux0=0, aux1=0, aux2=0, aux3=0,
-                 aux_found_count=0, aux_found0=0, aux_found1=0):
+                 pwm_readback_ch0=-1):
     with cache_lock:
         cache["hw_status"] = {
             "i2c_scan": scan,
@@ -227,16 +239,6 @@ def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0,
             "set_servo_last_len": set_servo_last_len,
             "set_servo_last_idx": set_servo_last_idx,
             "pwm_readback_ch0": pwm_readback_ch0,
-            "mag_present": bool(mag_present),
-            "mag_wia": int(mag_wia),        # 0x48 = AK8963 answered
-            "mag_overflow": bool(mag_overflow),
-            # 0x71=MPU-9250, 0x73=MPU-9255, 0x70=MPU-6500 (no magnetometer)
-            "mpu_whoami": int(mpu_whoami),
-            # WIA read back over the MPU I2C-master path for 0x0C..0x0F
-            "aux_probe": [int(aux0), int(aux1), int(aux2), int(aux3)],
-            # full 0x08..0x77 aux sweep using the SLV0 NACK bit
-            "aux_found_count": int(aux_found_count),
-            "aux_found": [int(aux_found0), int(aux_found1)],
         }
 
 
@@ -303,6 +305,7 @@ def main():
     Bridge.provide("imu", on_imu)
     print("[bridge] registered imu handler")
     Bridge.provide("hw_status", on_hw_status)
+    Bridge.provide("imu_diag", on_imu_diag)
     print("[bridge] registered hw_status handler")
     Bridge.provide("i2c_scan", on_i2c_scan)
     print("[bridge] registered i2c_scan handler")
