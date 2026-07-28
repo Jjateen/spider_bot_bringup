@@ -294,6 +294,45 @@ static bool ak8963_init()
   return true;
 }
 
+// Probe the AUXILIARY bus directly, driving it with the MPU's own I2C master
+// rather than bypassing it onto the main bus. Bypass and master mode are two
+// independent routes to the aux bus, and a device could in principle answer on
+// one but not the other (bypass MUX not routed on a given module, missing
+// pull-ups on ES_DA/ES_CL, and so on). Reading WIA back through EXT_SENS_DATA
+// closes that gap: if nothing answers here either, nothing is out there.
+//
+// Result byte per candidate address 0x0C..0x0F; 0x48 = AK8963 answering.
+static uint8_t g_aux_probe[4] = {0, 0, 0, 0};
+
+static void aux_bus_probe()
+{
+  // Take the aux bus off bypass and hand it to the internal master.
+  i2c_write_byte(MPU9250_ADDR, 0x37, 0x00);          // INT_PIN_CFG: BYPASS_EN off
+  delay(5);
+  i2c_write_byte(MPU9250_ADDR, 0x6A, 0x20);          // USER_CTRL: I2C_MST_EN on
+  delay(5);
+  i2c_write_byte(MPU9250_ADDR, 0x24, 0x0D);          // I2C_MST_CTRL: 400 kHz aux
+  delay(5);
+
+  for (uint8_t i = 0; i < 4; ++i) {
+    const uint8_t addr = 0x0C + i;
+    i2c_write_byte(MPU9250_ADDR, 0x25, 0x80 | addr); // I2C_SLV0_ADDR, read bit
+    i2c_write_byte(MPU9250_ADDR, 0x26, 0x00);        // I2C_SLV0_REG = WIA
+    i2c_write_byte(MPU9250_ADDR, 0x27, 0x81);        // I2C_SLV0_CTRL: enable, 1 byte
+    delay(20);                                        // let the master run a cycle
+    i2c_read_bytes(MPU9250_ADDR, 0x49, &g_aux_probe[i], 1);   // EXT_SENS_DATA_00
+    i2c_write_byte(MPU9250_ADDR, 0x27, 0x00);        // disable slave 0
+    delay(5);
+  }
+
+  // Hand the bus back: master off, bypass on, so ak8963_read() still works if
+  // anything did answer.
+  i2c_write_byte(MPU9250_ADDR, 0x6A, 0x00);
+  delay(5);
+  i2c_write_byte(MPU9250_ADDR, 0x37, 0x02);
+  delay(5);
+}
+
 static bool ak8963_read(float & mx, float & my, float & mz)
 {
   uint8_t st1 = 0;
@@ -432,6 +471,9 @@ void setup()
   // the field published as a hard zero. ak8963_init() now verifies WIA before
   // claiming the magnetometer exists, so this is safe to trust.
   g_mag_present = ak8963_init();
+  // Bypass found nothing -- confirm on the aux bus itself before
+  // concluding the magnetometer is absent rather than unreachable.
+  if (!g_mag_present) aux_bus_probe();
   g_ai_ok = pca9685_init() && pca9685_verify_init();
 
   // Initialize Bridge RPC.  If begin() fails, started=false and the
@@ -607,7 +649,10 @@ void loop()
                   // from an absent chip without reflashing.
                   g_mag_present ? 1 : 0, (int)g_mag_wia, g_mag_overflow ? 1 : 0,
                   // 0x71=MPU-9250, 0x73=MPU-9255, 0x70=MPU-6500 (no mag die)
-                  (int)g_mpu_whoami);
+                  (int)g_mpu_whoami,
+                  // aux-bus WIA readback for 0x0C..0x0F (0x48 = AK8963)
+                  (int)g_aux_probe[0], (int)g_aux_probe[1],
+                  (int)g_aux_probe[2], (int)g_aux_probe[3]);
   }
 
   // LED blink codes (non-blocking)

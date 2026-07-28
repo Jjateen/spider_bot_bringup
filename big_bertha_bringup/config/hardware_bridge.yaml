@@ -76,8 +76,14 @@
     # while that bit is set "pins ES_DA and ES_SCL are isolated from pins
     # SDA/SDI and SCL/SCLK" (RM-000008 s4.33) and the auxiliary bus is walled
     # off. Even so: AK8963 WIA reads 0 and a full 1..126 sweep sees only 0x40
-    # and 0x68. hw_status carries mag_present/mag_wia/mpu_whoami so none of
-    # this needs rediscovering.
+    # and 0x68.
+    #
+    # And bypass is not the only route, so its silence alone would not settle
+    # it: the firmware also drives the AUXILIARY bus directly with the MPU's
+    # own I2C master (I2C_SLV0_* -> EXT_SENS_DATA_00) and reads WIA back from
+    # 0x0C..0x0F. That returns [0, 0, 0, 0] — the aux bus is empty, not merely
+    # unreachable. hw_status carries mag_present/mag_wia/mpu_whoami/aux_probe
+    # so none of this needs rediscovering.
     #
     # These signs have therefore never seen real data. Note they also CANNOT be
     # correct as written if a genuine MPU-9250 is fitted: its AK8963 sits at
