@@ -180,12 +180,37 @@ static bool pca9685_verify_init()
 
 // ── MPU9250 IMU ───────────────────────────────────────────────────────
 
+// WHO_AM_I (0x75) read at init: 0x71 = MPU-9250, 0x73 = MPU-9255,
+// 0x70 = MPU-6500 (six axis, no magnetometer die at all). Reported in
+// hw_status so the part can be identified without a scope or a teardown.
+static uint8_t g_mpu_whoami = 0x00;
+
 static bool mpu9250_init()
 {
   Wire.beginTransmission(MPU9250_ADDR);
   if (Wire.endTransmission() != 0) return false;
-  i2c_write_byte(MPU9250_ADDR, 0x6B, 0x00);
+
+  // Full device reset first. The MPU keeps its register state for as long as
+  // it stays powered, and reflashing the MCU does not power-cycle it, so
+  // without this the chip can still be carrying configuration from whatever
+  // ran before -- including I2C_MST_EN, which hides the magnetometer.
+  i2c_write_byte(MPU9250_ADDR, 0x6B, 0x80);
   delay(100);
+  i2c_write_byte(MPU9250_ADDR, 0x6B, 0x00);   // wake, internal oscillator
+  delay(100);
+
+  i2c_read_bytes(MPU9250_ADDR, 0x75, &g_mpu_whoami, 1);
+
+  // USER_CTRL bit 5 I2C_MST_EN must be 0 or "pins ES_DA and ES_SCL are
+  // isolated from pins SDA/SDI and SCL/SCLK" (RM-000008 §4.33) -- the
+  // auxiliary bus carrying the magnetometer is cut off from the host, and
+  // BYPASS_EN is documented to work only "when the i2c master interface is
+  // disabled". Reset clears it; cleared explicitly so the requirement is
+  // visible rather than implied.
+  uint8_t user_ctrl = 0;
+  i2c_read_bytes(MPU9250_ADDR, 0x6A, &user_ctrl, 1);
+  i2c_write_byte(MPU9250_ADDR, 0x6A, user_ctrl & ~0x20);
+  delay(10);
   return true;
 }
 
@@ -231,6 +256,15 @@ static bool g_mag_overflow = false;   // last read tripped HOFL
 
 static bool ak8963_init()
 {
+  // Belt and braces: mpu9250_init() already reset the part and cleared
+  // I2C_MST_EN, but BYPASS_EN is a no-op while the master interface is on, so
+  // make the precondition explicit here too rather than depend on call order.
+  uint8_t user_ctrl = 0;
+  i2c_read_bytes(MPU9250_ADDR, 0x6A, &user_ctrl, 1);
+  if (user_ctrl & 0x20) {
+    i2c_write_byte(MPU9250_ADDR, 0x6A, user_ctrl & ~0x20);
+    delay(10);
+  }
   // INT_PIN_CFG: set BYPASS_EN (bit 1) so the AK8963 sits on the main bus.
   if (!i2c_write_byte(MPU9250_ADDR, 0x37, 0x02)) return false;
   delay(10);
@@ -571,7 +605,9 @@ void loop()
                   // (0x48 = AK8963 answered) and whether the last read
                   // overflowed. Reported so a zero field can be told apart
                   // from an absent chip without reflashing.
-                  g_mag_present ? 1 : 0, (int)g_mag_wia, g_mag_overflow ? 1 : 0);
+                  g_mag_present ? 1 : 0, (int)g_mag_wia, g_mag_overflow ? 1 : 0,
+                  // 0x71=MPU-9250, 0x73=MPU-9255, 0x70=MPU-6500 (no mag die)
+                  (int)g_mpu_whoami);
   }
 
   // LED blink codes (non-blocking)
