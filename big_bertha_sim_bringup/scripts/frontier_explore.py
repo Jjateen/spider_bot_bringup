@@ -36,17 +36,18 @@ import math
 import sys
 import time
 
+import rclpy
+import tf2_ros
+
 # frontier_lib sits next to this script (sys.path[0] when run directly); the
 # frontier maths lives there ROS-free so it can be unit-tested without ROS.
 from frontier_lib import find_frontiers
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.msg import OccupancyGrid
-import rclpy
 from rclpy.action import ActionClient
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-import tf2_ros
 
 
 class FrontierExplorer(Node):
@@ -81,7 +82,7 @@ class FrontierExplorer(Node):
             tf = self.tf_buffer.lookup_transform(
                 'map', 'base_link', rclpy.time.Time(),
                 timeout=Duration(seconds=1.0))
-        except Exception:
+        except tf2_ros.TransformException:
             return None
         return tf.transform.translation.x, tf.transform.translation.y
 
@@ -93,7 +94,7 @@ class FrontierExplorer(Node):
 
     def pick_goal(self, robot):
         """Nearest non-blacklisted frontier cluster, or None when done."""
-        clear_cells = int(round(self.args.goal_clearance / self.map.info.resolution))
+        clear_cells = round(self.args.goal_clearance / self.map.info.resolution)
         clusters = find_frontiers(
             self.map.data, self.map.info.width, self.map.info.height,
             self.args.min_frontier, clear_cells)
