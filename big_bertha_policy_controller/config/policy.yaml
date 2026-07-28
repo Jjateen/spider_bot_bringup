@@ -1,6 +1,6 @@
 # Big Bertha policy controller (C++ ONNX gait node).
 #
-# Trained contract (big_bertha_v1.0.0, PR #67): obs = 52 floats, action = 12,
+# Trained contract (big_bertha_v1.1.0): obs = 52 floats, action = 12,
 # joint_target = action_scale * action + default_joint_pos.
 # Joint ORDER is Isaac tree-depth (hips, knees, ankles), NOT numeric:
 #   [110,113,116,119, 111,114,117,120, 112,115,118,121]
