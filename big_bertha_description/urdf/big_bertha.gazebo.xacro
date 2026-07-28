@@ -3,8 +3,8 @@
   Gazebo Harmonic (gz-sim 8) sensor + surface configuration for Big Bertha.
 
   Provides:
-    - a 2D lidar (YDLidar X2 class) on ydlidar_link  -> gz topic "scan"
-    - an IMU (MPU9250 class) on imu_link           -> gz topic "imu"
+    - a 2D lidar (YDLidar X2 class) on lidar_link  -> gz topic "scan"
+    - an IMU (MPU6050 class) on imu_link           -> gz topic "imu"
     - per-link friction/material surface properties.
 
   The ros_gz_bridge (simulation module) maps these gz topics onto the ROS 2
@@ -110,13 +110,13 @@
   <xacro:bb_surface link="arm_c_4_1"  mu="1.5" soft="true"/>
 
   <!-- ============================ Lidar ============================== -->
-  <!-- YDLidar X2: 360 deg, ~8 m range, 5 Hz. Published on gz topic "scan",
-       frame_id = ydlidar_link. -->
-  <gazebo reference="ydlidar_link">
+  <!-- YDLidar X2: 360 deg, ~8 m range, 10 Hz in sim (hardware ~7 Hz). Published on gz topic "scan",
+       frame_id = lidar_link. -->
+  <gazebo reference="lidar_link">
     <material>Gazebo/DarkGrey</material>
     <sensor name="lidar" type="gpu_lidar">
       <topic>scan</topic>
-      <gz_frame_id>ydlidar_link</gz_frame_id>
+      <gz_frame_id>lidar_link</gz_frame_id>
       <update_rate>10</update_rate>
       <always_on>true</always_on>
       <visualize>true</visualize>
@@ -155,7 +155,7 @@
   </gazebo>
 
   <!-- ============================= IMU =============================== -->
-  <!-- MPU9250 class IMU on imu_link. Published on gz topic "imu",
+  <!-- MPU6050 class IMU on imu_link. Published on gz topic "imu",
        frame_id = imu_link. -->
   <gazebo reference="imu_link">
     <material>Gazebo/DarkGrey</material>
