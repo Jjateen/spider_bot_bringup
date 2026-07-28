@@ -1,0 +1,32 @@
+# ORDER MUST match the policy controller's Isaac articulation order (all hips, then
+# all knees, then all ankles), NOT numeric Revolute_110..121. The policy publishes
+# 12 position targets indexed in Isaac group order; the leg odometry subscribes
+# to the same topic and publishes /joint_states with matching names so the policy
+# reads back correct joint_pos - default_joint_pos in its observation. See
+# big_bertha_policy_controller/config/policy.yaml.
+/**:
+  ros__parameters:
+    joint_names:
+      - "Revolute_110"   # hip leg4 (back-left)
+      - "Revolute_113"   # hip leg1 (front-left)
+      - "Revolute_116"   # hip leg2 (front-right)
+      - "Revolute_119"   # hip leg3 (back-right)
+      - "Revolute_111"   # knee leg4 (back-left)
+      - "Revolute_114"   # knee leg1 (front-left)
+      - "Revolute_117"   # knee leg2 (front-right)
+      - "Revolute_120"   # knee leg3 (back-right)
+      - "Revolute_112"   # ankle leg4 (back-left)
+      - "Revolute_115"   # ankle leg1 (front-left)
+      - "Revolute_118"   # ankle leg2 (front-right)
+      - "Revolute_121"   # ankle leg3 (back-right)
+    default_joint_pos:
+      [0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 2.00, 2.00, 2.00, 2.00]
+    odom_frame: "odom"
+    base_frame: "base_link"
+    publish_tf: true
+    velocity_source: "imu_dead_reckon"
+    drift_damping: 0.98
+    # Servo dynamics model: EWMA time constant (seconds) matching MG995 response.
+    # tau=0.06 limits filtered position rate to ~6.5 rad/s (servo's max speed),
+    # preventing the positive-feedback loop from synthetic joint states.
+    servo_tau: 0.06
