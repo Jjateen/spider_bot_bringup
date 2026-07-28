@@ -314,6 +314,13 @@ static int g_aux_found_count = 0;
 // status byte. An empty bus is only meaningful if these show the master was
 // actually transacting and the slaves were NACKing.
 static int g_aux_status_reads_ok = 0;
+static int g_aux_found_slow = -1;   // second pass at 258 kHz
+// Per-pass health. A pass is only believable if it observed at least one NACK
+// (st_or bit 0): that proves the master actually drove a transaction. A pass
+// reporting almost every address as present has instead driven NOTHING -- the
+// NACK bit simply never set -- and must be discarded, not read as a full bus.
+static int g_aux_fast_stok = 0, g_aux_slow_stok = 0;
+static uint8_t g_aux_fast_stor = 0, g_aux_slow_stor = 0;
 static uint8_t g_aux_status_or = 0x00;
 // Config registers the published scaling depends on.
 static uint8_t g_reg_accel_cfg = 0xFF, g_reg_accel_cfg2 = 0xFF;
@@ -335,6 +342,11 @@ static void read_config_registers()
   i2c_read_bytes(MPU9250_ADDR, 0x6C, &g_reg_pwr2, 1);
 }
 
+// I2C_MST_CLK[3:0]: 13 = 400 kHz, 8 = 258 kHz (the slowest this part offers).
+// If the module lacks external pull-ups on ES_DA/ES_CL the bus relies on weak
+// internal ones, where the faster clock can fail to reach a valid level.
+static bool g_aux_slow = false;
+
 static void aux_bus_probe()
 {
   // Take the aux bus off bypass and hand it to the internal master.
@@ -342,7 +354,7 @@ static void aux_bus_probe()
   delay(5);
   i2c_write_byte(MPU9250_ADDR, 0x6A, 0x20);          // USER_CTRL: I2C_MST_EN on
   delay(5);
-  i2c_write_byte(MPU9250_ADDR, 0x24, 0x0D);          // I2C_MST_CTRL: 400 kHz aux
+  i2c_write_byte(MPU9250_ADDR, 0x24, g_aux_slow ? 0x08 : 0x0D);   // 258 or 400 kHz
   delay(5);
 
   g_aux_found_count = 0;
@@ -524,7 +536,22 @@ void setup()
   g_mag_present = ak8963_init();
   // Bypass found nothing -- confirm on the aux bus itself before
   // concluding the magnetometer is absent rather than unreachable.
-  if (!g_mag_present) aux_bus_probe();
+  if (!g_mag_present) {
+    g_aux_slow = false;
+    aux_bus_probe();
+    // Retry the whole sweep at the slower aux clock before believing an empty
+    // bus -- a marginal rise time would look exactly like an absent device.
+    const int fast_hits = g_aux_found_count;
+    g_aux_fast_stok = g_aux_status_reads_ok;
+    g_aux_fast_stor = g_aux_status_or;
+    g_aux_slow = true;
+    aux_bus_probe();
+    g_aux_found_slow = g_aux_found_count;
+    g_aux_slow_stok = g_aux_status_reads_ok;
+    g_aux_slow_stor = g_aux_status_or;
+    g_aux_found_count = fast_hits;
+    g_aux_slow = false;
+  }
   read_config_registers();
   g_ai_ok = pca9685_init() && pca9685_verify_init();
 
@@ -717,6 +744,11 @@ void loop()
     // mean the probe never ran and the empty result is meaningless.
     d += ",st_ok=" + String(g_aux_status_reads_ok);
     d += ",st_or=0x" + String(g_aux_status_or, HEX);
+    d += ",aux_n_slow=" + String(g_aux_found_slow);
+    d += ",fast_stok=" + String(g_aux_fast_stok);
+    d += ",fast_stor=0x" + String(g_aux_fast_stor, HEX);
+    d += ",slow_stok=" + String(g_aux_slow_stok);
+    d += ",slow_stor=0x" + String(g_aux_slow_stor, HEX);
     // Scaling registers: accel is decoded as +-2g (16384 LSB/g) and gyro as
     // +-250 dps (131 LSB/dps). If ACCEL_CONFIG/GYRO_CONFIG are not 0x00 those
     // divisors are wrong and every published value is mis-scaled.
