@@ -51,7 +51,8 @@ public:
       imu_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LeggedOdometryNode::on_imu, this, std::placeholders::_1));
 
-    joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(1));
+    joint_state_pub_ =
+      create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(1));
     odom_pub_ = create_publisher<nav_msgs::msg::Odometry>("/odom", rclcpp::QoS(1));
 
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
@@ -266,12 +267,11 @@ private:
   // are only used if the parameter declaration fails. Must match Isaac group
   // order (all hips, all knees, all ankles) to agree with policy_controller_node.
   inline static const std::vector<std::string> kDefaultJointNames{
-    "Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119",
-    "Revolute_111", "Revolute_114", "Revolute_117", "Revolute_120",
-    "Revolute_112", "Revolute_115", "Revolute_118", "Revolute_121"};
+    "Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119", "Revolute_111", "Revolute_114",
+    "Revolute_117", "Revolute_120", "Revolute_112", "Revolute_115", "Revolute_118", "Revolute_121"};
 
-  inline static const std::vector<double> kDefaultJointPos{
-    0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 2.00, 2.00, 2.00, 2.00};
+  inline static const std::vector<double> kDefaultJointPos{0.0,   0.0,   0.0,  0.0,  -0.32, -0.32,
+                                                           -0.32, -0.32, 2.00, 2.00, 2.00,  2.00};
 
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
