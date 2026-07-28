@@ -1,0 +1,117 @@
+<?xml version="1.0" ?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="leg" params="prefix side
+    arm_a_vis_xyz arm_a_vis_rpy
+    arm_a_servo_xyz arm_a_servo_rpy
+    arm_a_inertial_origin arm_a_ixx arm_a_ixy arm_a_ixz arm_a_iyy arm_a_iyz arm_a_izz
+    arm_c_vis_xyz arm_c_vis_rpy
+    arm_c_servo_xyz arm_c_servo_rpy
+    arm_c_inertial_origin arm_c_ixx arm_c_ixy arm_c_ixz arm_c_iyy arm_c_iyz arm_c_izz
+    arm_b_vis_xyz arm_b_vis_rpy
+    arm_b_inertial_origin arm_b_ixx arm_b_ixy arm_b_ixz arm_b_iyy arm_b_iyz arm_b_izz
+    joint_hip_name joint_hip_xyz joint_hip_rpy
+    joint_knee_name joint_knee_xyz joint_knee_rpy
+    joint_ankle_name joint_ankle_xyz joint_ankle_rpy">
+
+    <!-- arm_a -->
+    <link name="arm_a_${prefix}">
+      <visual>
+        <origin xyz="${arm_a_vis_xyz}" rpy="${arm_a_vis_rpy}"/>
+        <geometry><mesh filename="${mesh_pkg}/arm_a_${side}.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="${arm_a_vis_xyz}" rpy="${arm_a_vis_rpy}"/>
+        <geometry><mesh filename="${mesh_pkg}/arm_a_${side}.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+      <visual>
+        <origin xyz="${arm_a_servo_xyz}" rpy="${arm_a_servo_rpy}"/>
+        <geometry><mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="${arm_a_servo_xyz}" rpy="${arm_a_servo_rpy}"/>
+        <geometry><mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="0.061703"/>
+        <origin xyz="${arm_a_inertial_origin}" rpy="0 0 0"/>
+        <inertia ixx="${arm_a_ixx}" ixy="${arm_a_ixy}" ixz="${arm_a_ixz}" iyy="${arm_a_iyy}" iyz="${arm_a_iyz}" izz="${arm_a_izz}"/>
+      </inertial>
+    </link>
+
+    <!-- arm_c -->
+    <link name="arm_c_${prefix}">
+      <visual>
+        <origin xyz="${arm_c_vis_xyz}" rpy="${arm_c_vis_rpy}"/>
+        <geometry><mesh filename="${mesh_pkg}/arm_c_${side}.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="${arm_c_vis_xyz}" rpy="${arm_c_vis_rpy}"/>
+        <geometry><mesh filename="${mesh_pkg}/arm_c_${side}.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+      <visual>
+        <origin xyz="${arm_c_servo_xyz}" rpy="${arm_c_servo_rpy}"/>
+        <geometry><mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="${arm_c_servo_xyz}" rpy="${arm_c_servo_rpy}"/>
+        <geometry><mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="0.063687"/>
+        <origin xyz="${arm_c_inertial_origin}" rpy="0 0 0"/>
+        <inertia ixx="${arm_c_ixx}" ixy="${arm_c_ixy}" ixz="${arm_c_ixz}" iyy="${arm_c_iyy}" iyz="${arm_c_iyz}" izz="${arm_c_izz}"/>
+      </inertial>
+    </link>
+
+    <!-- arm_b -->
+    <link name="arm_b_${prefix}">
+      <visual>
+        <origin xyz="${arm_b_vis_xyz}" rpy="${arm_b_vis_rpy}"/>
+        <geometry><mesh filename="${mesh_pkg}/arm_b.stl" scale="0.001 0.001 0.001"/></geometry>
+        <material name="silver"/>
+      </visual>
+      <collision>
+        <origin xyz="${arm_b_vis_xyz}" rpy="${arm_b_vis_rpy}"/>
+        <geometry><mesh filename="${mesh_pkg}/arm_b.stl" scale="0.001 0.001 0.001"/></geometry>
+      </collision>
+      <inertial>
+        <mass value="0.008137"/>
+        <origin xyz="${arm_b_inertial_origin}" rpy="0 0 0"/>
+        <inertia ixx="${arm_b_ixx}" ixy="${arm_b_ixy}" ixz="${arm_b_ixz}" iyy="${arm_b_iyy}" iyz="${arm_b_iyz}" izz="${arm_b_izz}"/>
+      </inertial>
+    </link>
+
+    <!-- Hip joint -->
+    <joint name="${joint_hip_name}" type="revolute">
+      <origin xyz="${joint_hip_xyz}" rpy="${joint_hip_rpy}"/>
+      <parent link="base_link"/>
+      <child link="arm_a_${prefix}"/>
+      <axis xyz="0 1.0 0"/>
+      <limit lower="-1.57" upper="1.57" effort="1.0" velocity="6.28"/>
+    </joint>
+
+    <!-- Knee joint -->
+    <joint name="${joint_knee_name}" type="revolute">
+      <origin xyz="${joint_knee_xyz}" rpy="${joint_knee_rpy}"/>
+      <parent link="arm_a_${prefix}"/>
+      <child link="arm_b_${prefix}"/>
+      <axis xyz="0 1.0 0"/>
+      <limit lower="-1.57" upper="0.96" effort="1.0" velocity="6.28"/>
+    </joint>
+
+    <!-- Ankle joint -->
+    <joint name="${joint_ankle_name}" type="revolute">
+      <origin xyz="${joint_ankle_xyz}" rpy="${joint_ankle_rpy}"/>
+      <parent link="arm_b_${prefix}"/>
+      <child link="arm_c_${prefix}"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="0" upper="2.355" effort="1.0" velocity="6.28"/>
+    </joint>
+  </xacro:macro>
+
+</robot>
