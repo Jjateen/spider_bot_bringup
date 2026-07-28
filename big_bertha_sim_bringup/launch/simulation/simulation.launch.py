@@ -34,11 +34,9 @@ spawn_controllers  Load the ros2_control spawners (default: ``true``).
 import os
 
 from ament_index_python.packages import get_package_share_directory
-
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
-    GroupAction,
     IncludeLaunchDescription,
     RegisterEventHandler,
     SetEnvironmentVariable,
@@ -47,7 +45,6 @@ from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-
 from launch_ros.actions import Node
 
 
@@ -180,21 +177,12 @@ def generate_launch_description():
     )
 
     # Order the controllers after the robot is spawned (controller_manager
-    # only exists once gz_ros2_control loads with the model). The event
-    # handlers are only registered when spawn_controllers is true, so the
-    # chain doesn't break when spawn_controllers is false.
-    controller_events = GroupAction(
-        [
-            RegisterEventHandler(
-                OnProcessExit(
-                    target_action=spawn_robot, on_exit=[jsb_spawner])
-            ),
-            RegisterEventHandler(
-                OnProcessExit(
-                    target_action=jsb_spawner, on_exit=[position_spawner])
-            ),
-        ],
-        condition=IfCondition(spawn_controllers),
+    # only exists once gz_ros2_control loads with the model).
+    load_jsb_after_spawn = RegisterEventHandler(
+        OnProcessExit(target_action=spawn_robot, on_exit=[jsb_spawner])
+    )
+    load_position_after_jsb = RegisterEventHandler(
+        OnProcessExit(target_action=jsb_spawner, on_exit=[position_spawner])
     )
 
     return LaunchDescription([
@@ -225,5 +213,6 @@ def generate_launch_description():
         bridge,
         cmd_vel_bridge,
         spawn_robot,
-        controller_events,
+        load_jsb_after_spawn,
+        load_position_after_jsb,
     ])

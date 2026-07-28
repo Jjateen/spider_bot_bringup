@@ -21,7 +21,6 @@ Opens RViz2 with one of the in-package configs under ``config/rviz/``:
 * ``mapping``     live ``/map`` + SLAM pose graph + scan (map frame).
 * ``planning``    costmaps + global/local plan + goal + footprint (map frame).
 * ``integration`` combined view for the full A->B demo.
-* ``straight``    simplified straight-line locomotion test view (odom frame).
 
 Launch arguments
 ----------------
@@ -37,7 +36,6 @@ from launch.substitutions import (
     PathJoinSubstitution,
     TextSubstitution,
 )
-
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 

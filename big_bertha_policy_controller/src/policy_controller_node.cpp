@@ -78,15 +78,9 @@ public:
     shaper_.steer_kp = declare_parameter<double>("steer_kp", 0.6);
     shaper_.steer_ki = declare_parameter<double>("steer_ki", 0.5);
     shaper_.steer_max = declare_parameter<double>("steer_max", 0.25);
-    steer_rate_limit_ = declare_parameter<double>("steer_rate_limit", 0.01);
     hip_steer_sign_ =
       declare_parameter<std::vector<double>>("hip_steer_sign", {1.0, 1.0, 1.0, 1.0});
-    if (hip_steer_sign_.size() != 4) {
-      RCLCPP_WARN(
-        get_logger(), "'hip_steer_sign' has %zu entries, expected 4; using defaults",
-        hip_steer_sign_.size());
-      hip_steer_sign_ = {1.0, 1.0, 1.0, 1.0};
-    }
+    hip_steer_sign_.resize(4, 0.0);
     // Gait gates off below these thresholds (the policy cannot stand still on
     // its own). stand_yaw must stay under the trained turn-in-place floor
     // (|yaw| in [0.15, 0.4]) or pure-yaw commands would never reach the policy.
@@ -101,28 +95,31 @@ public:
     shaper_.lateral_turn_thresh = declare_parameter<double>("lateral_turn_thresh", 0.05);
     shaper_.lateral_yaw_kp = declare_parameter<double>("lateral_yaw_kp", 0.6);
     shaper_.lateral_yaw_max = declare_parameter<double>("lateral_yaw_max", 0.4);
-    // In-node effort-PD is UNUSED in the shipped path: JointEffortPdController
-    // does the PD and reads this topic as POSITION targets.
+    // In-node effort-PD (tau = kp*(q_des - q) - kd*qd) is UNUSED in the
+    // shipped path: JointEffortPdController does the PD and reads this topic
+    // as POSITION targets, so use_effort=true would feed it torques as
+    // positions. Default false to match the wiring; kp/kd/effort_limit below
+    // only matter if use_effort is deliberately re-enabled.
     use_effort_ = declare_parameter<bool>("use_effort", false);
     kp_ = declare_parameter<double>("kp", 20.0);
     kd_ = declare_parameter<double>("kd", 2.0);
     effort_limit_ = declare_parameter<double>("effort_limit", 1.0);
-    // PD timer equals control_rate_ since use_effort=false -- JointEffortPdController
-    // does the PD in the controller_manager loop. Policy runs every tick at 50 Hz.
-    pd_rate_ = declare_parameter<double>("pd_rate", 50.0);
+    // PD runs at pd_rate_ (200 Hz), policy decimated to control_rate_ (50 Hz,
+    // matching training). PD at 50 Hz under-damps -> in-place jitter.
+    pd_rate_ = declare_parameter<double>("pd_rate", 200.0);
     warmup_sec_ = declare_parameter<double>("warmup_sec", 3.0);
     policy_decimation_ = std::max(1, static_cast<int>(std::round(pd_rate_ / control_rate_)));
     joint_names_ = declare_parameter<std::vector<std::string>>(
-      "joint_names", {"Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119",
-                      "Revolute_111", "Revolute_114", "Revolute_117", "Revolute_120",
-                      "Revolute_112", "Revolute_115", "Revolute_118", "Revolute_121"});
+      "joint_names", {"Revolute_110", "Revolute_111", "Revolute_112", "Revolute_113",
+                      "Revolute_114", "Revolute_115", "Revolute_116", "Revolute_117",
+                      "Revolute_118", "Revolute_119", "Revolute_120", "Revolute_121"});
     auto default_pose = declare_parameter<std::vector<double>>(
       "default_joint_pos",
       {0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 2.00, 2.00, 2.00, 2.00});
 
     for (int i = 0; i < bbpc::kNumJoints && i < static_cast<int>(default_pose.size()); ++i) {
       obs_.default_joint_pos[i] = default_pose[i];
-      obs_.joint_pos[i] = default_pose[i];
+      target_pos_[i] = default_pose[i];
     }
     for (size_t i = 0; i < joint_names_.size(); ++i) {
       joint_index_[joint_names_[i]] = static_cast<int>(i);
@@ -150,11 +147,10 @@ public:
     status_pub_ = create_publisher<spider_msgs::msg::PolicyStatus>("policy_status", rclcpp::QoS(1));
 
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-      "/odom", rclcpp::QoS(1),
+      "/odom", rclcpp::SensorDataQoS(),
       std::bind(&PolicyControllerNode::on_odom, this, std::placeholders::_1));
-    imu_topic_ = declare_parameter<std::string>("imu_topic", "/imu");
     imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-      imu_topic_, rclcpp::SensorDataQoS(),
+      "/imu", rclcpp::SensorDataQoS(),
       std::bind(&PolicyControllerNode::on_imu, this, std::placeholders::_1));
     joint_sub_ = create_subscription<sensor_msgs::msg::JointState>(
       "/joint_states", rclcpp::SensorDataQoS(),
@@ -493,7 +489,6 @@ private:
   double current_y_{0.0};
   double current_yaw_{0.0};
   bool have_odom_yaw_{false};
-  double steer_rate_limit_{0.01};
   std::vector<double> hip_steer_sign_{1.0, 1.0, 1.0, 1.0};
   std::array<double, 4> debug_hip_bias_{};
   double stand_yaw_thresh_{0.05};
@@ -503,7 +498,6 @@ private:
   rclcpp::Publisher<spider_msgs::msg::PolicyStatus>::SharedPtr status_pub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
-  std::string imu_topic_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hip_bias_sub_;

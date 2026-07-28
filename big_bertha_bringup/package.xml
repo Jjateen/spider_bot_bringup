@@ -5,24 +5,17 @@
   <version>0.1.0</version>
   <description>
     Hardware bringup for the physical Big Bertha quadruped (Arduino UNO Q,
-    MG995 servos, YDLidar X2, MPU9250). Contains the TCP bridge ROS 2 node
-    (hardware_bridge_node) and the UNO Q firmware app (sketch + Python relay)
-    that drives the PCA9685 servo controller and reads the MPU9250 IMU.
-    The autonomy stack (state_estimation, mapping, localization, planning) is
-    hardware-agnostic and reused with use_sim_time:=false; only the sensor
-    drivers and the servo bridge replace the simulation layer.
+    MG995 servos, YDLidar X2, MPU6050). Empty stub for now: the README
+    documents the real BOM (see PLAN.md sec 11) so the hardware bringup mirrors
+    the sim modules. The autonomy stack (state_estimation, mapping,
+    localization, planning) is hardware-agnostic and reused with
+    use_sim_time:=false; only the sensor drivers and the servo bridge replace
+    the simulation layer.
   </description>
   <maintainer email="jjateen97@gmail.com">Jjateen Gundesha</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
-
-  <depend>rclcpp</depend>
-  <depend>std_msgs</depend>
-  <depend>sensor_msgs</depend>
-
-  <exec_depend>rclpy</exec_depend>
-  <exec_depend>imu_filter_madgwick</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

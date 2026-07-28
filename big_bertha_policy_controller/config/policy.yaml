@@ -16,11 +16,11 @@
     control_rate: 50.0       # Hz
     start_enabled: true
     cmd_vel_timeout: 0.5     # s; stale /cmd_vel -> command zeroed (safe stop)
-    joint_limit: 3.14159     # rad; full ±180deg for MG995, raised from 1.57 to not clip training ankle default (2.00 rad)
+    joint_limit: 2.355      # rad; calf upper limit is the binding one
     # PD lives in JointEffortPdController (ros2_control.yaml): synchronous,
     # zero-latency q/qd. PD here over a topic damps stale velocity -> jitter.
     use_effort: false        # publish position targets, controller does the PD
-    pd_rate: 50.0            # Hz; timer/publish rate, matches control_rate_ since use_effort=false
+    pd_rate: 200.0           # Hz; target publish rate (policy decimated to 50)
     action_clip: 1.0         # raw policy action clamp (matches env)
     # Trained command envelope. max_yaw_rate must stay at heading_max (0.5):
     # 0.35 was tested and FAILED (turn fell 0.279 -> 0.114 rad/s) -- the plant,
@@ -41,7 +41,6 @@
     steer_kp: 1.8            # rad of hip bias per rad of heading error
     steer_ki: 0.8            # removes the steady heading offset vs drift
     steer_max: 0.26          # max |hip bias|
-    steer_rate_limit: 0.01   # rad/step at 50 Hz (0.5 rad/s) — prevents sudden hip jerks
     hip_steer_sign: [-1.0, -1.0, -1.0, -1.0]
     # Lateral-hold: vy = clamp(-lateral_kp*line_offset); holds the LINE, not
     # just the heading. A/B post armature fix: forward 1:1 (0.136 m/s), crab
@@ -52,7 +51,7 @@
     # path-following wz kept resetting the reference every cycle).
     lateral_turn_thresh: 0.25
     # Cross-track steering: line offset -> heading bias, so the strong hip-bias
-    # steering pulls back to the line.
+    # steering pulls back to the line. kp 0.6 over-steered into obstacles.
     lateral_yaw_kp: 0.4     # rad of heading bias per metre of offset
     lateral_yaw_max: 0.3    # max |cross-track bias| (rad)
     # Gate the gait below this vx (the policy walks even at vx=0).
@@ -61,18 +60,18 @@
     # stance ~15 deg otherwise).
     station_keep: true
     joint_names:
-      - Revolute_110   # idx0  hip  leg4 (back-left)
-      - Revolute_113   # idx1  hip  leg1 (front-left)
-      - Revolute_116   # idx2  hip  leg2 (front-right)
-      - Revolute_119   # idx3  hip  leg3 (back-right)
-      - Revolute_111   # idx4  knee leg4 (back-left)
-      - Revolute_114   # idx5  knee leg1 (front-left)
-      - Revolute_117   # idx6  knee leg2 (front-right)
-      - Revolute_120   # idx7  knee leg3 (back-right)
-      - Revolute_112   # idx8  ankle leg4 (back-left)
-      - Revolute_115   # idx9  ankle leg1 (front-left)
-      - Revolute_118   # idx10 ankle leg2 (front-right)
-      - Revolute_121   # idx11 ankle leg3 (back-right)
+      - Revolute_110   # idx0  hip  leg1
+      - Revolute_113   # idx1  hip  leg2
+      - Revolute_116   # idx2  hip  leg3
+      - Revolute_119   # idx3  hip  leg4
+      - Revolute_111   # idx4  knee leg1
+      - Revolute_114   # idx5  knee leg2
+      - Revolute_117   # idx6  knee leg3
+      - Revolute_120   # idx7  knee leg4
+      - Revolute_112   # idx8  ankle leg1
+      - Revolute_115   # idx9  ankle leg2
+      - Revolute_118   # idx10 ankle leg3
+      - Revolute_121   # idx11 ankle leg4
     default_joint_pos:
       [0.0, 0.0, 0.0, 0.0,
        -0.32, -0.32, -0.32, -0.32,

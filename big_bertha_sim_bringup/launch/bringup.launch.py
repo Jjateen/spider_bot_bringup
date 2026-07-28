@@ -49,7 +49,6 @@ x, y, z, yaw   Spawn pose (demo point A). Defaults: ``-3.5 -3.5 0.12 0.0``
 import os
 
 from ament_index_python.packages import get_package_share_directory
-
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
@@ -59,7 +58,6 @@ from launch.actions import (
 from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
-
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -136,7 +134,8 @@ def generate_launch_description():
     localization = include(
         os.path.join('localization', 'localization.launch.py'),
         {'use_sim_time': use_sim_time, 'map': map_yaml,
-         'localization': LaunchConfiguration('localization')},
+         'localization': LaunchConfiguration('localization'),
+         'x': x, 'y': y, 'yaw': yaw},
         condition=UnlessCondition(slam),
     )
 
