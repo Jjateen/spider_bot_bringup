@@ -28,12 +28,11 @@
 #   i2c scan: MCU sends Bridge.notify("i2c_scan", ...) on request
 #                 — (notify)
 
+from arduino.app_utils import App, Bridge
 import json
 import socket
 import threading
 import time
-
-from arduino.app_utils import App, Bridge
 
 TCP_HOST = '0.0.0.0'
 
@@ -41,9 +40,11 @@ TCP_HOST = '0.0.0.0'
 cache = {
     'imu': None,         # most recent IMU reading
     'hw_status': None,   # most recent hardware health check
+    'imu_diag': None,    # IMU identity/magnetometer/aux-sweep, one string
     'i2c_scan': None,    # None = never scanned, [] = scanned but empty
     'servo_pwms': None,  # latest servo PWM targets, flushed from main thread
     'servo_diag': None,  # latest servo diagnostic report
+}
 }
 cache_lock = threading.Lock()   # only one thread reads or writes the cache at a time
 scan_count = 0                   # incremented each time on_i2c_scan is called
@@ -137,6 +138,10 @@ def handle_imu_client(conn):
                         err = json.dumps({'error': 'no imu data yet'}).encode() + b'\n'
                         conn.sendall(err)
 
+                elif cmd == 'imu_diag':
+                    with cache_lock:
+                        d = cache['imu_diag']
+                    conn.sendall(json.dumps({'imu_diag': d}).encode() + b'\n')
                 elif cmd == 'status':
                     with cache_lock:
                         hw = cache['hw_status']
@@ -195,11 +200,11 @@ def tcp_servo_server():
 
     while True:
         try:
-            conn, _addr = sock.accept()
+            conn, addr = sock.accept()
             threading.Thread(
                 target=handle_servo_client, args=(conn,), daemon=True
             ).start()
-        except TimeoutError:
+        except socket.timeout:
             continue
 
 
@@ -212,11 +217,11 @@ def tcp_imu_server():
 
     while True:
         try:
-            conn, _addr = sock.accept()
+            conn, addr = sock.accept()
             threading.Thread(
                 target=handle_imu_client, args=(conn,), daemon=True
             ).start()
-        except TimeoutError:
+        except socket.timeout:
             continue
 
 
@@ -232,6 +237,18 @@ def on_imu(ax, ay, az, gx, gy, gz, mx=0.0, my=0.0, mz=0.0, sample_id=None, times
             'mx': mx, 'my': my, 'mz': mz,
             'lin_acc_x': ax, 'lin_acc_y': ay, 'lin_acc_z': az,
         }
+
+
+def on_imu_diag(text):
+    """IMU diagnostics arrive as ONE string.
+
+    Bridge RPC silently drops arguments past ~12, and a dropped argument shows
+    up on this side as its default -- for these fields that is 0, which is
+    indistinguishable from a real "nothing detected". Sending one string keeps
+    the result honest. Same reason set_servo_pwms packs 12 values into a string.
+    """
+    with cache_lock:
+        cache["imu_diag"] = text
 
 
 def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0,
@@ -302,7 +319,7 @@ def loop():
                         ','.join(str(p) for p in pwms)
                     )
                     notify_errs = 0
-                except Exception as e:  # noqa: BLE001
+                except Exception as e:
                     notify_errs += 1
                     if notify_errs <= 3:
                         print(f'[bridge] Bridge.notify failed: {e}')
@@ -330,6 +347,7 @@ def main():
     Bridge.provide('imu', on_imu)
     print('[bridge] registered imu handler')
     Bridge.provide('hw_status', on_hw_status)
+    Bridge.provide('imu_diag', on_imu_diag)
     print('[bridge] registered hw_status handler')
     Bridge.provide('i2c_scan', on_i2c_scan)
     print('[bridge] registered i2c_scan handler')
