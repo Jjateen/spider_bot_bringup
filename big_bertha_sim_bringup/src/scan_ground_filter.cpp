@@ -36,6 +36,7 @@
 #include <memory>
 #include <string>
 
+#include "big_bertha_sim_bringup/ground_ray.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/laser_scan.hpp"
@@ -152,16 +153,9 @@ private:
       if (!std::isfinite(r) || r >= rmax) {
         continue;
       }
-      // Scan angle is in lidar_link; add the mount yaw to express the ray in
-      // base_link, which is the frame rzx_/rzy_ came from.
-      const double a = msg->angle_min + static_cast<double>(i) * msg->angle_increment + lidar_yaw_;
-      // World-z component of this ray's unit direction (cos a, sin a, 0).
-      const double dir_z = rzx_ * std::cos(a) + rzy_ * std::sin(a);
-      if (dir_z < 0.0) {  // ray points downward -> may strike the floor
-        const double endpoint_h = lidar_height + r * dir_z;
-        if (endpoint_h < floor_margin_) {
-          msg->ranges[i] = std::numeric_limits<float>::infinity();  // ground/ghost
-        }
+      const double a = msg->angle_min + static_cast<double>(i) * msg->angle_increment;
+      if (is_ground_ray(a, lidar_yaw_, rzx_, rzy_, r, lidar_height, floor_margin_)) {
+        msg->ranges[i] = std::numeric_limits<float>::infinity();
       }
     }
     pub_->publish(*msg);
