@@ -1,0 +1,4 @@
+# Core dependencies for the hardware_bridge_app Python relay.
+# arduino.app_utils is provided by the Arduino UNO Q platform runtime.
+#
+# All other imports (json, socket, threading) are Python stdlib.
