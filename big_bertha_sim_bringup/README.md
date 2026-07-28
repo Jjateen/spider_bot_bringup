@@ -14,8 +14,9 @@ positioned so the straight diagonal from A to B is blocked.
 
 Demo coordinates:
 
-- A (spawn) = `(-3.5, -3.5, 0.12)`, yaw `0.785` rad (facing B)
-- B (goal)  = `( 3.5,  3.5)`
+- A (spawn) = `(-3.5, -3.5, 0.12)`, yaw `0.0` rad (facing +x East)
+- B (goal)  = `( 3.5, -3.5)` (clear bottom corridor; the patrol tours the
+  obstacle field via `(3.5, 3.5)` and `(-3.5, 3.5)`)
 
 ## Run
 

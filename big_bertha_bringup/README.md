@@ -36,7 +36,7 @@ From [PLAN.md §11](../PLAN.md). All runtime nodes are C++.
 > arm64 CI is a hard gate, not a nicety: the deploy target is the arm64 UNO Q,
 > so a green arm64 build proves the stack runs on the real compute module.
 
-## TODO (when the robot is built)
+## TODO (when the robot is built; tracked in #52, #60, #62, #63)
 
 - [ ] `launch/hardware.launch.py` — sensor drivers + servo bridge + the
       hardware-agnostic autonomy stack (`use_sim_time:=false`).

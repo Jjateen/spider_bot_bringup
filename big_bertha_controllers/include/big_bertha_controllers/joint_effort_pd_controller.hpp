@@ -52,7 +52,8 @@ private:
   double kp_{20.0};
   double kd_{2.0};
   double effort_limit_{4.0};
-  double velocity_limit_{0.0};  // 0 disables; else cap |qd| like Isaac
+  double velocity_limit_{0.0};     // no-load joint speed (rad/s); 0 disables
+  double saturation_effort_{0.0};  // stall torque for the torque-speed curve; 0 disables
 
   // Position targets from the policy node; written non-RT, read in update().
   realtime_tools::RealtimeBuffer<std::vector<double>> target_buffer_;
