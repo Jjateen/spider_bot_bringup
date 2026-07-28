@@ -12,12 +12,11 @@
 #   publishes:   imu/data      (remapped to /filtered/imu)
 imu_filter_madgwick:
   ros__parameters:
-    # No magnetometer exists on this board — verified, not assumed: the AK8963
-    # identity register reads 0 and a full I2C sweep with bypass on finds only
-    # 0x40 and 0x68 (see hardware_bridge.yaml). So this stays 6-DOF: roll and
-    # pitch come from gravity, and yaw free-runs on gyro integration with no
-    # absolute reference. Do not set true without checking hw_status.mag_wia
-    # reads 0x48 first.
+    # This board physically cannot do 9-DOF: WHO_AM_I reads 0x70, an MPU-6500,
+    # which is a six-axis die with no magnetometer (see hardware_bridge.yaml).
+    # So this stays 6-DOF: roll and pitch come from gravity, and yaw free-runs
+    # on gyro integration with no absolute reference. Setting this true is only
+    # meaningful once hw_status reports mag_wia 0x48.
     use_mag: false
     world_frame: "enu"            # ROS standard (X-E, Y-N, Z-up)
     publish_tf: false             # EKF owns odom->base_link; no competing TF

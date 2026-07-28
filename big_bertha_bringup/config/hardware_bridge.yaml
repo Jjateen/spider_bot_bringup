@@ -64,12 +64,20 @@
 
     # Magnetometer axis mapping — UNUSED AND UNVALIDATED on this board.
     #
-    # There is no magnetometer here. Verified 2026-07-28 with the firmware that
-    # now checks the AK8963 identity register: WIA (0x00) read back 0, and a
-    # full 1..126 I2C sweep with MPU bypass enabled finds only 0x40 (PCA9685)
-    # and 0x68 (the IMU) — no 0x0C. The module is sold as an MPU-9265, and
-    # those are commonly a 6-axis die relabelled. hw_status now carries
-    # mag_present/mag_wia so this is checkable without reflashing.
+    # There is no magnetometer here, and there is no wiring or register fix
+    # that will produce one. Verified 2026-07-28: WHO_AM_I (0x75) reads 0x70,
+    # which is an MPU-6500 -- a SIX-axis die with no magnetometer at all. The
+    # module is sold as an "MPU-9265", which is not an InvenSense part number;
+    # TDK only ever made the MPU-9250 (0x71) and MPU-9255 (0x73).
+    #
+    # Checked with both datasheet preconditions genuinely satisfied, since
+    # BYPASS_EN alone proves nothing: the part is now reset (PWR_MGMT_1 0x80)
+    # and USER_CTRL I2C_MST_EN is explicitly cleared before bypass, because
+    # while that bit is set "pins ES_DA and ES_SCL are isolated from pins
+    # SDA/SDI and SCL/SCLK" (RM-000008 s4.33) and the auxiliary bus is walled
+    # off. Even so: AK8963 WIA reads 0 and a full 1..126 sweep sees only 0x40
+    # and 0x68. hw_status carries mag_present/mag_wia/mpu_whoami so none of
+    # this needs rediscovering.
     #
     # These signs have therefore never seen real data. Note they also CANNOT be
     # correct as written if a genuine MPU-9250 is fitted: its AK8963 sits at
