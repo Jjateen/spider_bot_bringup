@@ -3,8 +3,8 @@ import copy
 import numpy as np
 import open3d as o3d
 
-from ahrs.graphics.robot_model import RobotModel
 from ahrs.graphics.fk import compute_fk
+from ahrs.graphics.robot_model import RobotModel
 
 
 class Robot:

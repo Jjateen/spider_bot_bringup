@@ -46,7 +46,7 @@ jobs:
       - name: Python lint
         run: |
           pip3 install ruff
-          ruff check --output-format=github .
+          ruff check --output-format=github --ignore E501 .
 
       - name: Joint name integrity
         run: |

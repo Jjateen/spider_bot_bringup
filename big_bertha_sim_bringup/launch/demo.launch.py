@@ -47,7 +47,6 @@ box_1/pillar_1/box_2 and would need hard turns the gait cannot make.
 import os
 
 from ament_index_python.packages import get_package_share_directory
-
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,

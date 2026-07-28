@@ -30,7 +30,7 @@ def send_recv(sock, cmd, timeout=5.0):
             if not chunk:
                 break
             buf += chunk
-        except socket.timeout:
+        except TimeoutError:
             break
     line = buf.split(b"\n", 1)[0] if b"\n" in buf else buf
     if not line:
@@ -115,7 +115,7 @@ def main():
     sock.settimeout(5.0)
     try:
         sock.connect((args.host, args.port))
-    except socket.error as e:
+    except OSError as e:
         print(f"ERROR: cannot connect to {args.host}:{args.port} — {e}")
         sys.exit(1)
 

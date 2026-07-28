@@ -17,12 +17,12 @@ Usage::
 import argparse
 import math
 
+import numpy as np
 import rclpy
 from rclpy.node import Node
+from scipy.spatial.transform import Rotation
 from sensor_msgs.msg import Imu
 from std_msgs.msg import Header
-import numpy as np
-from scipy.spatial.transform import Rotation
 
 
 class TestImuPublisher(Node):

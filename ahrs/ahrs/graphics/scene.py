@@ -1,9 +1,9 @@
 import open3d as o3d
 
-from ahrs.graphics.grid import Grid
 from ahrs.graphics.axes import Axes
-from ahrs.graphics.robot import Robot
+from ahrs.graphics.grid import Grid
 from ahrs.graphics.overlays import Overlay
+from ahrs.graphics.robot import Robot
 from ahrs.ros.robot_state import RobotState
 
 

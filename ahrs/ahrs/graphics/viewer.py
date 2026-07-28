@@ -2,8 +2,8 @@ import time
 
 import open3d as o3d
 
-from ahrs.graphics.scene import Scene
 from ahrs.graphics.camera import CameraController
+from ahrs.graphics.scene import Scene
 from ahrs.ros.joint_state_subscriber import SharedJointState
 from ahrs.ros.robot_state import SharedRobotState
 from ahrs.utils.timing import FPSCounter

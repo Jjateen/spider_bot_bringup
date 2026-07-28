@@ -10,11 +10,12 @@
 #   status:   MCU sends Bridge.notify("hw_status", ...) @ 1 Hz — cached here
 #   i2c scan: MCU sends Bridge.notify("i2c_scan", ...) on request (notify)
 
-from arduino.app_utils import App, Bridge
 import json
 import socket
 import threading
 import time
+
+from arduino.app_utils import App, Bridge
 
 TCP_HOST = "0.0.0.0"
 
@@ -164,11 +165,11 @@ def tcp_servo_server():
 
     while True:
         try:
-            conn, addr = sock.accept()
+            conn, _addr = sock.accept()
             threading.Thread(
                 target=handle_servo_client, args=(conn,), daemon=True
             ).start()
-        except socket.timeout:
+        except TimeoutError:
             continue
 
 
@@ -181,11 +182,11 @@ def tcp_imu_server():
 
     while True:
         try:
-            conn, addr = sock.accept()
+            conn, _addr = sock.accept()
             threading.Thread(
                 target=handle_imu_client, args=(conn,), daemon=True
             ).start()
-        except socket.timeout:
+        except TimeoutError:
             continue
 
 
@@ -266,7 +267,7 @@ def loop():
                 try:
                     Bridge.notify("set_servo_pwms", ",".join(str(p) for p in pwms))  # single string, avoids 12-arg limit
                     notify_errs = 0
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     notify_errs += 1
                     if notify_errs <= 3:
                         print(f"[bridge] Bridge.notify failed: {e}")

@@ -1,7 +1,7 @@
-from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
-from sensor_msgs.msg import Imu
 import numpy as np
+from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import Imu
 
 from ahrs.math_utils import G
 from ahrs.math_utils.quaternion import quaternion_to_matrix_and_euler

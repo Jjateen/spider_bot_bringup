@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-import rclpy
-from rclpy.node import Node
-from std_msgs.msg import Float64MultiArray
+import http.server
 import json
 import os
 import sys
-import http.server
 import threading
 from http import HTTPStatus
+
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Float64MultiArray
 
 SERVO_LOWER_LIMIT = [45.0, 30.0, 180.0, 140.0, 135.0, 140.0, 50.0, 50.0, 40.0, 180.0, 150.0, 0.0]
 SERVO_UPPER_LIMIT = [180.0, 150.0, 50.0, 0.0, 0.0, 0.0, 180.0, 180.0, 180.0, 40.0, 0.0, 150.0]
@@ -119,10 +120,10 @@ class ServoHTTPHandler(http.server.BaseHTTPRequestHandler):
                     raise ValueError("Need exactly 12 angles")
                 for a in angles:
                     if not isinstance(a, (int, float)):
-                        raise ValueError("Angles must be numbers")
+                        raise TypeError("Angles must be numbers")
                 self.__class__.node.send_servo_angles(angles)
                 self._json_response({"ok": True})
-            except Exception as e:
+            except (TypeError, ValueError) as e:
                 self._json_response({"ok": False, "error": str(e)}, HTTPStatus.BAD_REQUEST)
         elif self.path == "/api/home":
             self.__class__.node.send_home()
@@ -156,7 +157,7 @@ def main(args=None):
             from ament_index_python.packages import get_package_share_directory
             pkg_share = get_package_share_directory("big_bertha_bringup")
             ServoHTTPHandler.static_dir = os.path.join(pkg_share, "web_control", "static")
-        except Exception:
+        except RuntimeError:
             node.get_logger().error("Cannot find static files directory")
             sys.exit(1)
 

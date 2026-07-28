@@ -2,7 +2,7 @@ import threading
 import xml.etree.ElementTree as ET
 
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile
 from std_msgs.msg import String
 
 from ahrs.graphics.robot_model import RobotModel
@@ -36,7 +36,7 @@ class RobotDescriptionSubscriber(Node):
             )
         except ET.ParseError as e:
             logger.error(f"Failed to parse URDF from /robot_description: {e}")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.error(f"Failed to load robot model: {e}")
         finally:
             self._event.set()

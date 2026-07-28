@@ -4,8 +4,8 @@ import xml.etree.ElementTree as ET
 import numpy as np
 import open3d as o3d
 
-from ahrs.graphics.robot_model import RobotModel, LinkMesh
-from ahrs.graphics.mesh_loader import parse_scale, load_mesh
+from ahrs.graphics.mesh_loader import load_mesh, parse_scale
+from ahrs.graphics.robot_model import LinkMesh, RobotModel
 from ahrs.utils.logger import setup_logger
 
 logger = setup_logger("ahrs.urdf")

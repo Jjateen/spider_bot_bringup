@@ -14,7 +14,7 @@ def load_config(config_path: str | None = None) -> dict:
             from ament_index_python.packages import get_package_share_directory
             pkg_dir = get_package_share_directory("ahrs")
             config_path = os.path.join(pkg_dir, "config", "config.yaml")
-        except Exception:
+        except Exception:  # noqa: BLE001
             config_path = os.path.join(
                 os.path.dirname(__file__), "..", "config", "config.yaml"
             )
