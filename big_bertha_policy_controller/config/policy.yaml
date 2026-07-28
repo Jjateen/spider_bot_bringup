@@ -20,7 +20,7 @@
     # PD lives in JointEffortPdController (ros2_control.yaml): synchronous,
     # zero-latency q/qd. PD here over a topic damps stale velocity -> jitter.
     use_effort: false        # publish position targets, controller does the PD
-    pd_rate: 200.0           # Hz; target publish rate (policy decimated to 50)
+    pd_rate: 50.0            # Hz; timer/publish rate, matches control_rate_ since use_effort=false
     action_clip: 1.0         # raw policy action clamp (matches env)
     # Trained command envelope. max_yaw_rate must stay at heading_max (0.5):
     # 0.35 was tested and FAILED (turn fell 0.279 -> 0.114 rad/s) -- the plant,
@@ -60,18 +60,18 @@
     # stance ~15 deg otherwise).
     station_keep: true
     joint_names:
-      - Revolute_110   # idx0  hip  leg1
-      - Revolute_113   # idx1  hip  leg2
-      - Revolute_116   # idx2  hip  leg3
-      - Revolute_119   # idx3  hip  leg4
-      - Revolute_111   # idx4  knee leg1
-      - Revolute_114   # idx5  knee leg2
-      - Revolute_117   # idx6  knee leg3
-      - Revolute_120   # idx7  knee leg4
-      - Revolute_112   # idx8  ankle leg1
-      - Revolute_115   # idx9  ankle leg2
-      - Revolute_118   # idx10 ankle leg3
-      - Revolute_121   # idx11 ankle leg4
+      - Revolute_110   # idx0  hip  leg4 (back-left)
+      - Revolute_113   # idx1  hip  leg1 (front-left)
+      - Revolute_116   # idx2  hip  leg2 (front-right)
+      - Revolute_119   # idx3  hip  leg3 (back-right)
+      - Revolute_111   # idx4  knee leg4 (back-left)
+      - Revolute_114   # idx5  knee leg1 (front-left)
+      - Revolute_117   # idx6  knee leg2 (front-right)
+      - Revolute_120   # idx7  knee leg3 (back-right)
+      - Revolute_112   # idx8  ankle leg4 (back-left)
+      - Revolute_115   # idx9  ankle leg1 (front-left)
+      - Revolute_118   # idx10 ankle leg2 (front-right)
+      - Revolute_121   # idx11 ankle leg3 (back-right)
     default_joint_pos:
       [0.0, 0.0, 0.0, 0.0,
        -0.32, -0.32, -0.32, -0.32,
