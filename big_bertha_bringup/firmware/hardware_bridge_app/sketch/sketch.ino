@@ -28,7 +28,7 @@
 
 // ── I2C device addresses ──────────────────────────────────────────────
 static const uint8_t MPU9250_ADDR = 0x68;
-static const uint8_t AK8963_ADDR = 0x0C;  // magnetometer inside the MPU9250
+static const uint8_t AK8963_ADDR = 0x0C;   // magnetometer inside the MPU9250
 static const uint8_t PCA9685_ADDR = 0x40;
 
 // ── PCA9685 register map ──────────────────────────────────────────────
@@ -64,23 +64,23 @@ static int g_servo_calls = 0;
 static int g_ping_count = 0;
 
 // ── Diagnostic counters ───────────────────────────────────────────────
-static int g_pwm_write_attempts = 0;  // total write cycles attempted
-static int g_pwm_write_fails = 0;     // cycles where at least one channel failed
-static int g_pwm_write_oks = 0;       // successful channels in last cycle
-static int g_pwm_last_fail_ch = -1;   // last physical channel that failed (-1 = none)
-static int g_pwm_last_fail_code = 0;  // endTransmission() return: 0=ok, 2=NACK-addr, 3=NACK-data
-static int g_set_servo_last_len = 0;  // data.length() from last set_servo_pwms call
-static int g_set_servo_last_idx = 0;  // parsed field count (12 = clean)
-static int g_pwm_readback_ch0 = -1;   // PCA9685 ch0 OFF register readback (-1 = read failed)
+static int g_pwm_write_attempts = 0;   // total write cycles attempted
+static int g_pwm_write_fails = 0;      // cycles where at least one channel failed
+static int g_pwm_write_oks = 0;        // successful channels in last cycle
+static int g_pwm_last_fail_ch = -1;    // last physical channel that failed (-1 = none)
+static int g_pwm_last_fail_code = 0;   // endTransmission() return: 0=ok, 2=NACK-addr, 3=NACK-data
+static int g_set_servo_last_len = 0;   // data.length() from last set_servo_pwms call
+static int g_set_servo_last_idx = 0;   // parsed field count (12 = clean)
+static int g_pwm_readback_ch0 = -1;    // PCA9685 ch0 OFF register readback (-1 = read failed)
 static volatile bool g_diag_pending = false;
 static int g_diag_test_pwms[12];
 static unsigned long g_diag_settle_start = 0;
 static int g_diag_phase = 0;
-static unsigned long g_diag_start_ms = 0;  // when phase 1 started, for timeout guard
+static unsigned long g_diag_start_ms = 0;    // when phase 1 started, for timeout guard
 
 // I2C error tracking for self-healing
-static int g_i2c_consecutive_fails = 0;  // resets on any success
-static bool g_i2c_busy = false;          // guard for BG-thread vs loop() race
+static int g_i2c_consecutive_fails = 0;       // resets on any success
+static bool g_i2c_busy = false;               // guard for BG-thread vs loop() race
 
 // 125 Hz IMU (8 ms) — matches expected rate for the 50 Hz policy controller
 static const unsigned long IMU_INTERVAL = 8;
@@ -103,14 +103,8 @@ static bool i2c_read_bytes(uint8_t dev, uint8_t reg, uint8_t * buf, size_t len)
   for (int attempt = 0; attempt < 3; ++attempt) {
     Wire.beginTransmission(dev);
     Wire.write(reg);
-    if (Wire.endTransmission() != 0) {
-      delay(1);
-      continue;
-    }
-    if (Wire.requestFrom(dev, (uint8_t)len) != len) {
-      delay(1);
-      continue;
-    }
+    if (Wire.endTransmission() != 0) { delay(1); continue; }
+    if (Wire.requestFrom(dev, (uint8_t)len) != len) { delay(1); continue; }
     for (size_t i = 0; i < len; ++i) {
       buf[i] = Wire.read();
     }
@@ -146,7 +140,8 @@ static bool pca9685_init()
 static bool pca9685_write_servos()
 {
   uint16_t snapshot[12];
-  for (int i = 0; i < 12; ++i) snapshot[i] = g_pwm[PWM_CHANNEL_MAP[i]];
+  for (int i = 0; i < 12; ++i)
+    snapshot[i] = g_pwm[PWM_CHANNEL_MAP[i]];
 
   ++g_pwm_write_attempts;
   g_pwm_write_oks = 0;
@@ -201,7 +196,7 @@ static bool mpu9250_init()
   // ran before -- including I2C_MST_EN, which hides the magnetometer.
   i2c_write_byte(MPU9250_ADDR, 0x6B, 0x80);
   delay(100);
-  i2c_write_byte(MPU9250_ADDR, 0x6B, 0x00);  // wake, internal oscillator
+  i2c_write_byte(MPU9250_ADDR, 0x6B, 0x00);   // wake, internal oscillator
   delay(100);
 
   i2c_read_bytes(MPU9250_ADDR, 0x75, &g_mpu_whoami, 1);
@@ -219,7 +214,9 @@ static bool mpu9250_init()
   return true;
 }
 
-static bool mpu9250_read(float & ax, float & ay, float & az, float & gx, float & gy, float & gz)
+static bool mpu9250_read(
+  float & ax, float & ay, float & az,
+  float & gx, float & gy, float & gz)
 {
   uint8_t raw[14] = {0};
   if (!i2c_read_bytes(MPU9250_ADDR, 0x3B, raw, 14)) {
@@ -255,7 +252,7 @@ static uint8_t g_mag_wia = 0x00;
 // three axes are scaled differently by up to ~15% and any heading derived
 // from them is skewed.
 static float g_mag_asa[3] = {1.0f, 1.0f, 1.0f};
-static bool g_mag_overflow = false;  // last read tripped HOFL
+static bool g_mag_overflow = false;   // last read tripped HOFL
 
 static bool ak8963_init()
 {
@@ -317,7 +314,7 @@ static int g_aux_found_count = 0;
 // status byte. An empty bus is only meaningful if these show the master was
 // actually transacting and the slaves were NACKing.
 static int g_aux_status_reads_ok = 0;
-static int g_aux_found_slow = -1;  // second pass at 258 kHz
+static int g_aux_found_slow = -1;   // second pass at 258 kHz
 // Per-pass health. A pass is only believable if it observed at least one NACK
 // (st_or bit 0): that proves the master actually drove a transaction. A pass
 // reporting almost every address as present has instead driven NOTHING -- the
@@ -353,20 +350,20 @@ static bool g_aux_slow = false;
 static void aux_bus_probe()
 {
   // Take the aux bus off bypass and hand it to the internal master.
-  i2c_write_byte(MPU9250_ADDR, 0x37, 0x00);  // INT_PIN_CFG: BYPASS_EN off
+  i2c_write_byte(MPU9250_ADDR, 0x37, 0x00);          // INT_PIN_CFG: BYPASS_EN off
   delay(5);
-  i2c_write_byte(MPU9250_ADDR, 0x6A, 0x20);  // USER_CTRL: I2C_MST_EN on
+  i2c_write_byte(MPU9250_ADDR, 0x6A, 0x20);          // USER_CTRL: I2C_MST_EN on
   delay(5);
-  i2c_write_byte(MPU9250_ADDR, 0x24, g_aux_slow ? 0x08 : 0x0D);  // 258 or 400 kHz
+  i2c_write_byte(MPU9250_ADDR, 0x24, g_aux_slow ? 0x08 : 0x0D);   // 258 or 400 kHz
   delay(5);
 
   g_aux_found_count = 0;
   g_aux_status_reads_ok = 0;
   g_aux_status_or = 0x00;
   for (uint8_t addr = 0x08; addr <= 0x77; ++addr) {
-    i2c_write_byte(MPU9250_ADDR, 0x25, 0x80 | addr);  // I2C_SLV0_ADDR, read bit
-    i2c_write_byte(MPU9250_ADDR, 0x26, 0x00);         // I2C_SLV0_REG
-    i2c_write_byte(MPU9250_ADDR, 0x27, 0x81);         // I2C_SLV0_CTRL: enable, 1 byte
+    i2c_write_byte(MPU9250_ADDR, 0x25, 0x80 | addr); // I2C_SLV0_ADDR, read bit
+    i2c_write_byte(MPU9250_ADDR, 0x26, 0x00);        // I2C_SLV0_REG
+    i2c_write_byte(MPU9250_ADDR, 0x27, 0x81);        // I2C_SLV0_CTRL: enable, 1 byte
     delay(6);                                         // several master cycles at 1 kHz
 
     // I2C_MST_STATUS bit 0 I2C_SLV0_NACK: set when the addressed slave did not
@@ -377,7 +374,7 @@ static void aux_bus_probe()
       ++g_aux_status_reads_ok;
       g_aux_status_or |= st;
     } else {
-      st = 0x01;  // read failed: do NOT count the address as present
+      st = 0x01;   // read failed: do NOT count the address as present
     }
     if (!(st & 0x01) && g_aux_found_count < 4) {
       g_aux_found[g_aux_found_count] = addr;
@@ -388,7 +385,7 @@ static void aux_bus_probe()
     if (addr >= 0x0C && addr <= 0x0F) {
       i2c_read_bytes(MPU9250_ADDR, 0x49, &g_aux_probe[addr - 0x0C], 1);
     }
-    i2c_write_byte(MPU9250_ADDR, 0x27, 0x00);  // disable slave 0
+    i2c_write_byte(MPU9250_ADDR, 0x27, 0x00);        // disable slave 0
   }
 
   // Hand the bus back: master off, bypass on, so ak8963_read() still works if
@@ -403,10 +400,7 @@ static bool ak8963_read(float & mx, float & my, float & mz)
 {
   uint8_t st1 = 0;
   if (!i2c_read_bytes(AK8963_ADDR, 0x02, &st1, 1)) return false;
-  if (!(st1 & 0x01)) {
-    mx = my = mz = 0.0f;
-    return false;
-  }  // no new data
+  if (!(st1 & 0x01)) { mx = my = mz = 0.0f; return false; }   // no new data
   uint8_t raw[6] = {0};
   if (!i2c_read_bytes(AK8963_ADDR, 0x03, raw, 6)) return false;
   uint8_t st2 = 0;
@@ -415,15 +409,12 @@ static bool ak8963_read(float & mx, float & my, float & mz)
   // published as if it were a field reading.
   if (!i2c_read_bytes(AK8963_ADDR, 0x09, &st2, 1)) return false;
   g_mag_overflow = (st2 & 0x08) != 0;
-  if (g_mag_overflow) {
-    mx = my = mz = 0.0f;
-    return false;
-  }
+  if (g_mag_overflow) { mx = my = mz = 0.0f; return false; }
   int16_t rx = (int16_t)((raw[1] << 8) | raw[0]);
   int16_t ry = (int16_t)((raw[3] << 8) | raw[2]);
   int16_t rz = (int16_t)((raw[5] << 8) | raw[4]);
-  const float mRes = 0.15f;               // µT/LSB at 16-bit
-  mx = rx * mRes * g_mag_asa[0] * 1e-6f;  // Tesla, sensor_msgs/MagneticField
+  const float mRes = 0.15f;   // µT/LSB at 16-bit
+  mx = rx * mRes * g_mag_asa[0] * 1e-6f;   // Tesla, sensor_msgs/MagneticField
   my = ry * mRes * g_mag_asa[1] * 1e-6f;
   mz = rz * mRes * g_mag_asa[2] * 1e-6f;
   return true;
@@ -452,21 +443,15 @@ static void blink_update()
 
   // Determine which code should be active
   int code = 0;
-  if (g_i2c_scan & 1)
-    code = 1;
-  else if (!g_ai_ok)
-    code = 2;
-  else if (g_i2c_scan & 2)
-    code = 3;
+  if (g_i2c_scan & 1)       code = 1;
+  else if (!g_ai_ok)         code = 2;
+  else if (g_i2c_scan & 2)   code = 3;
 
   // Changed code → reset blink phase
   if (code != g_blink_code) {
     g_blink_code = code;
     g_last_blink = now;
-    if (code == 0) {
-      digitalWrite(LED_BUILTIN, HIGH);
-      return;
-    }
+    if (code == 0) { digitalWrite(LED_BUILTIN, HIGH); return; }
     digitalWrite(LED_BUILTIN, LOW);
     return;
   }
@@ -502,7 +487,8 @@ void set_servo_pwms(String data)
   g_set_servo_last_idx = idx;
   if (idx != 12) return;
 
-  for (int i = 0; i < 12; ++i) g_pwm[PWM_CHANNEL_MAP[i]] = (uint16_t)vals[i];
+  for (int i = 0; i < 12; ++i)
+    g_pwm[PWM_CHANNEL_MAP[i]] = (uint16_t)vals[i];
 
   g_pwm_dirty = true;
 }
@@ -519,7 +505,8 @@ void on_scan_i2c()
   std::vector<uint8_t> found;
   for (uint8_t addr = 1; addr < 127; ++addr) {
     Wire.beginTransmission(addr);
-    if (Wire.endTransmission() == 0) found.push_back(addr);
+    if (Wire.endTransmission() == 0)
+      found.push_back(addr);
   }
   Bridge.notify("i2c_scan", found);
 }
@@ -529,7 +516,8 @@ void on_scan_i2c()
 // never blocks waiting on I2C.
 void on_servo_diag()
 {
-  for (int i = 0; i < 12; ++i) g_diag_test_pwms[i] = 100 + i * 200;  // 100, 300, 500, ..., 2300
+  for (int i = 0; i < 12; ++i)
+    g_diag_test_pwms[i] = 100 + i * 200;  // 100, 300, 500, ..., 2300
   g_diag_pending = true;
 }
 
@@ -638,56 +626,54 @@ void loop()
         g_diag_pending = false;
         g_diag_phase = 0;
       } else if (millis() - g_diag_settle_start >= 5) {
-        // Phase 1: settle elapsed — read back and report
-        int readback[12];
-        int pass[12];
-        for (int i = 0; i < 12; ++i) {
-          uint8_t ch = PWM_CHANNEL_MAP[i];
-          uint8_t reg = PCA9685_LED0_ON_L + 4 * ch + 2;  // OFF_L
-          uint8_t off_l = 0, off_h = 0;
-          bool ok = i2c_read_bytes(PCA9685_ADDR, reg, &off_l, 1) &&
-                    i2c_read_bytes(PCA9685_ADDR, reg + 1, &off_h, 1);
-          if (ok) {
-            readback[i] = off_l | ((off_h & 0x0F) << 8);
-          } else {
-            readback[i] = -1;
-          }
-          pass[i] = (ok && abs(readback[i] - g_diag_test_pwms[i]) <= 2) ? 1 : 0;
+      // Phase 1: settle elapsed — read back and report
+      int readback[12];
+      int pass[12];
+      for (int i = 0; i < 12; ++i) {
+        uint8_t ch = PWM_CHANNEL_MAP[i];
+        uint8_t reg = PCA9685_LED0_ON_L + 4 * ch + 2;  // OFF_L
+        uint8_t off_l = 0, off_h = 0;
+        bool ok = i2c_read_bytes(PCA9685_ADDR, reg, &off_l, 1) &&
+                  i2c_read_bytes(PCA9685_ADDR, reg + 1, &off_h, 1);
+        if (ok) {
+          readback[i] = off_l | ((off_h & 0x0F) << 8);
+        } else {
+          readback[i] = -1;
         }
-
-        uint8_t mode1 = 0;
-        bool mode1_ok = i2c_read_bytes(PCA9685_ADDR, PCA9685_MODE1, &mode1, 1);
-        int mode1_val = mode1_ok ? (int)mode1 : -1;
-
-        bool pca_present = (i2c_scan_devices() & 1) == 0;
-
-        String report = "{\"pca_present\":";
-        report += pca_present ? "true" : "false";
-        report += ",\"mode1\":";
-        report += mode1_val;
-        report += ",\"ai_ok\":";
-        report += (mode1_ok && (mode1 & 0x20)) ? "true" : "false";
-        report += ",\"test_pwms\":[";
-        for (int i = 0; i < 12; ++i) {
-          if (i > 0) report += ",";
-          report += g_diag_test_pwms[i];
-        }
-        report += "],\"readback\":[";
-        for (int i = 0; i < 12; ++i) {
-          if (i > 0) report += ",";
-          report += readback[i];
-        }
-        report += "],\"pass\":[";
-        for (int i = 0; i < 12; ++i) {
-          if (i > 0) report += ",";
-          report += pass[i];
-        }
-        report += "]}";
-        Bridge.notify("servo_diag_result", report);
-
-        g_diag_pending = false;
-        g_diag_phase = 0;
+        pass[i] = (ok && abs(readback[i] - g_diag_test_pwms[i]) <= 2) ? 1 : 0;
       }
+
+      uint8_t mode1 = 0;
+      bool mode1_ok = i2c_read_bytes(PCA9685_ADDR, PCA9685_MODE1, &mode1, 1);
+      int mode1_val = mode1_ok ? (int)mode1 : -1;
+
+      bool pca_present = (i2c_scan_devices() & 1) == 0;
+
+      String report = "{\"pca_present\":";
+      report += pca_present ? "true" : "false";
+      report += ",\"mode1\":"; report += mode1_val;
+      report += ",\"ai_ok\":"; report += (mode1_ok && (mode1 & 0x20)) ? "true" : "false";
+      report += ",\"test_pwms\":[";
+      for (int i = 0; i < 12; ++i) {
+        if (i > 0) report += ",";
+        report += g_diag_test_pwms[i];
+      }
+      report += "],\"readback\":[";
+      for (int i = 0; i < 12; ++i) {
+        if (i > 0) report += ",";
+        report += readback[i];
+      }
+      report += "],\"pass\":[";
+      for (int i = 0; i < 12; ++i) {
+        if (i > 0) report += ",";
+        report += pass[i];
+      }
+      report += "]}";
+      Bridge.notify("servo_diag_result", report);
+
+      g_diag_pending = false;
+      g_diag_phase = 0;
+    }
     }
   }
 
@@ -697,7 +683,8 @@ void loop()
     float ax, ay, az, gx, gy, gz, mx = 0, my = 0, mz = 0;
     if (mpu9250_read(ax, ay, az, gx, gy, gz)) {
       if (g_mag_present) ak8963_read(mx, my, mz);
-      Bridge.notify("imu", ax, ay, az, gx, gy, gz, mx, my, mz, (float)g_imu_sample++, (float)now);
+      Bridge.notify("imu", ax, ay, az, gx, gy, gz,
+                    mx, my, mz, (float)g_imu_sample++, (float)now);
     }
   }
 
@@ -718,9 +705,8 @@ void loop()
 
     // Read back PCA9685 channel 0 OFF register (two 1-byte reads for reliability)
     uint8_t off_l = 0, off_h = 0;
-    if (
-      i2c_read_bytes(PCA9685_ADDR, PCA9685_LED0_ON_L + 2, &off_l, 1) &&
-      i2c_read_bytes(PCA9685_ADDR, PCA9685_LED0_ON_L + 3, &off_h, 1)) {
+    if (i2c_read_bytes(PCA9685_ADDR, PCA9685_LED0_ON_L + 2, &off_l, 1) &&
+        i2c_read_bytes(PCA9685_ADDR, PCA9685_LED0_ON_L + 3, &off_h, 1)) {
       g_pwm_readback_ch0 = off_l | ((off_h & 0x0F) << 8);
     } else {
       g_pwm_readback_ch0 = -1;
@@ -737,10 +723,10 @@ void loop()
     // argument arrives on the Python side as its default — which for the IMU
     // diagnostics is 0, i.e. indistinguishable from a real "nothing found".
     // Everything added since goes out as one string instead, below.
-    Bridge.notify(
-      "hw_status", g_i2c_scan, ai ? 1 : 0, g_servo_calls, g_ping_count, g_pwm_write_attempts,
-      g_pwm_write_fails, g_pwm_last_fail_ch, g_pwm_last_fail_code, g_set_servo_last_len,
-      g_set_servo_last_idx, g_pwm_readback_ch0);
+    Bridge.notify("hw_status", g_i2c_scan, ai ? 1 : 0, g_servo_calls, g_ping_count,
+                  g_pwm_write_attempts, g_pwm_write_fails, g_pwm_last_fail_ch,
+                  g_pwm_last_fail_code, g_set_servo_last_len, g_set_servo_last_idx,
+                  g_pwm_readback_ch0);
 
     // IMU diagnostics as a single string: identity, magnetometer state, the
     // aux-bus sweep AND proof the sweep actually ran, plus the config
