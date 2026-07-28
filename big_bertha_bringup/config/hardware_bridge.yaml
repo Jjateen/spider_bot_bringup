@@ -1,0 +1,82 @@
+# Parameters for the Big Bertha hardware bridge node.
+#
+# Connects to the Python relay over TCP, which forwards commands to the
+# STM32U585 co-processor via Bridge RPC (arduino-app-cli manages the UART).
+/**:
+  ros__parameters:
+    # Python relay TCP addresses (two ports: servo commands + IMU polling)
+    servo_host: "127.0.0.1"
+    servo_port: 50007
+    imu_host: "127.0.0.1"
+    imu_port: 50008
+
+    # Servo PWM range (12-bit, 0-4095) corresponding to 500-2500 µs at 50 Hz.
+    pwm_min: 102
+    pwm_max: 512
+
+    # Joint angle limit in radians — final safety clamp before PWM conversion.
+    joint_limit: 3.14159
+
+    # Rate limiter: per-step change clamp (radians) — prevents commanding speeds
+    # the MG995 servos cannot physically track. MG995 max = 6.54 rad/s. At 200 Hz
+    # (5ms step): 6.54 × 0.005 = 0.0327 rad/step. Default 0.03 for safety margin.
+    rate_limit_rad: 0.03
+
+    # EWMA smoothing alpha on outbound position targets. 0 = no smoothing (passthrough),
+    # 1 = instant step, e.g. 0.3 filters 50 Hz policy steps into smooth servo commands.
+    smoothing_alpha: 0.3
+
+    # Policy center in radians — the policy output value at which the servo is at its
+    # physical center (0 rad for hips/knees, π/2 rad for ankles). At this value the
+    # servo sits at offset+90 degrees.
+    policy_center:
+      [0.0, 0.0, 0.0, 0.0,
+       0.0, 0.0, 0.0, 0.0,
+       1.57, 1.57, 1.57, 1.57]
+
+    # Per-joint servo parameters in policy output order (Revolute_110..121).
+    # Each array has 12 values, one per joint:
+    #   servo_lower_limit — physical lower angle limit (deg)
+    #   servo_upper_limit — physical upper angle limit (deg)
+    #   servo_offset      — mounting offset from the ideal angle (deg)
+    #   servo_channel     — PCA9685 PWM channel (0-15)
+    #   servo_direction   — +1 or -1 multiplied with the joint action
+    # Values from the physical hardware calibration (spider_bot_training/README.md).
+    servo_lower_limit: [45.0, 30.0, 180.0, 140.0, 135.0, 140.0, 50.0, 50.0, 40.0, 180.0, 150.0, 0.0]    # degrees — smallest angle per joint
+    servo_upper_limit: [180.0, 150.0, 50.0, 0.0, 0.0, 0.0, 180.0, 180.0, 180.0, 40.0, 0.0, 150.0]      # degrees — largest angle per joint
+    servo_offset: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 8.0, 2.0, 5.0]                      # degrees — servo mounting offset
+    servo_channel: [14, 10, 2, 6, 13, 9, 1, 5, 12, 8, 0, 4]                                           # which plug on the board each servo uses
+    servo_direction: [1, 1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1]                                   # +1 = keep sign, -1 = flip sign
+
+    # IMU covariance matrices (9 elements each, row-major).
+    # Orientation covariance = [-1] means orientation not estimated.
+    # Accel/gyro diagonals derived from MPU9250 datasheet (DLPF=3, 44 Hz BW)
+    # with margin for motor vibration.
+    orientation_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    linear_acceleration_covariance: [0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001]
+    angular_velocity_covariance: [0.00001, 0.0, 0.0, 0.0, 0.00001, 0.0, 0.0, 0.0, 0.00001]
+
+    # IMU axis mapping: chip frame -> base_link frame.
+    # The MPU9250 is mounted 180° about Y (chip z points down, opposite
+    # base_link z-up), so x and z are negated to match Isaac training (identity
+    # IMU offset, projected_gravity_b.z = -1 at rest). Apply AFTER bias removal.
+    imu_axis_sign: [-1.0, -1.0, 1.0]
+
+    # Magnetometer axis mapping. The AK8963 magnetometer die is mounted
+    # INDEPENDENTLY of the MPU9250 accel/gyro, so its axes are not aligned with
+    # the IMU axes. It gets its OWN sign vector — calibrate on hardware so the
+    # filtered heading tracks physical rotation. Applied only to /imu/mag.
+    mag_axis_sign: [-1.0, 1.0, -1.0]
+
+    # Startup calibration — collects N IMU samples while stationary to compute
+    # gyro bias (mean offsets subtracted from angular_velocity) and accel bias
+    # (mean offsets with gravity removed, assuming IMU is level at startup).
+    # Set to false or 0 to disable.
+    gyro_calibration_enabled: true
+
+    # Testing mode: drive only one joint (FR calf, idx 10).
+    single_joint_mode: false
+    single_joint_index: 10
+    gyro_calibration_samples: 10
+    accel_calibration_enabled: true
+    accel_calibration_samples: 10
