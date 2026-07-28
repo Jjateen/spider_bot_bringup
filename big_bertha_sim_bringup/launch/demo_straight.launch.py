@@ -224,10 +224,11 @@ def generate_launch_description():
             'use_sim_time', default_value='true',
             description='Use /clock time'),
         DeclareLaunchArgument(
-            'speed', default_value='0.12',
+            'speed', default_value='0.29',
             description='Constant forward vx (m/s); trained range is '
-                        '0-0.40, 0.12 here is just this demo default '
-                        'speed, not a range bound'),
+                        '0-0.40, 0.29 here matches the training seq gif '
+                        'so sim and Isaac show the same gait, not a '
+                        'range bound'),
         DeclareLaunchArgument(
             'vy', default_value='0.0',
             description='Constant lateral vy (m/s, +left); closed-loop '

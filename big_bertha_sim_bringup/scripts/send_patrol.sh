@@ -5,6 +5,7 @@
 # Usage: send_patrol.sh "x1,y1" "x2,y2" ...   (map frame, metres)
 set +u
 i=0
+ok=0
 for wp in "$@"; do
   i=$((i + 1))
   x="${wp%,*}"
@@ -20,5 +21,11 @@ for wp in "$@"; do
     echo "=== goal ${i} rejected (try ${try}); retrying in 10s ==="
     sleep 10
   done
+  echo "${out}" | grep -q "Goal accepted" && ok=$((ok + 1))
 done
-echo "=== patrol complete: ${i} goals, robot back at the start ==="
+if [ "${ok}" -eq "${i}" ]; then
+  echo "=== patrol complete: ${i} goals, robot back at the start ==="
+else
+  echo "=== patrol INCOMPLETE: ${ok}/${i} goals accepted ==="
+  exit 1
+fi
