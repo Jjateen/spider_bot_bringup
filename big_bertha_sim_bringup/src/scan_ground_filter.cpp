@@ -67,8 +67,9 @@ public:
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     const auto sensor_qos = rclcpp::SensorDataQoS();
+    imu_topic_ = this->declare_parameter<std::string>("imu_topic", "imu");
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-      "imu", sensor_qos, std::bind(&ScanGroundFilter::onImu, this, std::placeholders::_1));
+      imu_topic_, sensor_qos, std::bind(&ScanGroundFilter::onImu, this, std::placeholders::_1));
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       "scan", sensor_qos, std::bind(&ScanGroundFilter::onScan, this, std::placeholders::_1));
     // RELIABLE so it satisfies the costmap's reliable subscription (a
@@ -127,38 +128,27 @@ private:
 
   void onScan(const sensor_msgs::msg::LaserScan::SharedPtr msg)
   {
-    // Fail OPEN: passing raw through beats culling against a wrong tilt.
-    if (!resolveMount() || !have_imu_) {
-      if (!have_imu_) {
-        RCLCPP_WARN_THROTTLE(
-          this->get_logger(), *this->get_clock(), 5000,
-          "no IMU yet; passing scan through unfiltered");
-      }
-      pub_->publish(*msg);
-      return;
-    }
-    const double age = (rclcpp::Time(msg->header.stamp) - imu_stamp_).seconds();
-    if (std::abs(age) > imu_max_age_) {
-      RCLCPP_WARN_THROTTLE(
-        this->get_logger(), *this->get_clock(), 5000,
-        "IMU %.3f s stale vs scan (max %.3f); passing through unfiltered", age, imu_max_age_);
-      pub_->publish(*msg);
-      return;
-    }
-
-    const double lidar_height = body_height_ + mount_z_;
+    auto out = std::make_shared<sensor_msgs::msg::LaserScan>(*msg);
+    out->ranges = msg->ranges;
     const double rmax = msg->range_max;
-    for (size_t i = 0; i < msg->ranges.size(); ++i) {
-      const float r = msg->ranges[i];
+    for (size_t i = 0; i < out->ranges.size(); ++i) {
+      const float r = out->ranges[i];
       if (!std::isfinite(r) || r >= rmax) {
         continue;
       }
-      const double a = msg->angle_min + static_cast<double>(i) * msg->angle_increment;
-      if (is_ground_ray(a, lidar_yaw_, rzx_, rzy_, r, lidar_height, floor_margin_)) {
-        msg->ranges[i] = std::numeric_limits<float>::infinity();
+      // Scan angle is in lidar_link; add the mount yaw to express the ray in
+      // base_link, which is the frame rzx_/rzy_ came from.
+      const double a = msg->angle_min + static_cast<double>(i) * msg->angle_increment + lidar_yaw_;
+      // World-z component of this ray's unit direction (cos a, sin a, 0).
+      const double dir_z = rzx_ * std::cos(a) + rzy_ * std::sin(a);
+      if (dir_z < 0.0) {  // ray points downward -> may strike the floor
+        const double endpoint_h = lidar_height + r * dir_z;
+        if (endpoint_h < floor_margin_) {
+          out->ranges[i] = std::numeric_limits<float>::infinity();  // ground/ghost
+        }
       }
     }
-    pub_->publish(*msg);
+    pub_->publish(*out);
   }
 
   double body_height_{0.09};
@@ -176,6 +166,7 @@ private:
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  std::string imu_topic_;
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr scan_sub_;
   rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr pub_;
 };

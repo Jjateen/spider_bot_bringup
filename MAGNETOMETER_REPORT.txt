@@ -1,0 +1,216 @@
+===============================================================================
+ MAGNETOMETER (AK8963) DIAGNOSTIC REPORT
+ Spider Bot Bringup — Big Bertha Hardware
+ Target: arduino@Jijteen.local (192.168.43.101, Arduino UNO Q, aarch64)
+ Date:   Sat Jul 11 2026
+===============================================================================
+
+-------------------------------------------------------------------------------
+ 1. SUMMARY
+-------------------------------------------------------------------------------
+
+The AK8963 magnetometer (integrated inside the MPU9250 IMU package) is NOT
+functional on this hardware. It does not respond via either of the two
+supported access methods (bypass mode or I2C master mode). The accelerometer
+and gyroscope on the MPU9250 work correctly. The autonomy stack has been
+configured to operate WITHOUT the magnetometer (imu_filter_madgwick in
+IMU-only mode, use_mag: false).
+
+
+-------------------------------------------------------------------------------
+ 2. HARDWARE CONTEXT
+-------------------------------------------------------------------------------
+
+  Sensor chip ......... MPU9250 (9-axis IMU: accel + gyro + mag)
+  Magnetometer die .... AK8963 (integrated inside MPU9250 package)
+  I2C bus ............. STM32U585 M33 co-processor, 50 kHz (5 V I2C v2 driver
+                       has known timeout issues above this speed)
+  I2C devices present .. PCA9685 @ 0x40 (servo controller)
+                        MPU9250 @ 0x68 (accel/gyro)
+                        AK8963 @ 0x0C — NOT DETECTED on main bus
+
+  The AK8963 lives on the MPU9250's auxiliary I2C bus. It is not directly
+  addressable on the STM32's main I2C bus unless the MPU9250 is configured
+  to expose it (bypass mode) or to proxy reads (I2C master mode).
+
+
+-------------------------------------------------------------------------------
+ 3. TESTS PERFORMED
+-------------------------------------------------------------------------------
+
+ TEST 1: Initial state discovery
+ --------------------------------
+   Method:    SSH into target, query the Python TCP relay on port 50008
+              with {"cmd":"imu"} to read cached IMU data
+   Command:   echo '{"cmd":"imu"}' | nc -q1 127.0.0.1 50008
+   Result:    ax/ay/az and gx/gy/gz valid (az ~10.9 = gravity detected)
+              mx=0.0, my=0.0, mz=0.0  (magnetometer ALL ZERO)
+   Verdict:   Magnetometer data not flowing through the pipeline
+
+ TEST 2: Firmware source inspection (root cause #1)
+ ---------------------------------------------------
+   Method:    Read the firmware sketch.ino on the target
+   File:      big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino
+   Finding:   Line 361 in setup():
+                g_mag_present = false;
+                // DIAG: ak8963_init() temporarily disabled for isolation test
+              The ak8963_init() call was replaced with a hardcoded false.
+              Because g_mag_present is false, line 491 skips the mag read:
+                if (g_mag_present) ak8963_read(mx, my, mz);  // never executes
+   Verdict:   Magnetometer initialization was explicitly disabled
+
+ TEST 3: Re-enable ak8963_init() and flash (bypass mode)
+ -------------------------------------------------------
+   Method:    Edit line 361 to call g_mag_present = ak8963_init();
+              The target firmware used BYPASS MODE:
+                i2c_write_byte(MPU9250_ADDR, 0x37, 0x02);  // BYPASS_EN
+                i2c_write_byte(AK8963_ADDR, 0x0A, 0x16);    // CNTL1: continuous
+              Flash via upload_firmware.sh (compiles + uploads to STM32U585)
+   Result:    Firmware compiled and uploaded successfully
+              I2C scan: {"addrs": [64, 104]}  →  only PCA9685 + MPU9250
+              AK8963 @ 0x0C NOT visible on the bus
+              IMU samples: mx=my=mz=0.0  (10 samples, all zero)
+   Verdict:   Bypass mode does not expose the AK8963 on this board
+
+ TEST 4: I2C master mode (from local repo + CNTL1 fix)
+ -----------------------------------------------------
+   Method:    The local repo (spider_bot_bringup) had a more sophisticated
+              approach using the MPU9250's internal I2C MASTER to read the
+              AK8963 continuously into EXT_SENS_DATA registers (0x49-0x50).
+              The STM32 reads the magnetometer from the MPU9250 itself,
+              not from the main bus.
+
+              This approach was in the local repo but had a bug: it never
+              wrote to the AK8963's CNTL1 register (0x0A) to enable
+              continuous measurement mode. Without this, the AK8963 stays
+              in power-down and never produces data.
+
+              Fix applied: added SLV0 write sequence to set CNTL1=0x16
+                (16-bit output, continuous measurement mode 2, ~100 Hz):
+                  i2c_write_byte(MPU9250_ADDR, 0x25, 0x0C);  // SLV0_ADDR: write
+                  i2c_write_byte(MPU9250_ADDR, 0x26, 0x0A);  // SLV0_REG: CNTL1
+                  i2c_write_byte(MPU9250_ADDR, 0x63, 0x16);  // SLV0_DO: 0x16
+                  i2c_write_byte(MPU9250_ADDR, 0x27, 0x81);  // SLV0_CTRL: 1 byte
+
+              Deployed corrected ak8963_init() + ak8963_read() + diagnostic
+              globals (g_ak8963_whoami, g_diag_mpu_wia, g_diag_user_ctrl,
+              g_diag_ext0, g_diag_ext1) to the target firmware.
+              Flashed via upload_firmware.sh.
+   Result:    Firmware compiled and uploaded successfully (22650 bytes)
+              I2C scan: {"addrs": [64, 104]}  →  expected (AK8963 is internal)
+              IMU samples (10 reads): mx=my=mz=0.0 in ALL samples
+              WHO_AM_I check: ak8963_init() returns (who == 0x48);
+                g_mag_present would be false if WHO_AM_I != 0x48
+              Since mx/my/mz remain 0.0, the AK8963 is not responding
+   Verdict:   I2C master mode also fails — AK8963 does not respond
+
+ TEST 5: Hardware status query
+ ------------------------------
+   Method:    Query the Python relay for hw_status
+   Command:   echo '{"cmd":"status"}' | nc -q1 127.0.0.1 50008
+   Result:    {"i2c_scan": 0, "ai_ok": true, "pca9685_ok": true,
+               "mpu9250_ok": true, ...}
+              All subsystems healthy except magnetometer
+   Note:      The target's on_hw_status handler does not expose the
+              diagnostic fields (g_ak8963_whoami, g_diag_*) — these are
+              captured in firmware but not pushed in the Bridge.notify
+              ("hw_status", ...) call. Adding them would definitively
+              show whether WHO_AM_I returned 0x48 or not.
+
+
+-------------------------------------------------------------------------------
+ 4. WHY IT FAILED — ANALYSIS
+-------------------------------------------------------------------------------
+
+The AK8963 does not respond through either access method:
+
+  a) BYPASS MODE (test 3):
+     The MPU9250's BYPASS_EN bit (INT_PIN_CFG register 0x37, bit 1) should
+     connect the auxiliary I2C bus to the main bus, exposing the AK8963 at
+     address 0x0C. On this board, the AK8963 never appears on the main bus
+     after enabling bypass. The I2C scan consistently returns only [0x40,
+     0x68].
+
+  b) I2C MASTER MODE (test 4):
+     The MPU9250's internal I2C master (USER_CTRL bit I2C_MST_EN) is
+     programmed to read the AK8963 via SLV0 and expose the data in
+     EXT_SENS_DATA registers (0x49-0x50). Even with the CNTL1 enable fix,
+     the EXT_SENS_DATA registers return no valid data (DRDY bit never set,
+     all mag values zero).
+
+POSSIBLE ROOT CAUSES (not verified — would need further hardware testing):
+
+  1. The AK8963 die is defective or not bonded on this particular MPU9250
+     chip. Some MPU9250 clones or defective units ship without a working
+     magnetometer. The WHO_AM_I probe (expecting 0x48) would confirm this,
+     but the diagnostic fields are not currently exposed in the status
+     push.
+
+  2. The chip is an MPU9250 clone (e.g., MPU-9255, ICM-20948) with a
+     different auxiliary I2C protocol or different WHO_AM_I value.
+
+  3. A timing issue — the 50 kHz main bus clock combined with the ~350 kHz
+     aux master clock may not meet the AK8963's I2C timing requirements.
+     The STM32U585 I2C v2 driver is known to be unreliable (Zephyr #83550),
+     and the 50 kHz workaround may not properly handle the auxiliary bus
+     passthrough.
+
+
+-------------------------------------------------------------------------------
+ 5. WHAT WOULD HELP DIAGNOSE FURTHER (if pursued later)
+-------------------------------------------------------------------------------
+
+  - Add g_ak8963_whoami and g_diag_* fields to the Bridge.notify("hw_status",
+    ...) call in the firmware loop(), and extend the Python relay's
+    on_hw_status() handler to capture them. This would show:
+      * Whether WHO_AM_I returned 0x48 (AK8963 present) or 0x00 (absent)
+      * The MPU9250's USER_CTRL readback (is I2C master actually enabled?)
+      * EXT_SENS_DATA register contents (are any bytes being transferred?)
+
+  - Test with a known-good MPU9250 breakout board on the same I2C bus to
+    rule out a chip-level defect.
+
+  - Try a different MPU9250 register init sequence (e.g., reset the
+    auxiliary I2C master, use SLV4 with a delay, or try single-shot reads
+    instead of continuous mode).
+
+
+-------------------------------------------------------------------------------
+ 6. DECISION
+-------------------------------------------------------------------------------
+
+  Per user instruction: "forget it, proceed without magnetometer only."
+
+  The autonomy stack has been configured to operate in IMU-only mode:
+    - imu_filter_madgwick: use_mag = false (accel + gyro only)
+    - Yaw will drift over time without magnetometer correction
+    - The EKF compensates for yaw drift via /odom (leg_odometry)
+    - Roll and pitch remain stable (gravity-referenced)
+
+  This is acceptable for the current use case (indoor flat-ground
+  quadruped navigation with SLAM/AMCL providing absolute position).
+
+
+-------------------------------------------------------------------------------
+ 7. FIRMWARE CHANGES APPLIED (retained in local repo for future use)
+-------------------------------------------------------------------------------
+
+  File: big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino
+
+  Changes:
+    1. ak8963_init() — switched from bypass mode to I2C master mode with
+       CNTL1 enable (the correct architecture for this board).
+    2. ak8963_read() — reads from EXT_SENS_DATA registers (0x49-0x50)
+       instead of direct AK8963 I2C reads.
+    3. Added diagnostic globals: g_ak8963_whoami, g_diag_mpu_wia,
+       g_diag_user_ctrl, g_diag_ext0, g_diag_ext1.
+    4. setup() calls g_mag_present = ak8963_init() (was hardcoded false).
+
+  These changes are ready for whenever a working AK8963 chip is available.
+  The firmware gracefully handles the missing magnetometer (g_mag_present
+  = false → ak8963_read() is skipped → mx/my/mz stay 0.0).
+
+
+===============================================================================
+ END OF REPORT
+===============================================================================

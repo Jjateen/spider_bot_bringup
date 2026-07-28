@@ -1,7 +1,3 @@
-# Nav2 parameters for the servers nav2.launch.py actually starts:
-# controller/smoother/planner/behavior/bt_navigator (+ costmaps).
-# AMCL lives in amcl.yaml; velocity_smoother/collision_monitor are
-# deliberately not run (controller_server publishes /cmd_vel directly).
 bt_navigator:
   ros__parameters:
     global_frame: map
@@ -239,3 +235,5 @@ behavior_server:
     max_rotational_vel: 1.0
     min_rotational_vel: 0.4
     rotational_acc_lim: 3.2
+
+
