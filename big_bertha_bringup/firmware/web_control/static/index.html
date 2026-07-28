@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Big Bertha Servo Control</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Big Bertha Servo Control</h1>
+    <span id="status-badge" class="badge idle">Idle</span>
+  </header>
+
+  <div id="preview-bar"></div>
+
+  <main id="servo-grid"></main>
+
+  <div id="controls">
+    <button id="btn-send" class="btn btn-primary">Send</button>
+    <button id="btn-home" class="btn btn-secondary">Home All</button>
+  </div>
+
+  <div id="status-bar">
+    <span id="status-text">Ready</span>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
