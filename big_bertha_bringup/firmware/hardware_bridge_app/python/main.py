@@ -210,7 +210,8 @@ def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0,
                  # Defaulted so an MCU running older firmware (which sends 11
                  # args) still populates the cache instead of raising.
                  mag_present=0, mag_wia=0, mag_overflow=0, mpu_whoami=0,
-                 aux0=0, aux1=0, aux2=0, aux3=0):
+                 aux0=0, aux1=0, aux2=0, aux3=0,
+                 aux_found_count=0, aux_found0=0, aux_found1=0):
     with cache_lock:
         cache["hw_status"] = {
             "i2c_scan": scan,
@@ -233,6 +234,9 @@ def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0,
             "mpu_whoami": int(mpu_whoami),
             # WIA read back over the MPU I2C-master path for 0x0C..0x0F
             "aux_probe": [int(aux0), int(aux1), int(aux2), int(aux3)],
+            # full 0x08..0x77 aux sweep using the SLV0 NACK bit
+            "aux_found_count": int(aux_found_count),
+            "aux_found": [int(aux_found0), int(aux_found1)],
         }
 
 
