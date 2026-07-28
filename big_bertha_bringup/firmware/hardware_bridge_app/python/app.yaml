@@ -1,0 +1,6 @@
+name: python-relay
+version: "0.1.0"
+description: "TCP relay that bridges JSON commands from the ROS 2 hardware_bridge_node to the STM32U585 via Bridge RPC"
+entry: app.py
+author: Jjateen Gundesha
+license: Apache-2.0
