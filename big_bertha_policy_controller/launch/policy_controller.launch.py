@@ -23,9 +23,11 @@ Loads ``config/policy.yaml`` and points ``model_path`` at the bundled
 import os
 
 from ament_index_python.packages import get_package_share_directory
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
+
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -46,9 +48,10 @@ def generate_launch_description():
     steer_kp = LaunchConfiguration('steer_kp')
     steer_max = LaunchConfiguration('steer_max')
     lateral_hold = LaunchConfiguration('lateral_hold')
+    imu_topic = LaunchConfiguration('imu_topic')
 
     return LaunchDescription([
-        DeclareLaunchArgument('use_sim_time', default_value='true'),
+        DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('model_path', default_value=default_model),
         DeclareLaunchArgument('params_file', default_value=default_params),
         DeclareLaunchArgument('start_enabled', default_value='true'),
@@ -56,7 +59,6 @@ def generate_launch_description():
         # where Nav2 owns the heading). heading_lock_yaw is the world
         # heading to hold.
         DeclareLaunchArgument('heading_lock', default_value='false'),
-        DeclareLaunchArgument('heading_lock_yaw', default_value='0.0'),
         # Outer-loop compensation knobs, overridable for A/B characterization
         # against a given policy (the gains in policy.yaml were tuned against
         # older checkpoints' drift; defaults here match policy.yaml so normal
@@ -65,6 +67,9 @@ def generate_launch_description():
         DeclareLaunchArgument('steer_kp', default_value='1.8'),
         DeclareLaunchArgument('steer_max', default_value='0.26'),
         DeclareLaunchArgument('lateral_hold', default_value='true'),
+        # IMU topic the gait controller reads orientation from. On real hardware
+        # this is the filtered output (/filtered/imu); sim supplies /imu.
+        DeclareLaunchArgument('imu_topic', default_value='/imu'),
 
         Node(
             package='big_bertha_policy_controller',
@@ -89,6 +94,7 @@ def generate_launch_description():
                         steer_max, value_type=float),
                     'lateral_hold': ParameterValue(
                         lateral_hold, value_type=bool),
+                    'imu_topic': imu_topic,
                 },
             ],
         ),
