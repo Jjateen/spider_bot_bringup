@@ -53,7 +53,7 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -184,13 +184,8 @@ def generate_launch_description():
                 cmd=[
                     'ros2', 'topic', 'pub', '-r', '20', '/cmd_vel',
                     'geometry_msgs/msg/Twist',
-                    PythonExpression([
-                        "'{linear: {x: ' + '",
-                        speed,
-                        "' + ', y: ' + '",
-                        vy,
-                        "' + ', z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}'"
-                    ]),
+                    ['{linear: {x: ', speed, ', y: ', vy, ', z: 0.0}, '
+                     'angular: {x: 0.0, y: 0.0, z: 0.0}}'],
                 ],
                 output='screen',
             ),
@@ -206,17 +201,8 @@ def generate_launch_description():
                 cmd=[
                     'ros2', 'topic', 'pub', '-r', '20', '/debug_hip_bias',
                     'std_msgs/msg/Float64MultiArray',
-                    PythonExpression([
-                        "'{data: [' + '",
-                        hip_bias,
-                        "' + ', ' + '",
-                        hip_bias,
-                        "' + ', ' + '",
-                        hip_bias,
-                        "' + ', ' + '",
-                        hip_bias,
-                        "' + ']}'"
-                    ]),
+                    ['{data: [', hip_bias, ', ', hip_bias, ', ',
+                     hip_bias, ', ', hip_bias, ']}'],
                 ],
                 output='screen',
             ),

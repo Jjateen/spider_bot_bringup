@@ -136,7 +136,8 @@ def generate_launch_description():
     localization = include(
         os.path.join('localization', 'localization.launch.py'),
         {'use_sim_time': use_sim_time, 'map': map_yaml,
-         'localization': LaunchConfiguration('localization')},
+         'localization': LaunchConfiguration('localization'),
+         'x': x, 'y': y, 'yaw': yaw},
         condition=UnlessCondition(slam),
     )
 
