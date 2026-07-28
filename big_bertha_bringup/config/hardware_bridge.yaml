@@ -62,10 +62,20 @@
     # IMU offset, projected_gravity_b.z = -1 at rest). Apply AFTER bias removal.
     imu_axis_sign: [-1.0, -1.0, 1.0]
 
-    # Magnetometer axis mapping. The AK8963 magnetometer die is mounted
-    # INDEPENDENTLY of the MPU9250 accel/gyro, so its axes are not aligned with
-    # the IMU axes. It gets its OWN sign vector — calibrate on hardware so the
-    # filtered heading tracks physical rotation. Applied only to /imu/mag.
+    # Magnetometer axis mapping — UNUSED AND UNVALIDATED on this board.
+    #
+    # There is no magnetometer here. Verified 2026-07-28 with the firmware that
+    # now checks the AK8963 identity register: WIA (0x00) read back 0, and a
+    # full 1..126 I2C sweep with MPU bypass enabled finds only 0x40 (PCA9685)
+    # and 0x68 (the IMU) — no 0x0C. The module is sold as an MPU-9265, and
+    # those are commonly a 6-axis die relabelled. hw_status now carries
+    # mag_present/mag_wia so this is checkable without reflashing.
+    #
+    # These signs have therefore never seen real data. Note they also CANNOT be
+    # correct as written if a genuine MPU-9250 is fitted: its AK8963 sits at
+    # mag_x=+accel_y, mag_y=+accel_x, mag_z=-accel_z, which is an X/Y SWAP, and
+    # a sign vector cannot express a swap. Fitting a real magnetometer needs an
+    # axis permutation here, not just these three numbers.
     mag_axis_sign: [-1.0, 1.0, -1.0]
 
     # Startup calibration — collects N IMU samples while stationary to compute
@@ -77,6 +87,12 @@
     # Testing mode: drive only one joint (FR calf, idx 10).
     single_joint_mode: false
     single_joint_index: 10
-    gyro_calibration_samples: 10
+    # 200 samples ~ 2.2 s at the measured 91 Hz. Was 10 (109 ms), which is too
+    # few to average the noise out of the bias estimate: with no magnetometer
+    # on this board, yaw is pure gyro integration with no absolute reference,
+    # so whatever error survives in the gz bias integrates without bound. The
+    # measured raw gz bias is 0.0396 rad/s (2.3 deg/s), so a 1% error in the
+    # estimate is still ~1.4 deg of yaw per minute.
+    gyro_calibration_samples: 200
     accel_calibration_enabled: true
-    accel_calibration_samples: 10
+    accel_calibration_samples: 200
