@@ -15,20 +15,21 @@ jobs:
 
       - name: YAML files parse correctly
         run: |
-          python3 -c "
-          import os, yaml, glob, sys
-          errors = 0
-          ignore = {'build', 'install', 'log', '.git', 'node_modules'}
-          for f in glob.glob('**/*.yaml', recursive=True) + glob.glob('**/*.yml', recursive=True):
-              parts = os.path.normpath(f).split(os.sep)
-              if any(p in ignore for p in parts):
-                  continue
-              try:
-                  yaml.safe_load(open(f))
-              except yaml.YAMLError as e:
-                  print(f'FAIL: {f} — {e}')
-                  errors += 1
-          sys.exit(errors)
+          python3 << 'EOF'
+import os, yaml, glob, sys
+errors = 0
+ignore = {'build', 'install', 'log', '.git', 'node_modules'}
+for f in glob.glob('**/*.yaml', recursive=True) + glob.glob('**/*.yml', recursive=True):
+    parts = os.path.normpath(f).split(os.sep)
+    if any(p in ignore for p in parts):
+        continue
+    try:
+        yaml.safe_load(open(f))
+    except yaml.YAMLError as e:
+        print(f'FAIL: {f} — {e}')
+        errors += 1
+sys.exit(errors)
+EOF
 
   commit-lint:
     name: Commit message lint
