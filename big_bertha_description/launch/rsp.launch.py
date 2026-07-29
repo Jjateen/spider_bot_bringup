@@ -105,12 +105,12 @@ def generate_launch_description():
             }],
         ),
 
-        Node(
-            package='big_bertha_description',
-            executable='joint_state_publisher.py',
-            name='joint_state_publisher',
-            output='screen',
-            parameters=[{'use_sim_time': use_sim_time}],
-            condition=IfCondition(publish_jsp),
-        ),
+        # Node(
+        #     package='big_bertha_description',
+        #     executable='joint_state_publisher.py',
+        #     name='joint_state_publisher',
+        #     output='screen',
+        #     parameters=[{'use_sim_time': use_sim_time}],
+        #     condition=IfCondition(publish_jsp),
+        # ),
     ])
