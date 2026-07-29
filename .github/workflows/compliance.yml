@@ -19,7 +19,7 @@ jobs:
           import os, yaml, glob, sys
           errors = 0
           ignore = {'build', 'install', 'log', '.git', 'node_modules'}
-          for f in glob.glob('**/*.yaml', recursive=True):
+          for f in glob.glob('**/*.yaml', recursive=True) + glob.glob('**/*.yml', recursive=True):
               parts = os.path.normpath(f).split(os.sep)
               if any(p in ignore for p in parts):
                   continue
