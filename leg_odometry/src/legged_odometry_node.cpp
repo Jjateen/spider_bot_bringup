@@ -234,7 +234,7 @@ private:
     (void)orient_curr;
     (void)dt;
 
-    // TODO: implement full forward kinematics for each leg using URDF geometry
+    // TODO(Jjateen): implement full forward kinematics for each leg using URDF geometry
     // and body-to-foot Jacobian to compute body velocity from joint velocities.
     // Fall back to simple velocity estimate for now. Indices follow the Isaac
     // group order (leg_odometry.yaml): [hips(0-3), knees(4-7), ankles(8-11)].
