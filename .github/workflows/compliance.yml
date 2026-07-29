@@ -29,7 +29,17 @@ jobs:
                   print(f'FAIL: {f} — {e}')
                   errors += 1
           sys.exit(errors)
-          "
+
+  file-checks:
+    name: Required files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check LICENSE exists
+        run: test -f LICENSE
+      - name: Check README exists
+        run: test -f README.md
+      - name: Every package has package.xml       
 
       - name: URDF / XACRO files parse as XML
         run: |
@@ -43,115 +53,12 @@ jobs:
           done
           exit $errors
 
-      - name: Python lint
-        run: |
-          pip3 install ruff
-          ruff check --output-format=github .
-
-      - name: Joint name integrity
-        run: |
-          python3 -c "
-          import os, yaml
-          policy = 'big_bertha_policy_controller/config/policy.yaml'
-          control = 'big_bertha_description/config/ros2_control.yaml'
-          if not os.path.exists(policy) or not os.path.exists(control):
-              print('SKIP — files not present on this branch')
-          else:
-              p = yaml.safe_load(open(policy))
-              c = yaml.safe_load(open(control))
-              names_p = p['/**']['ros__parameters']['joint_names']
-              names_c = c['position_controller']['ros__parameters']['joints']
-              assert names_p == names_c
-              print('OK — 12 joints match')
-          "
-
-      - name: I2C device addresses
-        run: |
-          python3 -c "
-          import os, re
-          path = 'big_bertha_bringup/firmware/hardware_bridge_app/sketch/sketch.ino'
-          if not os.path.exists(path):
-              print('SKIP — file not present on this branch')
-          else:
-              text = open(path).read()
-              addrs = {}
-              for line in text.splitlines():
-                  m = re.match(r'static const uint8_t (\w+)\s*=\s*(0x[0-9A-Fa-f]+)', line)
-                  if m: addrs[m.group(1)] = m.group(2)
-              assert addrs.get('PCA9685_ADDR') == '0x40'
-              assert addrs.get('MPU9250_ADDR') == '0x68'
-              print('OK — PCA9685 @ 0x40, MPU9250 @ 0x68')
-          "
-
-      - name: Default position integrity
-        run: |
-          python3 -c "
-          import os, yaml
-          policy = 'big_bertha_policy_controller/config/policy.yaml'
-          control = 'big_bertha_description/config/ros2_control.yaml'
-          if not os.path.exists(policy) or not os.path.exists(control):
-              print('SKIP — files not present on this branch')
-          else:
-              p = yaml.safe_load(open(policy))
-              c = yaml.safe_load(open(control))
-              pos_p = p['/**']['ros__parameters']['default_joint_pos']
-              pos_c = c['position_controller']['ros__parameters']['default_positions']
-              assert pos_p == pos_c
-              print('OK — default positions match')
-          "
-
-      - name: Servo arrays integrity
-        run: |
-          python3 -c "
-          import os, sys, yaml
-          path = 'big_bertha_bringup/config/hardware_bridge.yaml'
-          if not os.path.exists(path):
-              print('SKIP — file not present on this branch')
-          else:
-              cfg = yaml.safe_load(open(path))
-              hw = cfg['/**']['ros__parameters']
-              errors = 0
-              for arr in ['servo_direction','servo_offset','servo_lower_limit','servo_upper_limit','servo_channel']:
-                  val = hw[arr]
-                  if len(val) != 12:
-                      print(f'FAIL: {arr} has {len(val)} entries')
-                      errors += 1
-              channels = hw['servo_channel']
-              if len(set(channels)) != 12:
-                  print(f'FAIL: servo_channel has duplicates: {channels}')
-                  errors += 1
-              for ch in channels:
-                  if not (0 <= ch <= 15):
-                      print(f'FAIL: servo_channel value {ch} out of range')
-                      errors += 1
-              print('OK — servo arrays: 12 entries, unique channels 0-15')
-              sys.exit(errors)
-          "
-
-      - name: PWM range integrity
-        run: |
-          python3 -c "
-          import os, yaml
-          path = 'big_bertha_bringup/config/hardware_bridge.yaml'
-          if not os.path.exists(path):
-              print('SKIP — file not present on this branch')
-          else:
-              cfg = yaml.safe_load(open(path))
-              hw = cfg['/**']['ros__parameters']
-              lo, hi = hw['pwm_min'], hw['pwm_max']
-              assert 0 <= lo < hi <= 4095
-              print(f'OK — PWM range {lo}–{hi}')
-          "
-
-      - name: ONNX model integrity
-        run: |
-          python3 -c "
-          import os
-          path = 'big_bertha_policy_controller/models/policy.onnx'
-          if not os.path.exists(path):
-              print('SKIP — file not present on this branch')
-          else:
-              size = os.path.getsize(path)
-              assert size > 1000
-              print(f'OK — policy.onnx ({size} bytes)')
-          "
+  pre-commit:
+    name: Pre-commit hooks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: pre-commit/action@v3.0.1
