@@ -265,12 +265,11 @@ private:
   // are only used if the parameter declaration fails. Must match Isaac group
   // order (all hips, all knees, all ankles) to agree with policy_controller_node.
   inline static const std::vector<std::string> kDefaultJointNames{
-    "Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119",
-    "Revolute_111", "Revolute_114", "Revolute_117", "Revolute_120",
-    "Revolute_112", "Revolute_115", "Revolute_118", "Revolute_121"};
+    "Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119", "Revolute_111", "Revolute_114",
+    "Revolute_117", "Revolute_120", "Revolute_112", "Revolute_115", "Revolute_118", "Revolute_121"};
 
-  inline static const std::vector<double> kDefaultJointPos{
-    0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 2.00, 2.00, 2.00, 2.00};
+  inline static const std::vector<double> kDefaultJointPos{0.0,   0.0,   0.0,  0.0,  -0.32, -0.32,
+                                                           -0.32, -0.32, 2.00, 2.00, 2.00,  2.00};
 
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
