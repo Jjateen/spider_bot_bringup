@@ -1,6 +1,0 @@
-name: imu_scanner
-description: "Standalone IMU diagnostic tool — probes MPU9250 on I2C and displays raw accel/gyro readings"
-icon: 📡
-version: "0.1.0"
-ports: []
-bricks: []
