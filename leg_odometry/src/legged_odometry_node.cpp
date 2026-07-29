@@ -1,3 +1,17 @@
+// Copyright 2026 Big Bertha Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #include <chrono>
 #include <cmath>
 #include <memory>
@@ -27,7 +41,7 @@ public:
       declare_parameter<std::vector<double>>("default_joint_pos", kDefaultJointPos);
     odom_frame_ = declare_parameter<std::string>("odom_frame", "odom");
     base_frame_ = declare_parameter<std::string>("base_frame", "base_link");
-    publish_tf_ = declare_parameter<bool>("publish_tf", true);
+    publish_tf_ = declare_parameter<bool>("publish_tf", false);
     velocity_source_ = declare_parameter<std::string>("velocity_source", "imu_dead_reckon");
     drift_damping_ = declare_parameter<double>("drift_damping", 0.98);
     servo_tau_ = declare_parameter<double>("servo_tau", 0.06);
@@ -51,15 +65,15 @@ public:
       imu_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LeggedOdometryNode::on_imu, this, std::placeholders::_1));
 
-    joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(1));
+    joint_state_pub_ =
+      create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(1));
     odom_pub_ = create_publisher<nav_msgs::msg::Odometry>("/odom", rclcpp::QoS(1));
 
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
-    // Publish joint states periodically at 50 Hz so the policy controller
-    // (and any other late-joining subscriber) receives joint data.
-    joint_state_timer_ =
-      create_wall_timer(20ms, std::bind(&LeggedOdometryNode::publish_joint_states, this));
+    // Joint states are published on every cmd callback. A separate timer
+    // is intentionally avoided to prevent two interleaved streams at
+    // different rates for the same topic.
   }
 
 private:
@@ -70,15 +84,14 @@ private:
     std::lock_guard<std::mutex> lk(joint_mutex_);
 
     auto now = this->now();
-    auto now_steady = std::chrono::steady_clock::now();
 
     auto js = sensor_msgs::msg::JointState();
     js.header.stamp = now;
     js.name = joint_names_;
 
     double dt = 0.0;
-    if (last_cmd_time_.time_since_epoch().count() > 0) {
-      dt = std::chrono::duration<double>(now_steady - last_cmd_time_).count();
+    if (last_cmd_time_.nanoseconds() > 0) {
+      dt = (now - last_cmd_time_).seconds();
     }
 
     // 1st-order servo dynamics: EWMA filter simulates MG995's physical lag.
@@ -106,26 +119,26 @@ private:
       }
       last_joint_positions_[i] = filt_pos;
     }
-    last_cmd_time_ = now_steady;
+    last_cmd_time_ = now;
 
     joint_state_pub_->publish(js);
   }
 
   void on_imu(const sensor_msgs::msg::Imu::SharedPtr msg)
   {
-    auto now_steady = std::chrono::steady_clock::now();
+    auto now = this->now();
 
-    if (last_imu_time_.time_since_epoch().count() == 0) {
-      last_imu_time_ = now_steady;
+    if (last_imu_time_.nanoseconds() == 0) {
+      last_imu_time_ = now;
       last_orientation_.setValue(
         msg->orientation.x, msg->orientation.y, msg->orientation.z, msg->orientation.w);
       last_orientation_.normalize();
       return;
     }
 
-    double dt = std::chrono::duration<double>(now_steady - last_imu_time_).count();
+    double dt = (now - last_imu_time_).seconds();
     if (dt <= 0.0 || dt > 0.1) {
-      last_imu_time_ = now_steady;
+      last_imu_time_ = now;
       return;
     }
 
@@ -189,24 +202,10 @@ private:
       tf_broadcaster_->sendTransform(tf);
     }
 
-    last_imu_time_ = now_steady;
+    last_imu_time_ = now;
     last_orientation_ = orientation;
     last_velocity_ = velocity;
     last_position_ = position;
-  }
-
-  void publish_joint_states()
-  {
-    std::lock_guard<std::mutex> lk(joint_mutex_);
-
-    auto js = sensor_msgs::msg::JointState();
-    js.header.stamp = now();
-    js.name = joint_names_;
-    for (size_t i = 0; i < 12; ++i) {
-      js.position.push_back(last_joint_positions_[i]);
-      js.velocity.push_back(last_joint_velocities_[i]);
-    }
-    joint_state_pub_->publish(js);
   }
 
   void compute_imu_dead_reckon(
@@ -280,7 +279,6 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-  rclcpp::TimerBase::SharedPtr joint_state_timer_;
 
   std::vector<std::string> joint_names_;
   std::vector<double> default_joint_pos_;
@@ -294,10 +292,10 @@ private:
   std::vector<double> filtered_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_joint_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_joint_velocities_{std::vector<double>(12, 0.0)};
-  std::chrono::steady_clock::time_point last_cmd_time_;
+  rclcpp::Time last_cmd_time_{0, 0, RCL_ROS_TIME};
   std::mutex joint_mutex_;
 
-  std::chrono::steady_clock::time_point last_imu_time_;
+  rclcpp::Time last_imu_time_{0, 0, RCL_ROS_TIME};
   tf2::Quaternion last_orientation_;
   tf2::Vector3 last_velocity_{0.0, 0.0, 0.0};
   tf2::Vector3 last_position_{0.0, 0.0, 0.0};
