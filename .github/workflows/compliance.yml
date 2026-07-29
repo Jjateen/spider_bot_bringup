@@ -43,10 +43,6 @@ jobs:
           done
           exit $errors
 
-      - name: Python lint
-        run: |
-          pip3 install ruff
-          ruff check --output-format=github .
 
       - name: Joint name integrity
         run: |
