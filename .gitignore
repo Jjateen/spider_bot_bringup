@@ -28,24 +28,3 @@ verification_artifacts/
 # Cache files
 .cache/
 .ruff_cache/
-
-# Local-only planning / issues / reports (not tracked)
-PLAN.md
-ISSUES.md
-Big_Bertha_Hardware_Bridge_Guide.pdf
-AUDIT_REPORT.md
-ahrs/AHRS_DEBUG_CHECKLIST.txt
-big_bertha_bringup/firmware/hardware_bridge_app/HANDOFF.md
-MAGNETOMETER_REPORT.txt
-
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
-scripts/docker_build.sh
-scripts/docker_run.sh
-PROJECT_SPEC.txt
-
-# Network configs (local-specific)
-fastdds_docker.xml
-fastdds_shm_udp.xml

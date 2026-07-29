@@ -1,0 +1,64 @@
+name: ROS 2 CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  colcon:
+    name: colcon build & test (Jazzy · ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    # Run inside the official ROS tooling image instead of ros-tooling/setup-ros.
+    # setup-ros resolves the ros-apt-source version via an UNAUTHENTICATED
+    # `curl https://api.github.com/.../releases/latest`; on shared GitHub-hosted
+    # runner IPs that call intermittently hits the 60 req/hr anonymous API rate
+    # limit, returns no tag_name, leaves ROS_APT_SOURCE_VERSION empty, and the
+    # apt-source .deb URL 404s -> the whole "Set up ROS 2" step fails (flaky,
+    # repo-wide). The container ships ROS dev tools + rosdep pre-initialized, so
+    # there is no dependency on that API call. Its single clean Python env also
+    # avoids the intermittent ament_package PYTHONPATH race seen on bare metal.
+    container:
+      image: rostooling/setup-ros-docker:ubuntu-noble-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm   # native arm64 — matches UNO Q deploy target
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ONNX Runtime (C++)
+        run: |
+          set -eux
+          ORT_VER=1.20.1
+          case "${{ matrix.arch }}" in
+            amd64) ORT_ARCH=x64 ;;
+            arm64) ORT_ARCH=aarch64 ;;
+          esac
+          curl -fsSL -o /tmp/ort.tgz \
+            "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VER}/onnxruntime-linux-${ORT_ARCH}-${ORT_VER}.tgz"
+          mkdir -p /opt/onnxruntime
+          tar -xzf /tmp/ort.tgz -C /opt/onnxruntime --strip-components=1
+
+      - name: Build & test
+        uses: ros-tooling/action-ros-ci@v0.4
+        with:
+          target-ros2-distro: jazzy
+          import-token: ${{ secrets.GITHUB_TOKEN }}
+          package-name: >
+            spider_msgs
+            big_bertha_description
+            big_bertha_policy_controller
+            big_bertha_sim_bringup
+            big_bertha_bringup
+          # -DONNXRUNTIME_ROOT is a build-time flag. extra-cmake-args feeds it to
+          # `colcon build --cmake-args` ONLY -- not `colcon test` (which rejects
+          # --cmake-args). The old colcon-extra-args went to both verbs and broke
+          # test; colcon-defaults overwrote action-ros-ci's defaults and broke the
+          # build. extra-cmake-args is the action's purpose-built input for this.
+          extra-cmake-args: -DONNXRUNTIME_ROOT=/opt/onnxruntime
