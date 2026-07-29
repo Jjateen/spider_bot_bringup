@@ -50,6 +50,7 @@ jobs:
         with:
           target-ros2-distro: jazzy
           import-token: ${{ secrets.GITHUB_TOKEN }}
+          enable-coverage: true
           package-name: >
             spider_msgs
             big_bertha_description
@@ -62,4 +63,7 @@ jobs:
           # --cmake-args). The old colcon-extra-args went to both verbs and broke
           # test; colcon-defaults overwrote action-ros-ci's defaults and broke the
           # build. extra-cmake-args is the action's purpose-built input for this.
-          extra-cmake-args: -DONNXRUNTIME_ROOT=/opt/onnxruntime
+          extra-cmake-args: >
+            -DONNXRUNTIME_ROOT=/opt/onnxruntime
+            -DCMAKE_CXX_FLAGS=--coverage
+            -DCMAKE_EXE_LINKER_FLAGS=--coverage
