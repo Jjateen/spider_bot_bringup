@@ -20,7 +20,7 @@ import sys
 sys.path.insert(
     0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'scripts'))
 
-from frontier_lib import find_frontiers, has_clearance  # noqa: E402
+from frontier_lib import find_frontiers, has_clearance
 
 W = H = 8
 

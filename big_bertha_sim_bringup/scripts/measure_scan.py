@@ -16,6 +16,7 @@ near real geometry must survive, mid/far downhill rays are the ghost source.
 Usage: measure_scan.py [duration_s]
 """
 
+import math
 import statistics
 import sys
 import time
@@ -23,7 +24,6 @@ import time
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
-
 from sensor_msgs.msg import LaserScan
 
 DUR = float(sys.argv[1]) if len(sys.argv) > 1 else 20.0
@@ -32,7 +32,7 @@ BANDS = [(0.0, 1.5), (1.5, 2.5), (2.5, 4.0), (4.0, 8.1)]
 
 def is_hit(x, rmax):
     """Return True if this range is a real finite return (not inf/NaN/oob)."""
-    return x == x and x != float('inf') and x < rmax
+    return not math.isnan(x) and x != float('inf') and x < rmax
 
 
 class MeasureScan(Node):
