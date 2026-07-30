@@ -27,6 +27,7 @@
 #include "big_bertha_bringup/tcp_client.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
 #include "sensor_msgs/msg/magnetic_field.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 
@@ -59,7 +60,9 @@ private:
   // ROS
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr mag_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_sub_;
+  std::vector<std::string> joint_names_;
   std::vector<double> orient_cov_;
   std::vector<double> accel_cov_;
   std::vector<double> gyro_cov_;
@@ -79,6 +82,10 @@ private:
   // Threading
   std::thread reader_thread_;
   std::atomic<bool> running_{true};
+
+  // Joint state tracking (finite-differenced velocity from commanded targets)
+  rclcpp::Time last_joint_state_time_{0, 0, RCL_ROS_TIME};
+  std::vector<double> last_joint_state_positions_{12, 0.0};
 };
 
 }  // namespace big_bertha_bringup

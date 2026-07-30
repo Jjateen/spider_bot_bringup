@@ -125,6 +125,8 @@ public:
     first_cmd_ = true;
   }
 
+  const std::vector<double> & last_targets() const { return last_targets_; }
+
 private:
   Params params_;
   std::vector<double> last_targets_{12, 0.0};
