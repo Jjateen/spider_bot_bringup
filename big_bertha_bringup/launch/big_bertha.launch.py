@@ -100,7 +100,8 @@ def generate_launch_description():
     # The hardware bridge publishes raw accel+gyro with no orientation. This
     # node runs the Madgwick AHRS algorithm to estimate orientation from
     # gravity + gyro integration. No magnetometer (use_mag: false) so yaw
-    # drifts; the EKF gets absolute yaw via /odom from leg_odometry.
+    # drifts (pure gyro, no magnetometer on this MPU-6500). The IMU yaw rate
+    # is fused by the EKF; /odom yaw is not fused as absolute.
     imu_filter_config = os.path.join(bringup_pkg, 'config', 'imu_filter_madgwick.yaml')
     imu_filter = Node(
         package='imu_filter_madgwick',
@@ -127,7 +128,10 @@ def generate_launch_description():
     leg_odom = include(
         leg_pkg,
         os.path.join('launch', 'legged_odometry.launch.py'),
-        {'imu_topic': imu_topic},
+        {
+            'imu_topic': imu_topic,
+            'publish_joint_states': 'false',
+        },
     )
 
     # ── 5. State estimation: robot_localization EKF ───────────────────
