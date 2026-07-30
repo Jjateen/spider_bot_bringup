@@ -26,6 +26,14 @@
     publish_tf: false
     velocity_source: "imu_dead_reckon"
     drift_damping: 0.98
+    # ZUPT (Zero-Velocity Update): when the robot is stationary (all joints
+    # still + no linear acceleration), reset the dead-reckon velocity to zero.
+    # This replaces the old leaky-damping mechanism for drift control —
+    # damping bled steady walking velocity to zero; ZUPT only resets when the
+    # robot is actually not moving, preserving velocity during walking.
+    stationary_joint_vel_threshold: 0.02   # rad/s per joint
+    stationary_accel_threshold: 0.5        # m/s^2 deviation from 1g
+    stationary_samples: 10                 # consecutive IMU samples (~80 ms @125Hz)
     # Servo dynamics model: EWMA time constant (seconds) matching MG995 response.
     # tau=0.06 limits filtered position rate to ~6.5 rad/s (servo's max speed),
     # preventing the positive-feedback loop from synthetic joint states.
