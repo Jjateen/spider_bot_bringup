@@ -18,17 +18,19 @@
     joint_limit: 3.14159
 
     # Rate limiter: per-step change clamp (radians/step).
-    # Derived from max_joint_rate_rad_s / pd_rate so it tracks the publish rate
-    # automatically — the old hardcoded 0.03 was correct at 200 Hz but broke
-    # silently when pd_rate was 50 (1.5 rad/s, legs couldn't complete a swing).
+    # Derived from max_joint_rate_rad_s / control_rate so it tracks the actual
+    # command publish rate — the old hardcoded 0.03 was correct at 200 Hz but
+    # broke when the policy ran at 50 Hz (1.5 rad/s, legs couldn't swing).
     # MG995 max = 6.54 rad/s.
-    pd_rate: 200.0
+    control_rate: 50.0
     max_joint_rate_rad_s: 6.54
-    # rate_limit_rad is computed in code: max_joint_rate_rad_s / pd_rate
+    # rate_limit_rad is computed in code: max_joint_rate_rad_s / control_rate
 
-    # EWMA smoothing alpha on outbound position targets. 0 = no smoothing (passthrough),
-    # 1 = instant step, e.g. 0.3 filters 50 Hz policy steps into smooth servo commands.
-    smoothing_alpha: 0.3
+    # EWMA smoothing alpha on outbound position targets. 1.0 = passthrough
+    # (no smoothing). The rate limiter above is the safety mechanism; the
+    # EWMA duplicates it and attenuates lift-off transients. Set <1.0 only
+    # if servo jitter is visible on the bench.
+    smoothing_alpha: 1.0
 
     # Policy center in radians — the policy output value at which the servo is at its
     # physical center (0 rad for hips/knees, π/2 rad for ankles). At this value the

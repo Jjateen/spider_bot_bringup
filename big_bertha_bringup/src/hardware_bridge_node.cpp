@@ -22,6 +22,8 @@
 #include <utility>
 #include <vector>
 
+#include "sensor_msgs/msg/joint_state.hpp"
+
 namespace big_bertha_bringup
 {
 
@@ -90,10 +92,10 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   accel_calibration_samples_ = declare_parameter<int>("accel_calibration_samples", 200);
   scp.single_joint_mode = declare_parameter<bool>("single_joint_mode", false);
   scp.single_joint_index = declare_parameter<int>("single_joint_index", 10);
-  double pd_rate = declare_parameter<double>("pd_rate", 200.0);
+  double control_rate = declare_parameter<double>("control_rate", 50.0);
   double max_joint_rate = declare_parameter<double>("max_joint_rate_rad_s", 6.54);
-  scp.rate_limit_rad = max_joint_rate / pd_rate;
-  scp.smoothing_alpha = declare_parameter<double>("smoothing_alpha", 0.3);
+  scp.rate_limit_rad = max_joint_rate / control_rate;
+  scp.smoothing_alpha = declare_parameter<double>("smoothing_alpha", 1.0);
 
   servo_converter_ = ServoConverter(std::move(scp));
 
@@ -111,8 +113,14 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   }
 
   // ── ROS ───────────────────────────────────────────────────────────────
+  joint_names_ = declare_parameter<std::vector<std::string>>(
+    "joint_names", {"Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119", "Revolute_111",
+                    "Revolute_114", "Revolute_117", "Revolute_120", "Revolute_112", "Revolute_115",
+                    "Revolute_118", "Revolute_121"});
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("/imu", rclcpp::SensorDataQoS());
   mag_pub_ = create_publisher<sensor_msgs::msg::MagneticField>("/imu/mag", rclcpp::SensorDataQoS());
+  joint_state_pub_ =
+    create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(1));
   cmd_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
     "/position_controller/commands", rclcpp::QoS(1),
     std::bind(&HardwareBridgeNode::on_cmd, this, std::placeholders::_1));
@@ -138,6 +146,28 @@ void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPt
   }
 
   auto pwms = servo_converter_.convert(msg->data);
+
+  // Publish /joint_states from the post-smoothing, post-rate-limit values
+  // (what was actually commanded to the servos), with finite-differenced
+  // velocity. This is the policy's only feedback on hardware — without it
+  // 46% of the observation is dead (joint_pos and joint_vel stay zero).
+  auto js = sensor_msgs::msg::JointState();
+  js.header.stamp = now();
+  js.name = joint_names_;
+  const auto & limited = servo_converter_.last_targets();
+  double dt =
+    last_joint_state_time_.nanoseconds() > 0 ? (now() - last_joint_state_time_).seconds() : 0.0;
+  for (size_t i = 0; i < 12; ++i) {
+    js.position.push_back(limited[i]);
+    if (dt > 1e-6) {
+      js.velocity.push_back((limited[i] - last_joint_state_positions_[i]) / dt);
+    } else {
+      js.velocity.push_back(0.0);
+    }
+  }
+  last_joint_state_positions_ = limited;
+  last_joint_state_time_ = now();
+  joint_state_pub_->publish(js);
 
   // Build JSON command
   std::string json = R"({"cmd":"servo","pwms":[)";
