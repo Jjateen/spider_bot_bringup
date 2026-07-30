@@ -25,14 +25,22 @@ def generate_launch_description():
     pkg = get_package_share_directory('leg_odometry')
     default_params = os.path.join(pkg, 'config', 'legged_odometry.yaml')
     imu_topic = LaunchConfiguration('imu_topic')
+    publish_joint_states = LaunchConfiguration('publish_joint_states')
 
     return LaunchDescription([
         DeclareLaunchArgument('imu_topic', default_value='/imu'),
+        DeclareLaunchArgument('publish_joint_states', default_value='true'),
         Node(
             package='leg_odometry',
             executable='legged_odometry_node',
             name='legged_odometry',
             output='screen',
-            parameters=[default_params, {'imu_topic': imu_topic}],
+            parameters=[
+                default_params,
+                {
+                    'imu_topic': imu_topic,
+                    'publish_joint_states': publish_joint_states,
+                },
+            ],
         ),
     ])

@@ -49,6 +49,7 @@ public:
     stationary_accel_threshold_ = declare_parameter<double>("stationary_accel_threshold", 0.5);
     stationary_samples_ = declare_parameter<int>("stationary_samples", 10);
     servo_tau_ = declare_parameter<double>("servo_tau", 0.06);
+    publish_joint_states_ = declare_parameter<bool>("publish_joint_states", true);
 
     if (velocity_source_ == "leg_kinematics") {
       RCLCPP_WARN(
@@ -127,7 +128,9 @@ private:
     }
     last_cmd_time_ = now;
 
-    joint_state_pub_->publish(js);
+    if (publish_joint_states_) {
+      joint_state_pub_->publish(js);
+    }
   }
 
   void on_imu(const sensor_msgs::msg::Imu::SharedPtr msg)
@@ -335,6 +338,7 @@ private:
   std::vector<std::string> joint_names_;
   std::vector<double> default_joint_pos_;
   bool publish_tf_;
+  bool publish_joint_states_;
   std::string odom_frame_;
   std::string base_frame_;
   std::string velocity_source_;

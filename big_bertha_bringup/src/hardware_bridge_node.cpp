@@ -92,9 +92,9 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   accel_calibration_samples_ = declare_parameter<int>("accel_calibration_samples", 200);
   scp.single_joint_mode = declare_parameter<bool>("single_joint_mode", false);
   scp.single_joint_index = declare_parameter<int>("single_joint_index", 10);
-  double control_rate = declare_parameter<double>("control_rate", 50.0);
+  double command_rate = declare_parameter<double>("command_rate_hz", 200.0);
   double max_joint_rate = declare_parameter<double>("max_joint_rate_rad_s", 6.54);
-  scp.rate_limit_rad = max_joint_rate / control_rate;
+  scp.rate_limit_rad = max_joint_rate / command_rate;
   scp.smoothing_alpha = declare_parameter<double>("smoothing_alpha", 1.0);
 
   servo_converter_ = ServoConverter(std::move(scp));

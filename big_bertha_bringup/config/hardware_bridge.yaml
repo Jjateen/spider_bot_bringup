@@ -18,13 +18,13 @@
     joint_limit: 3.14159
 
     # Rate limiter: per-step change clamp (radians/step).
-    # Derived from max_joint_rate_rad_s / control_rate so it tracks the actual
-    # command publish rate — the old hardcoded 0.03 was correct at 200 Hz but
-    # broke when the policy ran at 50 Hz (1.5 rad/s, legs couldn't swing).
-    # MG995 max = 6.54 rad/s.
-    control_rate: 50.0
+    # Derived from max_joint_rate_rad_s / command_rate_hz so it tracks the
+    # actual command publish rate — the old hardcoded 0.03 was correct at
+    # 200 Hz but broke when pd_rate was 50 (1.5 rad/s, legs couldn't swing).
+    # MG995 max = 6.54 rad/s. policy_controller publishes at pd_rate (200 Hz).
+    command_rate_hz: 200.0
     max_joint_rate_rad_s: 6.54
-    # rate_limit_rad is computed in code: max_joint_rate_rad_s / control_rate
+    # rate_limit_rad is computed in code: max_joint_rate_rad_s / command_rate_hz
 
     # EWMA smoothing alpha on outbound position targets. 1.0 = passthrough
     # (no smoothing). The rate limiter above is the safety mechanism; the
