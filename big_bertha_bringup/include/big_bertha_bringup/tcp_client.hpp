@@ -36,11 +36,12 @@ class TcpClient
 {
 public:
   TcpClient() = default;
-  ~TcpClient() { close(); }
+  ~TcpClient() {close();}
 
   TcpClient(const TcpClient &) = delete;
   TcpClient & operator=(const TcpClient &) = delete;
-  TcpClient(TcpClient && other) noexcept : fd_(other.fd_), read_buf_(std::move(other.read_buf_))
+  TcpClient(TcpClient && other) noexcept
+  : fd_(other.fd_), read_buf_(std::move(other.read_buf_))
   {
     other.fd_ = -1;
   }
@@ -70,7 +71,7 @@ public:
     }
 
     fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (fd_ < 0) return false;
+    if (fd_ < 0) {return false;}
 
     // Disable Nagle's algorithm — small IMU/servo commands (< 100 bytes) must
     // be sent immediately, not delayed up to 200 ms waiting for a batch.
@@ -100,7 +101,7 @@ public:
   bool send(const std::string & data)
   {
     std::lock_guard<std::mutex> lk(mtx_);
-    if (fd_ < 0) return false;
+    if (fd_ < 0) {return false;}
 
     ssize_t n = ::send(fd_, data.data(), data.size(), MSG_NOSIGNAL);
     if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
@@ -122,7 +123,7 @@ public:
 
     auto pos = read_buf_.find('\n');
     while (pos == std::string::npos) {
-      if (!refill_buf_locked()) return false;
+      if (!refill_buf_locked()) {return false;}
       pos = read_buf_.find('\n');
     }
 
@@ -134,7 +135,7 @@ public:
   void drain()
   {
     std::lock_guard<std::mutex> lk(mtx_);
-    if (fd_ < 0) return;
+    if (fd_ < 0) {return;}
 
     char buf[4096];
     fd_set rfds;
@@ -168,7 +169,7 @@ private:
 
   bool refill_buf_locked()
   {
-    if (fd_ < 0) return false;
+    if (fd_ < 0) {return false;}
 
     fd_set rfds;
     FD_ZERO(&rfds);

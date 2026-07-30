@@ -13,12 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+from http import HTTPStatus
 import http.server
 import json
 import os
 import sys
 import threading
-from http import HTTPStatus
 
 import rclpy
 from rclpy.node import Node
@@ -100,6 +100,7 @@ for i in range(12):
 
 
 class WebControlNode(Node):
+
     def __init__(self):
         super().__init__('web_control_server')
         self.pub = self.create_publisher(
@@ -194,9 +195,9 @@ class ServoHTTPHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
 
-    def log_message(self, format, *args):
+    def log_message(self, fmt, *args):
         if self.__class__.node:
-            msg = format % args
+            msg = fmt % args
             self.__class__.node.get_logger().info(f'HTTP: {msg}')
 
 
