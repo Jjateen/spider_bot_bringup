@@ -167,6 +167,7 @@ private:
     if (is_robot_stationary(msg)) {
       velocity = tf2::Vector3(0.0, 0.0, 0.0);
       position.setZ(0.0);
+      last_zupt_time_ = now;
     }
 
     auto odom = nav_msgs::msg::Odometry();
@@ -189,15 +190,30 @@ private:
     odom.twist.twist.angular.y = msg->angular_velocity.y;
     odom.twist.twist.angular.z = msg->angular_velocity.z;
 
-    odom.pose.covariance[0] = 0.01;
-    odom.pose.covariance[7] = 0.01;
-    odom.pose.covariance[14] = 0.01;
-    odom.pose.covariance[21] = 0.01;
-    odom.pose.covariance[28] = 0.01;
-    odom.pose.covariance[35] = 0.001;
-    odom.twist.covariance[0] = 0.1;
-    odom.twist.covariance[7] = 0.1;
-    odom.twist.covariance[14] = 0.1;
+    // Dead-reckoned uncertainty grows with time since last ZUPT reset.
+    // Position error from accelerometer bias (this IMU reads 11.07 vs 9.81 at
+    // rest, leaving ~0.4 m/s² residual horizontal bias when tilted during
+    // walking) integrates quadratically. Yaw is pure gyro integration with no
+    // magnetometer — fastest growth. Roll/pitch benefit from gravity reference.
+    double dt_zupt = last_zupt_time_.nanoseconds() > 0
+                       ? (now - last_zupt_time_).seconds()
+                       : 0.0;
+    double pos_xy_cov = 0.01 + 0.1 * dt_zupt + 0.5 * dt_zupt * dt_zupt;
+    double pos_z_cov = 0.01 + 0.05 * dt_zupt;
+    double rp_cov = 0.01 + 0.005 * dt_zupt;
+    double yaw_cov = 0.001 + 0.02 * dt_zupt;
+    double vel_xy_cov = 0.1 + 0.1 * dt_zupt;
+    double vel_z_cov = 0.1 + 0.05 * dt_zupt;
+
+    odom.pose.covariance[0] = pos_xy_cov;
+    odom.pose.covariance[7] = pos_xy_cov;
+    odom.pose.covariance[14] = pos_z_cov;
+    odom.pose.covariance[21] = rp_cov;
+    odom.pose.covariance[28] = rp_cov;
+    odom.pose.covariance[35] = yaw_cov;
+    odom.twist.covariance[0] = vel_xy_cov;
+    odom.twist.covariance[7] = vel_xy_cov;
+    odom.twist.covariance[14] = vel_z_cov;
 
     odom_pub_->publish(odom);
 
@@ -337,6 +353,7 @@ private:
   std::mutex joint_mutex_;
 
   rclcpp::Time last_imu_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_zupt_time_{0, 0, RCL_ROS_TIME};
   tf2::Quaternion last_orientation_;
   tf2::Vector3 last_velocity_{0.0, 0.0, 0.0};
   tf2::Vector3 last_position_{0.0, 0.0, 0.0};
