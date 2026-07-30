@@ -28,11 +28,12 @@
 #   i2c scan: MCU sends Bridge.notify("i2c_scan", ...) on request
 #                 — (notify)
 
-from arduino.app_utils import App, Bridge
 import json
 import socket
 import threading
 import time
+
+from arduino.app_utils import App, Bridge
 
 TCP_HOST = '0.0.0.0'
 
@@ -45,9 +46,8 @@ cache = {
     'servo_pwms': None,  # latest servo PWM targets, flushed from main thread
     'servo_diag': None,  # latest servo diagnostic report
 }
-}
-cache_lock = threading.Lock()   # only one thread reads or writes the cache at a time
-scan_count = 0                   # incremented each time on_i2c_scan is called
+cache_lock = threading.Lock()
+scan_count = 0
 
 
 SERVO_PORT = 50007
@@ -135,20 +135,25 @@ def handle_imu_client(conn):
                     if imu is not None:
                         conn.sendall(json.dumps(imu).encode() + b'\n')
                     else:
-                        err = json.dumps({'error': 'no imu data yet'}).encode() + b'\n'
+                        err = json.dumps(
+                            {'error': 'no imu data yet'}
+                        ).encode() + b'\n'
                         conn.sendall(err)
 
                 elif cmd == 'imu_diag':
                     with cache_lock:
                         d = cache['imu_diag']
-                    conn.sendall(json.dumps({'imu_diag': d}).encode() + b'\n')
+                    buf = json.dumps({'imu_diag': d}).encode() + b'\n'
+                    conn.sendall(buf)
                 elif cmd == 'status':
                     with cache_lock:
                         hw = cache['hw_status']
                     if hw is not None:
                         conn.sendall(json.dumps(hw).encode() + b'\n')
                     else:
-                        err = json.dumps({'error': 'no status yet'}).encode() + b'\n'
+                        err = json.dumps(
+                            {'error': 'no status yet'}
+                        ).encode() + b'\n'
                         conn.sendall(err)
 
                 elif cmd == 'scan_i2c':
@@ -227,9 +232,11 @@ def tcp_imu_server():
 
 # ── Bridge.notify handlers (called when STM32 pushes data) ──────────────────
 
-def on_imu(ax, ay, az, gx, gy, gz, mx=0.0, my=0.0, mz=0.0, sample_id=None, timestamp=None):
+def on_imu(ax, ay, az, gx, gy, gz,
+           mx=0.0, my=0.0, mz=0.0, sample_id=None, timestamp=None):
     if all(v == 0.0 for v in (ax, ay, az, gx, gy, gz)):
-        print('[bridge] WARNING: IMU reading all zeros — sensor may be missing')
+        print('[bridge] WARNING: IMU reading all zeros'
+              ' — sensor may be missing')
     with cache_lock:
         cache['imu'] = {
             'ax': ax, 'ay': ay, 'az': az,
@@ -240,21 +247,23 @@ def on_imu(ax, ay, az, gx, gy, gz, mx=0.0, my=0.0, mz=0.0, sample_id=None, times
 
 
 def on_imu_diag(text):
-    """IMU diagnostics arrive as ONE string.
+    """
+    IMU diagnostics arrive as ONE string.
 
     Bridge RPC silently drops arguments past ~12, and a dropped argument shows
     up on this side as its default -- for these fields that is 0, which is
-    indistinguishable from a real "nothing detected". Sending one string keeps
-    the result honest. Same reason set_servo_pwms packs 12 values into a string.
+    indistinguishable from a real "nothing detected". Sending one string
+    keeps the result honest. Same reason set_servo_pwms packs 12 values
+    into a string.
     """
     with cache_lock:
-        cache["imu_diag"] = text
+        cache['imu_diag'] = text
 
 
 def on_hw_status(scan, ai_ok, servo_calls=0, ping_count=0,
                  pwm_attempts=0, pwm_fails=0, pwm_last_fail_ch=-1,
-                 pwm_last_fail_code=0, set_servo_last_len=0, set_servo_last_idx=0,
-                 pwm_readback_ch0=-1):
+                 pwm_last_fail_code=0, set_servo_last_len=0,
+                 set_servo_last_idx=0, pwm_readback_ch0=-1):
     with cache_lock:
         cache['hw_status'] = {
             'i2c_scan': scan,
@@ -319,7 +328,7 @@ def loop():
                         ','.join(str(p) for p in pwms)
                     )
                     notify_errs = 0
-                except Exception as e:
+                except Exception as e:  # noqa: B902
                     notify_errs += 1
                     if notify_errs <= 3:
                         print(f'[bridge] Bridge.notify failed: {e}')
