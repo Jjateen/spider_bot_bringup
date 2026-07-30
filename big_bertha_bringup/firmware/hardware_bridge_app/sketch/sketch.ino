@@ -201,7 +201,7 @@ static bool mpu9250_init()
   // ran before -- including I2C_MST_EN, which hides the magnetometer.
   i2c_write_byte(MPU9250_ADDR, 0x6B, 0x80);
   delay(100);
-  i2c_write_byte(MPU9250_ADDR, 0x6B, 0x00);   // wake, internal oscillator
+  i2c_write_byte(MPU9250_ADDR, 0x6B, 0x00);  // wake, internal oscillator
   delay(100);
 
   i2c_read_bytes(MPU9250_ADDR, 0x75, &g_mpu_whoami, 1);
@@ -255,7 +255,7 @@ static uint8_t g_mag_wia = 0x00;
 // three axes are scaled differently by up to ~15% and any heading derived
 // from them is skewed.
 static float g_mag_asa[3] = {1.0f, 1.0f, 1.0f};
-static bool g_mag_overflow = false;   // last read tripped HOFL
+static bool g_mag_overflow = false;  // last read tripped HOFL
 
 static bool ak8963_init()
 {
@@ -317,7 +317,7 @@ static int g_aux_found_count = 0;
 // status byte. An empty bus is only meaningful if these show the master was
 // actually transacting and the slaves were NACKing.
 static int g_aux_status_reads_ok = 0;
-static int g_aux_found_slow = -1;   // second pass at 258 kHz
+static int g_aux_found_slow = -1;  // second pass at 258 kHz
 // Per-pass health. A pass is only believable if it observed at least one NACK
 // (st_or bit 0): that proves the master actually drove a transaction. A pass
 // reporting almost every address as present has instead driven NOTHING -- the
@@ -353,20 +353,20 @@ static bool g_aux_slow = false;
 static void aux_bus_probe()
 {
   // Take the aux bus off bypass and hand it to the internal master.
-  i2c_write_byte(MPU9250_ADDR, 0x37, 0x00);          // INT_PIN_CFG: BYPASS_EN off
+  i2c_write_byte(MPU9250_ADDR, 0x37, 0x00);  // INT_PIN_CFG: BYPASS_EN off
   delay(5);
-  i2c_write_byte(MPU9250_ADDR, 0x6A, 0x20);          // USER_CTRL: I2C_MST_EN on
+  i2c_write_byte(MPU9250_ADDR, 0x6A, 0x20);  // USER_CTRL: I2C_MST_EN on
   delay(5);
-  i2c_write_byte(MPU9250_ADDR, 0x24, g_aux_slow ? 0x08 : 0x0D);   // 258 or 400 kHz
+  i2c_write_byte(MPU9250_ADDR, 0x24, g_aux_slow ? 0x08 : 0x0D);  // 258 or 400 kHz
   delay(5);
 
   g_aux_found_count = 0;
   g_aux_status_reads_ok = 0;
   g_aux_status_or = 0x00;
   for (uint8_t addr = 0x08; addr <= 0x77; ++addr) {
-    i2c_write_byte(MPU9250_ADDR, 0x25, 0x80 | addr); // I2C_SLV0_ADDR, read bit
-    i2c_write_byte(MPU9250_ADDR, 0x26, 0x00);        // I2C_SLV0_REG
-    i2c_write_byte(MPU9250_ADDR, 0x27, 0x81);        // I2C_SLV0_CTRL: enable, 1 byte
+    i2c_write_byte(MPU9250_ADDR, 0x25, 0x80 | addr);  // I2C_SLV0_ADDR, read bit
+    i2c_write_byte(MPU9250_ADDR, 0x26, 0x00);         // I2C_SLV0_REG
+    i2c_write_byte(MPU9250_ADDR, 0x27, 0x81);         // I2C_SLV0_CTRL: enable, 1 byte
     delay(6);                                         // several master cycles at 1 kHz
 
     // I2C_MST_STATUS bit 0 I2C_SLV0_NACK: set when the addressed slave did not
@@ -377,7 +377,7 @@ static void aux_bus_probe()
       ++g_aux_status_reads_ok;
       g_aux_status_or |= st;
     } else {
-      st = 0x01;   // read failed: do NOT count the address as present
+      st = 0x01;  // read failed: do NOT count the address as present
     }
     if (!(st & 0x01) && g_aux_found_count < 4) {
       g_aux_found[g_aux_found_count] = addr;
@@ -388,7 +388,7 @@ static void aux_bus_probe()
     if (addr >= 0x0C && addr <= 0x0F) {
       i2c_read_bytes(MPU9250_ADDR, 0x49, &g_aux_probe[addr - 0x0C], 1);
     }
-    i2c_write_byte(MPU9250_ADDR, 0x27, 0x00);        // disable slave 0
+    i2c_write_byte(MPU9250_ADDR, 0x27, 0x00);  // disable slave 0
   }
 
   // Hand the bus back: master off, bypass on, so ak8963_read() still works if
@@ -415,12 +415,15 @@ static bool ak8963_read(float & mx, float & my, float & mz)
   // published as if it were a field reading.
   if (!i2c_read_bytes(AK8963_ADDR, 0x09, &st2, 1)) return false;
   g_mag_overflow = (st2 & 0x08) != 0;
-  if (g_mag_overflow) { mx = my = mz = 0.0f; return false; }
+  if (g_mag_overflow) {
+    mx = my = mz = 0.0f;
+    return false;
+  }
   int16_t rx = (int16_t)((raw[1] << 8) | raw[0]);
   int16_t ry = (int16_t)((raw[3] << 8) | raw[2]);
   int16_t rz = (int16_t)((raw[5] << 8) | raw[4]);
-  const float mRes = 0.15f;   // µT/LSB at 16-bit
-  mx = rx * mRes * g_mag_asa[0] * 1e-6f;   // Tesla, sensor_msgs/MagneticField
+  const float mRes = 0.15f;               // µT/LSB at 16-bit
+  mx = rx * mRes * g_mag_asa[0] * 1e-6f;  // Tesla, sensor_msgs/MagneticField
   my = ry * mRes * g_mag_asa[1] * 1e-6f;
   mz = rz * mRes * g_mag_asa[2] * 1e-6f;
   return true;
@@ -734,10 +737,10 @@ void loop()
     // argument arrives on the Python side as its default — which for the IMU
     // diagnostics is 0, i.e. indistinguishable from a real "nothing found".
     // Everything added since goes out as one string instead, below.
-    Bridge.notify("hw_status", g_i2c_scan, ai ? 1 : 0, g_servo_calls, g_ping_count,
-                  g_pwm_write_attempts, g_pwm_write_fails, g_pwm_last_fail_ch,
-                  g_pwm_last_fail_code, g_set_servo_last_len, g_set_servo_last_idx,
-                  g_pwm_readback_ch0);
+    Bridge.notify(
+      "hw_status", g_i2c_scan, ai ? 1 : 0, g_servo_calls, g_ping_count, g_pwm_write_attempts,
+      g_pwm_write_fails, g_pwm_last_fail_ch, g_pwm_last_fail_code, g_set_servo_last_len,
+      g_set_servo_last_idx, g_pwm_readback_ch0);
 
     // IMU diagnostics as a single string: identity, magnetometer state, the
     // aux-bus sweep AND proof the sweep actually ran, plus the config
