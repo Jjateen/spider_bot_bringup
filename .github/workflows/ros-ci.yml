@@ -50,7 +50,7 @@ jobs:
         with:
           target-ros2-distro: jazzy
           import-token: ${{ secrets.GITHUB_TOKEN }}
-          enable-coverage: false
+          coverage-result: false
           package-name: >
             spider_msgs
             big_bertha_description
