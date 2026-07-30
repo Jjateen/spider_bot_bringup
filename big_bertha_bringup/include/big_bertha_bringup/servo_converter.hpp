@@ -44,14 +44,15 @@ public:
     int single_joint_index{10};
   };
 
-  explicit ServoConverter(Params params)
-  : params_(std::move(params)) {}
+  explicit ServoConverter(Params params) : params_(std::move(params)) {}
 
   ServoConverter() = default;
 
   std::vector<int> convert(const std::vector<double> & targets)
   {
-    if (targets.size() != 12) {return {}}
+    if (targets.size() != 12) {
+      return {}
+    }
 
     // EWMA smoothing
     std::vector<double> smoothed(12);
@@ -60,7 +61,7 @@ public:
     } else {
       for (size_t i = 0; i < 12; ++i) {
         smoothed[i] = params_.smoothing_alpha * targets[i] +
-          (1.0 - params_.smoothing_alpha) * smoothed_targets_[i];
+                      (1.0 - params_.smoothing_alpha) * smoothed_targets_[i];
       }
     }
     smoothed_targets_ = smoothed;
@@ -99,10 +100,14 @@ public:
     // Test mode
     if (params_.single_joint_mode) {
       int idx = params_.single_joint_index;
-      if (idx < 0 || idx >= 12) {idx = 0;}
+      if (idx < 0 || idx >= 12) {
+        idx = 0;
+      }
       int active = pwms[idx];
       int neutral = (params_.pwm_min + params_.pwm_max) / 2;
-      for (auto & p : pwms) {p = neutral;}
+      for (auto & p : pwms) {
+        p = neutral;
+      }
       pwms[idx] = active;
     }
 
@@ -127,7 +132,7 @@ public:
     first_cmd_ = true;
   }
 
-  const std::vector<double> & last_targets() const {return last_targets_;}
+  const std::vector<double> & last_targets() const { return last_targets_; }
 
 private:
   Params params_;
