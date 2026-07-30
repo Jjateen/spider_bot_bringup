@@ -24,8 +24,8 @@ import time
 
 from arduino.app_utils import App, Bridge
 
-BUS_LABELS = {0: "Wire (D20/D21)", 1: "Wire1 (Qwiic)", 2: "Wire2 (A4/A5)"}
-DEVICE_NAMES = {0x40: "PCA9685", 0x68: "MPU9250"}
+BUS_LABELS = {0: 'Wire (D20/D21)', 1: 'Wire1 (Qwiic)', 2: 'Wire2 (A4/A5)'}
+DEVICE_NAMES = {0x40: 'PCA9685', 0x68: 'MPU9250'}
 
 bus_scans = {}
 buses_done = set()
@@ -46,24 +46,24 @@ def on_bus_done(bus_id):
 def on_pca9685_result(present, mode1, pre_scale, ai_ok):
     global pca_result
     pca_result = {
-        "present": bool(present),
-        "mode1": mode1,
-        "pre_scale": pre_scale,
-        "ai_ok": bool(ai_ok),
+        'present': bool(present),
+        'mode1': mode1,
+        'pre_scale': pre_scale,
+        'ai_ok': bool(ai_ok),
     }
 
 
 def log_bus(bus_id, devices):
-    label = BUS_LABELS.get(bus_id, f"Bus {bus_id}")
+    label = BUS_LABELS.get(bus_id, f'Bus {bus_id}')
     if not devices:
-        print(f"[bus] {label}: no devices found")
+        print(f'[bus] {label}: no devices found')
         return
-    print(f"[bus] {label}:")
+    print(f'[bus] {label}:')
     for addr in sorted(devices):
-        name = DEVICE_NAMES.get(addr, "")
-        line = f"       0x{addr:02X}"
+        name = DEVICE_NAMES.get(addr, '')
+        line = f'       0x{addr:02X}'
         if name:
-            line += f"  <-  {name}"
+            line += f'  <-  {name}'
         print(line)
 
 
@@ -71,11 +71,11 @@ def log_pca():
     if pca_result is None:
         return
     r = pca_result
-    if not r["present"]:
-        print("[pca] PCA9685 at 0x40: NOT FOUND")
+    if not r['present']:
+        print('[pca] PCA9685 at 0x40: NOT FOUND')
         return
-    ai = "OK" if r["ai_ok"] else "FAIL"
-    print(f"[pca] FOUND  mode1=0x{r['mode1']:02X}  pre_scale={r['pre_scale']}  ai={ai}")
+    ai = 'OK' if r['ai_ok'] else 'FAIL'
+    print(f'[pca] FOUND  mode1=0x{r["mode1"]:02X}  pre_scale={r["pre_scale"]}  ai={ai}')
 
 
 def print_results():
@@ -86,7 +86,7 @@ def print_results():
         if devices:
             any_found = True
     if not any_found:
-        print("[bus] *** NO DEVICES FOUND ON ANY BUS ***")
+        print('[bus] *** NO DEVICES FOUND ON ANY BUS ***')
     log_pca()
 
 
@@ -95,9 +95,9 @@ def trigger_scan():
     bus_scans = {}
     buses_done = set()
     pca_result = None
-    Bridge.notify("scan_bus")
+    Bridge.notify('scan_bus')
     time.sleep(0.5)
-    Bridge.notify("check_pca9685")
+    Bridge.notify('check_pca9685')
     time.sleep(0.3)
     print_results()
     last_scan_ts = time.time()
@@ -106,20 +106,20 @@ def trigger_scan():
 def user_loop():
     global last_scan_ts  # noqa: PLW0602
     if last_scan_ts == 0:
-        print("[startup] Scanning all 3 I2C buses...")
+        print('[startup] Scanning all 3 I2C buses...')
         trigger_scan()
         return
     if time.time() - last_scan_ts >= 10:
-        print("--- re-scan ---")
+        print('--- re-scan ---')
         trigger_scan()
 
 
 def main():
-    Bridge.provide("bus_device", on_bus_device)
-    Bridge.provide("bus_done", on_bus_done)
-    Bridge.provide("pca9685_result", on_pca9685_result)
+    Bridge.provide('bus_device', on_bus_device)
+    Bridge.provide('bus_done', on_bus_done)
+    Bridge.provide('pca9685_result', on_pca9685_result)
     App.run(user_loop=user_loop)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
