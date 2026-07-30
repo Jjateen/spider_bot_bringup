@@ -314,12 +314,12 @@ def loop():
         now = time.time()
         if now - last_log >= 5:
             imu_flag = 'yes' if has_imu else 'no'
-        status_flag = 'yes' if has_status else 'no'
-        scan_flag = 'yes' if has_scan else 'no'
-        print(
-            f'[bridge] loop: imu={imu_flag} status={status_flag} '
-            f'i2c_scan={scan_flag} notify_errs={notify_errs}'
-        )
+            status_flag = 'yes' if has_status else 'no'
+            scan_flag = 'yes' if has_scan else 'no'
+            print(
+                f'[bridge] loop: imu={imu_flag} status={status_flag} '
+                f'i2c_scan={scan_flag} notify_errs={notify_errs}'
+            )
             last_log = now
         time.sleep(0.01)
 

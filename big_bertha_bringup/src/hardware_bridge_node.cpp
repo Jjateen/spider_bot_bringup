@@ -27,7 +27,8 @@
 namespace big_bertha_bringup
 {
 
-HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
+HardwareBridgeNode::HardwareBridgeNode()
+: Node("hardware_bridge")
 {
   // ── Parameters ────────────────────────────────────────────────────────
   servo_host_ = declare_parameter<std::string>("servo_host", "127.0.0.1");
@@ -45,16 +46,17 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   scp.joint_limit = joint_limit;
 
   const auto validate12 = [&](const std::string & name, auto & out, const auto & fallback) {
-    using T = typename std::decay_t<decltype(fallback)>::value_type;
-    auto v = declare_parameter<std::vector<T>>(name, fallback);
-    if (v.size() != 12) {
-      RCLCPP_WARN(
-        get_logger(), "'%s' has %zu entries, expected 12; using defaults", name.c_str(), v.size());
-      out.assign(fallback.begin(), fallback.end());
-    } else {
-      out.assign(v.begin(), v.end());
-    }
-  };
+      using T = typename std::decay_t<decltype(fallback)>::value_type;
+      auto v = declare_parameter<std::vector<T>>(name, fallback);
+      if (v.size() != 12) {
+        RCLCPP_WARN(
+          get_logger(), "'%s' has %zu entries, expected 12; using defaults", name.c_str(),
+          v.size());
+        out.assign(fallback.begin(), fallback.end());
+      } else {
+        out.assign(v.begin(), v.end());
+      }
+    };
 
   validate12(
     "servo_lower_limit", scp.servo_lower_limit,
@@ -115,8 +117,8 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   // ── ROS ───────────────────────────────────────────────────────────────
   joint_names_ = declare_parameter<std::vector<std::string>>(
     "joint_names", {"Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119", "Revolute_111",
-                    "Revolute_114", "Revolute_117", "Revolute_120", "Revolute_112", "Revolute_115",
-                    "Revolute_118", "Revolute_121"});
+      "Revolute_114", "Revolute_117", "Revolute_120", "Revolute_112", "Revolute_115",
+      "Revolute_118", "Revolute_121"});
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("/imu", rclcpp::SensorDataQoS());
   mag_pub_ = create_publisher<sensor_msgs::msg::MagneticField>("/imu/mag", rclcpp::SensorDataQoS());
   joint_state_pub_ =
@@ -172,7 +174,7 @@ void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPt
   // Build JSON command
   std::string json = R"({"cmd":"servo","pwms":[)";
   for (size_t i = 0; i < 12; ++i) {
-    if (i > 0) json += ',';
+    if (i > 0) {json += ',';}
     json += std::to_string(pwms[i]);
   }
   json += "]}\n";
@@ -206,13 +208,16 @@ void HardwareBridgeNode::reader_loop()
       continue;
     }
 
-    if (!imu_client_.send(R"({"cmd":"imu"})"
-                          "\n"))
+    if (!imu_client_.send(
+        R"({"cmd":"imu"})"
+        "\n"))
+    {
       continue;
+    }
 
     {
       std::string line;
-      if (!imu_client_.read_line(line)) continue;
+      if (!imu_client_.read_line(line)) {continue;}
 
       if (!line.empty()) {
         ImuData data;
@@ -237,7 +242,7 @@ void HardwareBridgeNode::reader_loop()
 bool HardwareBridgeNode::calibrate_sensors()
 {
   int samples = std::max(gyro_calibration_samples_, accel_calibration_samples_);
-  if (samples == 0) return true;
+  if (samples == 0) {return true;}
 
   RCLCPP_INFO(get_logger(), "calibrating sensors (%d samples)...", samples);
 
@@ -248,16 +253,19 @@ bool HardwareBridgeNode::calibrate_sensors()
   int collected = 0;
 
   while (running_ && collected < samples) {
-    if (!imu_client_.send(R"({"cmd":"imu"})"
-                          "\n"))
+    if (!imu_client_.send(
+        R"({"cmd":"imu"})"
+        "\n"))
+    {
       return false;
+    }
 
     std::string line;
-    if (!imu_client_.read_line(line)) return false;
+    if (!imu_client_.read_line(line)) {return false;}
 
     if (!line.empty()) {
       ImuData data;
-      if (!parse_imu_json(line, data)) continue;
+      if (!parse_imu_json(line, data)) {continue;}
       gx_sum += data.gx;
       gy_sum += data.gy;
       gz_sum += data.gz;
@@ -275,7 +283,8 @@ bool HardwareBridgeNode::calibrate_sensors()
   if (
     collected == 0 ||
     (std::abs(gx_sum) < 1e-9 && std::abs(gy_sum) < 1e-9 && std::abs(gz_sum) < 1e-9 &&
-     std::abs(ax_sum) < 1e-9 && std::abs(ay_sum) < 1e-9 && std::abs(az_sum) < 1e-9)) {
+    std::abs(ax_sum) < 1e-9 && std::abs(ay_sum) < 1e-9 && std::abs(az_sum) < 1e-9))
+  {
     RCLCPP_ERROR(
       get_logger(),
       "IMU appears to be missing — all %d samples were zero. Check wiring and I2C bus.", collected);
