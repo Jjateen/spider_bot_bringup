@@ -47,18 +47,42 @@ inline bool parse_imu_json(const std::string & line, ImuData & out)
     }
   };
 
-  auto r = find_val("ax"); if (!r.first) return false; out.ax = r.second;
-  r = find_val("ay"); if (!r.first) return false; out.ay = r.second;
-  r = find_val("az"); if (!r.first) return false; out.az = r.second;
-  r = find_val("gx"); if (!r.first) return false; out.gx = r.second;
-  r = find_val("gy"); if (!r.first) return false; out.gy = r.second;
-  r = find_val("gz"); if (!r.first) return false; out.gz = r.second;
+  auto r = find_val("ax");
+  if (!r.first) return false;
+  out.ax = r.second;
+  r = find_val("ay");
+  if (!r.first) return false;
+  out.ay = r.second;
+  r = find_val("az");
+  if (!r.first) return false;
+  out.az = r.second;
+  r = find_val("gx");
+  if (!r.first) return false;
+  out.gx = r.second;
+  r = find_val("gy");
+  if (!r.first) return false;
+  out.gy = r.second;
+  r = find_val("gz");
+  if (!r.first) return false;
+  out.gz = r.second;
 
   out.mx = out.my = out.mz = 0.0;
   out.mag_ok = false;
-  r = find_val("mx"); if (r.first) { out.mx = r.second; out.mag_ok = true; }
-  r = find_val("my"); if (r.first) { out.my = r.second; out.mag_ok = true; }
-  r = find_val("mz"); if (r.first) { out.mz = r.second; out.mag_ok = true; }
+  r = find_val("mx");
+  if (r.first) {
+    out.mx = r.second;
+    out.mag_ok = true;
+  }
+  r = find_val("my");
+  if (r.first) {
+    out.my = r.second;
+    out.mag_ok = true;
+  }
+  r = find_val("mz");
+  if (r.first) {
+    out.mz = r.second;
+    out.mag_ok = true;
+  }
   return true;
 }
 

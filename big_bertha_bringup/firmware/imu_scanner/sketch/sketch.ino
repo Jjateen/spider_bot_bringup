@@ -88,13 +88,13 @@ static std::vector<uint8_t> i2c_scan_all()
 void on_check_pca9685()
 {
   if (!i2c_probe(PCA9685_ADDR)) {
-    Bridge.notify("pca9685_result", 0, 0, 0, 0);   // not present
+    Bridge.notify("pca9685_result", 0, 0, 0, 0);  // not present
     return;
   }
   uint8_t mode1 = 0, pre_scale = 0;
   i2c_read_bytes(PCA9685_ADDR, PCA9685_MODE1, &mode1, 1);
   i2c_read_bytes(PCA9685_ADDR, 0xFE, &pre_scale, 1);
-  bool ai_ok = (mode1 & 0x20) != 0;                 // bit 5 = AI
+  bool ai_ok = (mode1 & 0x20) != 0;  // bit 5 = AI
   Bridge.notify("pca9685_result", 1, mode1, pre_scale, ai_ok ? 1 : 0);
 }
 
@@ -110,10 +110,10 @@ void on_servo_test(uint8_t ch, uint16_t pwm)
   uint8_t reg = PCA9685_LED0_ON_L + 4 * ch;
   Wire.beginTransmission(PCA9685_ADDR);
   Wire.write(reg);
-  Wire.write(0);              // ON_L = 0
-  Wire.write(0);              // ON_H = 0
-  Wire.write(pwm & 0xFF);     // OFF_L
-  Wire.write(pwm >> 8);       // OFF_H
+  Wire.write(0);           // ON_L = 0
+  Wire.write(0);           // ON_H = 0
+  Wire.write(pwm & 0xFF);  // OFF_L
+  Wire.write(pwm >> 8);    // OFF_H
   if (Wire.endTransmission() != 0) {
     Bridge.notify("servo_test_result", 0, ch, pwm);
     return;
@@ -161,7 +161,4 @@ void setup()
   digitalWrite(LED_BUILTIN, HIGH);
 }
 
-void loop()
-{
-  delay(10);
-}
+void loop() { delay(10); }

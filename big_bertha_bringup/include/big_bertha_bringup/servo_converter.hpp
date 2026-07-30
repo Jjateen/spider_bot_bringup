@@ -71,8 +71,7 @@ public:
     } else {
       for (size_t i = 0; i < 12; ++i) {
         limited[i] = std::clamp(
-          smoothed[i],
-          last_targets_[i] - params_.rate_limit_rad,
+          smoothed[i], last_targets_[i] - params_.rate_limit_rad,
           last_targets_[i] + params_.rate_limit_rad);
       }
     }

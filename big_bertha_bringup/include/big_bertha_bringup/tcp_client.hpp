@@ -39,8 +39,7 @@ public:
 
   TcpClient(const TcpClient &) = delete;
   TcpClient & operator=(const TcpClient &) = delete;
-  TcpClient(TcpClient && other) noexcept
-  : fd_(other.fd_), read_buf_(std::move(other.read_buf_))
+  TcpClient(TcpClient && other) noexcept : fd_(other.fd_), read_buf_(std::move(other.read_buf_))
   {
     other.fd_ = -1;
   }
@@ -60,7 +59,9 @@ public:
     std::lock_guard<std::mutex> lk(mtx_);
     close_locked();
 
-    struct sockaddr_in addr{};
+    struct sockaddr_in addr
+    {
+    };
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     if (inet_pton(AF_INET, host.c_str(), &addr.sin_addr) <= 0) {
