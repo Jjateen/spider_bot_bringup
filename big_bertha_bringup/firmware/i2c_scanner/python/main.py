@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# I2C Scanner — scans all three I2C buses on the UNO Q and reports devices found.
+# I2C Scanner — scans all three I2C buses on the UNO Q and
+# reports devices found.
 #
 # Run:
 #   arduino-app-cli app start ~/ArduinoApps/i2c_scanner
@@ -75,7 +76,10 @@ def log_pca():
         print('[pca] PCA9685 at 0x40: NOT FOUND')
         return
     ai = 'OK' if r['ai_ok'] else 'FAIL'
-    print(f'[pca] FOUND  mode1=0x{r["mode1"]:02X}  pre_scale={r["pre_scale"]}  ai={ai}')
+    print(
+        f'[pca] FOUND  mode1=0x{r["mode1"]:02X}'
+        f'  pre_scale={r["pre_scale"]}  ai={ai}'
+    )
 
 
 def print_results():

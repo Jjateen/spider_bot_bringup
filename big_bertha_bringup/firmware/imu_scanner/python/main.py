@@ -42,6 +42,7 @@ pca_result = None
 
 # ── Bridge RPC handlers ──────────────────────────────────────────────────
 
+
 def on_imu_data(found, ax, ay, az, gx, gy, gz):
     global imu_data
     imu_data = {
