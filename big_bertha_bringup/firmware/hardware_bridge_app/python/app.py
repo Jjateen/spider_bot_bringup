@@ -27,5 +27,5 @@
 
 from main import main  # relay logic lives in main.py
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
