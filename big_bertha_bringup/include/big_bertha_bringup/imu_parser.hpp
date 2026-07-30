@@ -32,38 +32,58 @@ struct ImuData
 inline bool parse_imu_json(const std::string & line, ImuData & out)
 {
   auto find_val = [&](const std::string & key) -> std::pair<bool, double> {
-      auto pos = line.find("\"" + key + "\"");
-      if (pos == std::string::npos) {return {false, 0.0}}
-      auto colon = line.find(':', pos);
-      if (colon == std::string::npos) {return {false, 0.0}}
-      auto start = colon + 1;
-      while (start < line.size() && (line[start] == ' ' || line[start] == '\t')) {++start;}
-      auto end = start;
-      while (end < line.size() && line[end] != ',' && line[end] != '}' && line[end] != ']') {++end;}
-      try {
-        return {true, std::stod(line.substr(start, end - start))};
-      } catch (...) {
-        return {false, 0.0};
-      }
-    };
+    auto pos = line.find("\"" + key + "\"");
+    if (pos == std::string::npos) {
+      return { false, 0.0 }
+    }
+    auto colon = line.find(':', pos);
+    if (colon == std::string::npos) {
+      return { false, 0.0 }
+    }
+    auto start = colon + 1;
+    while (start < line.size() && (line[start] == ' ' || line[start] == '\t')) {
+      ++start;
+    }
+    auto end = start;
+    while (end < line.size() && line[end] != ',' && line[end] != '}' && line[end] != ']') {
+      ++end;
+    }
+    try {
+      return {true, std::stod(line.substr(start, end - start))};
+    } catch (...) {
+      return {false, 0.0};
+    }
+  };
 
   auto r = find_val("ax");
-  if (!r.first) {return false;}
+  if (!r.first) {
+    return false;
+  }
   out.ax = r.second;
   r = find_val("ay");
-  if (!r.first) {return false;}
+  if (!r.first) {
+    return false;
+  }
   out.ay = r.second;
   r = find_val("az");
-  if (!r.first) {return false;}
+  if (!r.first) {
+    return false;
+  }
   out.az = r.second;
   r = find_val("gx");
-  if (!r.first) {return false;}
+  if (!r.first) {
+    return false;
+  }
   out.gx = r.second;
   r = find_val("gy");
-  if (!r.first) {return false;}
+  if (!r.first) {
+    return false;
+  }
   out.gy = r.second;
   r = find_val("gz");
-  if (!r.first) {return false;}
+  if (!r.first) {
+    return false;
+  }
   out.gz = r.second;
 
   out.mx = out.my = out.mz = 0.0;
