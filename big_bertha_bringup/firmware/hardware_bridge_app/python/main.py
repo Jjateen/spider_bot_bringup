@@ -19,10 +19,14 @@
 # sketch (Bridge RPC). Runs as the Python component of an arduino-app-cli App.
 #
 # Architecture: notification-based (no Bridge.call from Python).
-#   servos:   Bridge.notify("set_servo_pwms", pwms)         — one-way to MCU
-#   imu:      MCU sends Bridge.notify("imu", ...) @ 30 Hz    — cached here
-#   status:   MCU sends Bridge.notify("hw_status", ...) @ 1 Hz — cached here
-#   i2c scan: MCU sends Bridge.notify("i2c_scan", ...) on request (notify)
+#   servos:   Bridge.notify("set_servo_pwms", pwms)
+#                 — one-way to MCU
+#   imu:      MCU sends Bridge.notify("imu", ...) @ 30 Hz
+#                 — cached here
+#   status:   MCU sends Bridge.notify("hw_status", ...) @ 1 Hz
+#                 — cached here
+#   i2c scan: MCU sends Bridge.notify("i2c_scan", ...) on request
+#                 — (notify)
 
 import json
 import socket
@@ -50,8 +54,6 @@ IMU_PORT = 50008
 
 
 def handle_servo_client(conn):
-    # Handles ONLY servo commands and ping — runs on port 50007.
-    # IMU and status requests go to port 50008.
     buf = b''
     try:
         while True:
@@ -64,7 +66,8 @@ def handle_servo_client(conn):
                 try:
                     req = json.loads(line.decode())
                 except json.JSONDecodeError as e:
-                    conn.sendall(json.dumps({'error': str(e)}).encode() + b'\n')
+                    conn.sendall(
+                        json.dumps({'error': str(e)}).encode() + b'\n')
                     continue
 
                 cmd = req.get('cmd')
@@ -75,10 +78,18 @@ def handle_servo_client(conn):
                 elif cmd == 'servo':
                     pwms = req.get('pwms')
                     if not isinstance(pwms, list) or len(pwms) != 12:
-                        conn.sendall(json.dumps({'error': 'pwms must be list of 12 ints'}).encode() + b'\n')
+                        conn.sendall(
+                            json.dumps(
+                                {'error': 'pwms must be list of 12 ints'}
+                            ).encode() + b'\n')
                         continue
-                    if not all(isinstance(p, int) and 0 <= p <= 4095 for p in pwms):
-                        conn.sendall(json.dumps({'error': 'each pwm must be int 0-4095'}).encode() + b'\n')
+                    if not all(
+                        isinstance(p, int) and 0 <= p <= 4095 for p in pwms
+                    ):
+                        conn.sendall(
+                            json.dumps(
+                                {'error': 'each pwm must be int 0-4095'}
+                            ).encode() + b'\n')
                         continue
                     with cache_lock:
                         cache['servo_pwms'] = pwms
@@ -108,7 +119,8 @@ def handle_imu_client(conn):
                 try:
                     req = json.loads(line.decode())
                 except json.JSONDecodeError as e:
-                    conn.sendall(json.dumps({'error': str(e)}).encode() + b'\n')
+                    err = json.dumps({'error': str(e)}).encode() + b'\n'
+                    conn.sendall(err)
                     continue
 
                 cmd = req.get('cmd')
@@ -122,7 +134,8 @@ def handle_imu_client(conn):
                     if imu is not None:
                         conn.sendall(json.dumps(imu).encode() + b'\n')
                     else:
-                        conn.sendall(json.dumps({'error': 'no imu data yet'}).encode() + b'\n')
+                        err = json.dumps({'error': 'no imu data yet'}).encode() + b'\n'
+                        conn.sendall(err)
 
                 elif cmd == 'status':
                     with cache_lock:
@@ -130,7 +143,8 @@ def handle_imu_client(conn):
                     if hw is not None:
                         conn.sendall(json.dumps(hw).encode() + b'\n')
                     else:
-                        conn.sendall(json.dumps({'error': 'no status yet'}).encode() + b'\n')
+                        err = json.dumps({'error': 'no status yet'}).encode() + b'\n'
+                        conn.sendall(err)
 
                 elif cmd == 'scan_i2c':
                     Bridge.notify('scan_i2c')
@@ -138,9 +152,11 @@ def handle_imu_client(conn):
                     with cache_lock:
                         val = cache['i2c_scan']
                     if val is None:
-                        conn.sendall(
-                            json.dumps({'error': 'no scan data yet'}).encode() + b'\n'
+                        err = (
+                            json.dumps({'error': 'no scan data yet'}).encode()
+                            + b'\n'
                         )
+                        conn.sendall(err)
                     else:
                         scan = {'addrs': sorted(val)}
                         conn.sendall(json.dumps(scan).encode() + b'\n')
@@ -156,14 +172,14 @@ def handle_imu_client(conn):
                             conn.sendall(json.dumps(diag).encode() + b'\n')
                             break
                     else:
-                        conn.sendall(
-                            json.dumps({'error': 'no servo diag result after 5s'}).encode() + b'\n'
-                        )
+                        err = json.dumps(
+                            {'error': 'no servo diag result after 5s'}
+                        ).encode() + b'\n'
+                        conn.sendall(err)
 
                 else:
-                    conn.sendall(
-                        json.dumps({'error': 'unknown cmd'}).encode() + b'\n'
-                    )
+                    err = json.dumps({'error': 'unknown cmd'}).encode() + b'\n'
+                    conn.sendall(err)
     except (ConnectionResetError, BrokenPipeError):
         pass
     finally:
@@ -261,6 +277,7 @@ def on_servo_diag_result(report_str):
 last_pwms = None   # track last sent PWMs to skip duplicates
 notify_errs = 0     # count consecutive Bridge.notify failures
 
+
 def loop():
     global last_pwms, notify_errs
     last_log = 0
@@ -277,9 +294,13 @@ def loop():
             )
             if changed:
                 last_pwms = list(pwms)
-                print(f'[bridge] PWM: ch0={pwms[0]} ch11={pwms[11]} full={pwms}')
+                print(f'[bridge] PWM: ch0={pwms[0]} ch11={pwms[1]} '
+                      f'full={pwms}')
                 try:
-                    Bridge.notify('set_servo_pwms', ','.join(str(p) for p in pwms))  # single string, avoids 12-arg limit
+                    Bridge.notify(
+                        'set_servo_pwms',
+                        ','.join(str(p) for p in pwms)
+                    )
                     notify_errs = 0
                 except Exception as e:  # noqa: BLE001
                     notify_errs += 1
@@ -292,7 +313,13 @@ def loop():
             has_scan = cache['i2c_scan'] is not None
         now = time.time()
         if now - last_log >= 5:
-            print(f'[bridge] loop: imu={"yes" if has_imu else "no"} status={"yes" if has_status else "no"} i2c_scan={"yes" if has_scan else "no"} notify_errs={notify_errs}')
+            imu_flag = 'yes' if has_imu else 'no'
+        status_flag = 'yes' if has_status else 'no'
+        scan_flag = 'yes' if has_scan else 'no'
+        print(
+            f'[bridge] loop: imu={imu_flag} status={status_flag} '
+            f'i2c_scan={scan_flag} notify_errs={notify_errs}'
+        )
             last_log = now
         time.sleep(0.01)
 
@@ -313,8 +340,13 @@ def main():
     t_servo.start()
     t_imu = threading.Thread(target=tcp_imu_server, daemon=True)
     t_imu.start()
-    print(f'[bridge] servo TCP server on {TCP_HOST}:{SERVO_PORT}, IMU TCP server on {TCP_HOST}:{IMU_PORT}')
-    App.run(user_loop=loop)                    # this blocks — keeps the program alive until stopped
+    print(
+        f'[bridge] servo TCP server on {TCP_HOST}:{SERVO_PORT}, '
+        f'IMU TCP server on {TCP_HOST}:{IMU_PORT}'
+    )
+    App.run(
+        user_loop=loop
+    )
 
 
 if __name__ == '__main__':
