@@ -46,8 +46,7 @@ public:
     drift_damping_ = declare_parameter<double>("drift_damping", 0.98);
     stationary_joint_vel_threshold_ =
       declare_parameter<double>("stationary_joint_vel_threshold", 0.02);
-    stationary_accel_threshold_ =
-      declare_parameter<double>("stationary_accel_threshold", 0.5);
+    stationary_accel_threshold_ = declare_parameter<double>("stationary_accel_threshold", 0.5);
     stationary_samples_ = declare_parameter<int>("stationary_samples", 10);
     servo_tau_ = declare_parameter<double>("servo_tau", 0.06);
 
@@ -195,9 +194,7 @@ private:
     // rest, leaving ~0.4 m/s² residual horizontal bias when tilted during
     // walking) integrates quadratically. Yaw is pure gyro integration with no
     // magnetometer — fastest growth. Roll/pitch benefit from gravity reference.
-    double dt_zupt = last_zupt_time_.nanoseconds() > 0
-                       ? (now - last_zupt_time_).seconds()
-                       : 0.0;
+    double dt_zupt = last_zupt_time_.nanoseconds() > 0 ? (now - last_zupt_time_).seconds() : 0.0;
     double pos_xy_cov = 0.01 + 0.1 * dt_zupt + 0.5 * dt_zupt * dt_zupt;
     double pos_z_cov = 0.01 + 0.05 * dt_zupt;
     double rp_cov = 0.01 + 0.005 * dt_zupt;
