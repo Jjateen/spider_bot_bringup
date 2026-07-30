@@ -60,6 +60,7 @@ public:
 
     last_joint_positions_ = default_joint_pos_;
     filtered_positions_ = default_joint_pos_;
+    node_start_time_ = now();
 
     cmd_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
       "/position_controller/commands", rclcpp::QoS(1),
@@ -192,13 +193,15 @@ private:
     // Dead-reckoned uncertainty grows with time since last ZUPT reset.
     // Position error from accelerometer bias (this IMU reads 11.07 vs 9.81 at
     // rest, leaving ~0.4 m/s² residual horizontal bias when tilted during
-    // walking) integrates quadratically. Yaw is pure gyro integration with no
-    // magnetometer — fastest growth. Roll/pitch benefit from gravity reference.
+    // walking) integrates quadratically. Roll/pitch benefit from gravity
+    // reference. Yaw uses node uptime (not ZUPT) since ZUPT constrains
+    // velocity, not heading — yaw covariance grows unbounded forever.
     double dt_zupt = last_zupt_time_.nanoseconds() > 0 ? (now - last_zupt_time_).seconds() : 0.0;
+    double dt_yaw = (now - node_start_time_).seconds();
     double pos_xy_cov = 0.01 + 0.1 * dt_zupt + 0.5 * dt_zupt * dt_zupt;
     double pos_z_cov = 0.01 + 0.05 * dt_zupt;
     double rp_cov = 0.01 + 0.005 * dt_zupt;
-    double yaw_cov = 0.001 + 0.02 * dt_zupt;
+    double yaw_cov = 0.001 + 0.02 * dt_yaw;
     double vel_xy_cov = 0.1 + 0.1 * dt_zupt;
     double vel_z_cov = 0.1 + 0.05 * dt_zupt;
 
@@ -351,6 +354,7 @@ private:
 
   rclcpp::Time last_imu_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_zupt_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time node_start_time_{0, 0, RCL_ROS_TIME};
   tf2::Quaternion last_orientation_;
   tf2::Vector3 last_velocity_{0.0, 0.0, 0.0};
   tf2::Vector3 last_position_{0.0, 0.0, 0.0};

@@ -33,11 +33,13 @@ ekf_filter_node:
     # legged twist drifted metres while standing). Odom owns yaw in sim; the
     # IMU contributes yaw RATE only (see imu0) -- absolute yaw was previously
     # fused from BOTH sources, and two absolute-orientation inputs fight.
-    # Hardware note: flip ownership there (IMU yaw in, odom yaw out) -- a
-    # dead-reckoned odom yaw is the worse source on the real robot.
+    # Hardware: yaw is pure gyro integration from an MPU-6500 with no
+    # magnetometer — fusing it as absolute fights the IMU yaw-rate-only
+    # constraint (see imu0). Dead-reckoned odom yaw is left unfused; the
+    # EKF propagates heading from the IMU yaw rate internally.
     odom0: /odom
     odom0_config: [true,  true,  false,
-                   false, false, true,
+                   false, false, false,
                    false, false, false,
                    false, false, false,
                    false, false, false]

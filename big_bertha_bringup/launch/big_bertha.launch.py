@@ -79,7 +79,7 @@ def generate_launch_description():
         {
             'use_sim_time': use_sim_time,
             'use_gz': 'false',
-            'publish_jsp': 'true',
+            'publish_jsp': 'false',
         },
     )
 
