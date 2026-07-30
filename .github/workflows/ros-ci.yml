@@ -47,12 +47,10 @@ jobs:
 
       - name: Build & test
         uses: ros-tooling/action-ros-ci@v0.4
-        env:
-          LCOV_OPTIONS: "--ignore-errors empty,mismatch"
         with:
           target-ros2-distro: jazzy
           import-token: ${{ secrets.GITHUB_TOKEN }}
-          enable-coverage: true
+          enable-coverage: false
           package-name: >
             spider_msgs
             big_bertha_description
