@@ -44,6 +44,11 @@ public:
     publish_tf_ = declare_parameter<bool>("publish_tf", false);
     velocity_source_ = declare_parameter<std::string>("velocity_source", "imu_dead_reckon");
     drift_damping_ = declare_parameter<double>("drift_damping", 0.98);
+    stationary_joint_vel_threshold_ =
+      declare_parameter<double>("stationary_joint_vel_threshold", 0.02);
+    stationary_accel_threshold_ =
+      declare_parameter<double>("stationary_accel_threshold", 0.5);
+    stationary_samples_ = declare_parameter<int>("stationary_samples", 10);
     servo_tau_ = declare_parameter<double>("servo_tau", 0.06);
 
     if (velocity_source_ == "leg_kinematics") {
@@ -51,7 +56,8 @@ public:
         get_logger(), "leg_kinematics mode is a stub — velocity estimates will be inaccurate");
     }
     RCLCPP_INFO(
-      get_logger(), "velocity source: %s, servo_tau=%.3f", velocity_source_.c_str(), servo_tau_);
+      get_logger(), "velocity source: %s, servo_tau=%.3f, ZUPT samples=%d",
+      velocity_source_.c_str(), servo_tau_, stationary_samples_);
 
     last_joint_positions_ = default_joint_pos_;
     filtered_positions_ = default_joint_pos_;
@@ -155,6 +161,14 @@ private:
       compute_imu_dead_reckon(msg, orientation, dt, velocity, position);
     }
 
+    // ZUPT: zero velocity when robot is stationary (all joints still, no linear
+    // acceleration). Without this the leaky integrator bleeds steady walking
+    // velocity to zero and standing drift accumulates unbounded.
+    if (is_robot_stationary(msg)) {
+      velocity = tf2::Vector3(0.0, 0.0, 0.0);
+      position.setZ(0.0);
+    }
+
     auto odom = nav_msgs::msg::Odometry();
     odom.header.stamp = msg->header.stamp;
     odom.header.frame_id = odom_frame_;
@@ -220,7 +234,6 @@ private:
     accel_world.setZ(accel_world.z() - 9.81);
 
     velocity = last_velocity_ + accel_world * dt;
-    velocity *= drift_damping_;
     position = last_position_ + velocity * dt;
 
     if (position.z() < 0.0) position.setZ(0.0);
@@ -257,8 +270,32 @@ private:
     tf2::Matrix3x3 rot(last_orientation_);
     tf2::Vector3 vel_body(vx, vy, vz);
     velocity = rot * vel_body;
-    velocity *= drift_damping_;
     position = last_position_ + velocity * dt;
+  }
+
+  bool is_robot_stationary(const sensor_msgs::msg::Imu::SharedPtr & msg)
+  {
+    bool joints_still = true;
+    for (size_t i = 0; i < 12; ++i) {
+      if (std::abs(last_joint_velocities_[i]) > stationary_joint_vel_threshold_) {
+        joints_still = false;
+        break;
+      }
+    }
+
+    double ax = msg->linear_acceleration.x;
+    double ay = msg->linear_acceleration.y;
+    double az = msg->linear_acceleration.z;
+    double accel_norm = std::sqrt(ax * ax + ay * ay + az * az);
+    bool accel_still = std::abs(accel_norm - 9.81) < stationary_accel_threshold_;
+
+    if (joints_still && accel_still) {
+      stationary_counter_++;
+    } else {
+      stationary_counter_ = 0;
+    }
+
+    return stationary_counter_ >= stationary_samples_;
   }
 
   // Fallback defaults — the config yaml is always loaded via launch, so these
@@ -286,6 +323,11 @@ private:
   std::string base_frame_;
   std::string velocity_source_;
   double drift_damping_;
+
+  double stationary_joint_vel_threshold_;
+  double stationary_accel_threshold_;
+  int stationary_samples_;
+  int stationary_counter_{0};
 
   double servo_tau_;
   std::vector<double> filtered_positions_{std::vector<double>(12, 0.0)};
