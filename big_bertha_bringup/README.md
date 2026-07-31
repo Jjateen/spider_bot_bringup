@@ -1,46 +1,178 @@
-# big_bertha_bringup (hardware) — TODO stub
+# big_bertha_bringup — Hardware Bridge for Physical Robot
 
-Hardware bringup for the **physical** Big Bertha quadruped. This package is an
-intentional empty stub: `launch/` and `config/` are placeholders (each holds a
-`.gitkeep`) until the real robot is wired up. It mirrors the sim/hardware split
-of `big_bertha_sim_bringup`, exactly as `mpauv_bringup` does.
+ROS 2 package for bringing up the physical Big Bertha quadruped robot.
 
-The autonomy stack is hardware-agnostic: `state_estimation`, `mapping`,
-`localization`, and `planning` reuse the **same** configs as the sim, just with
-`use_sim_time:=false`. Only the bottom layer changes — real sensor drivers and a
-servo bridge replace the Gazebo + `ros_gz_bridge` simulation layer.
+## Architecture
 
-## Bill of materials (BOM)
+### Direct Native Bridge (C++ → Firmware)
 
-From [PLAN.md §11](../PLAN.md). All runtime nodes are C++.
+```
+ROS 2 Node (C++)
+  ↓ MsgPack-RPC unix socket
+arduino-router
+  ↓ UART (internal)
+STM32U585 M33 (sketch.ino)
+  ↓ I2C (50 kHz)
+PCA9685 (servos) + MPU9250 (IMU)
+```
 
-| Subsystem | Part | Qty | ROS interface (future hw bringup, all C++) |
-|---|---|---|---|
-| Compute | **Arduino UNO Q (4 GB)** running **ROS 2 Jazzy** | 1 | hosts the whole stack — **arm64**, hence the arm64 CI leg |
-| Structure | **3D-printed** frame + leg linkages | — | — |
-| Actuators | **MG995 servos** (4 legs × 3 joints) | 12 | C++ serial/PWM bridge: policy degrees → servo commands (ports the legacy `serial_bridge`) |
-| Lidar | **YDLidar X2** (2D) | 1 | `ydlidar_ros2_driver` → `/scan` |
-| IMU | **MPU6050** | 1 | C++ IMU driver node → `/imu` (matches the ±2g / LSB scaling in the legacy node) |
+**No Python relay, no TCP, no Docker containers.**
 
-## Sim → hardware mapping (per module)
+The hardware bridge node communicates directly with the STM32U585 co-processor via the arduino-router's MsgPack-RPC unix socket. This eliminates the Python TCP relay that was previously used, reducing latency and simplifying deployment.
 
-- **simulation** → real sensors: the YDLidar X2 driver + the MPU6050 driver
-  replace `ros_gz_bridge`.
-- **locomotion** → the **same** `policy.onnx` runs on the UNO Q (arm64 ONNX
-  Runtime); `/position_controller/commands` is consumed by the MG995 servo
-  bridge instead of `gz_ros2_control`.
-- **state_estimation / mapping / localization / planning** are
-  **hardware-agnostic** — identical configs from `big_bertha_sim_bringup`, just
-  launched with `use_sim_time:=false`.
+### Components
 
-> arm64 CI is a hard gate, not a nicety: the deploy target is the arm64 UNO Q,
-> so a green arm64 build proves the stack runs on the real compute module.
+| Component | Purpose | Interface |
+|-----------|---------|-----------|
+| `hardware_bridge_node` | ROS 2 bridge to firmware | Bridge RPC (MsgPack) |
+| `sketch.ino` | Real-time servo/IMU controller | I2C @ 50 kHz |
+| `servo_converter` | Joint angles → PWM | C++ library |
+| IMU calibration | Gyro/accel bias removal | Startup (200 samples) |
 
-## TODO (when the robot is built; tracked in #52, #60, #62, #63)
+### ROS 2 Interface
 
-- [ ] `launch/hardware.launch.py` — sensor drivers + servo bridge + the
-      hardware-agnostic autonomy stack (`use_sim_time:=false`).
-- [ ] `config/` — servo channel map, MPU6050 calibration, YDLidar X2 params.
-- [ ] C++ MG995 servo bridge node (`/position_controller/commands` → PWM).
-- [ ] C++ MPU6050 IMU driver node (`/imu`).
-- [ ] YDLidar X2 driver wiring (`/scan`).
+**Published Topics:**
+- `/imu` (sensor_msgs/Imu) — 125 Hz, bias-corrected, axis-mapped
+- `/imu/mag` (sensor_msgs/MagneticField) — if magnetometer present (not on current hardware)
+- `/joint_states` (sensor_msgs/JointState) — commanded positions + finite-differenced velocities
+
+**Subscribed Topics:**
+- `/position_controller/commands` (std_msgs/Float64MultiArray) — 12 joint targets from policy
+
+**Services (Diagnostics):**
+- `~/status` — Hardware status (I2C health, PWM counters, error tracking)
+- `~/scan_i2c` — Trigger I2C bus scan, returns device addresses
+- `~/servo_diag` — Run servo write/readback test (5s timeout)
+- `~/imu_diag` — IMU identity, WHO_AM_I, magnetometer probe results
+
+### Key Parameters
+
+See `config/hardware_bridge.yaml` for full list. Notable parameters:
+
+- `router_socket` — arduino-router unix socket path (auto-probes if empty)
+- `pwm_min/pwm_max` — Servo PWM range (12-bit, 50 Hz)
+- `servo_*` arrays — Per-joint limits, offsets, channels, directions (12 elements)
+- `command_rate_hz` / `max_joint_rate_rad_s` — Rate limiting for servo safety
+- `gyro/accel_calibration_samples` — Startup calibration (200 = ~2.2s @ 91 Hz)
+- `imu_axis_sign` — Chip frame → base_link transform
+
+## Quick Start
+
+### 1. Upload Firmware
+```bash
+ssh arduino@<board-ip>
+cd ~/ros2_ws/src/spider_bot_bringup
+./scripts/upload_firmware.sh
+```
+
+### 2. Launch Bridge
+```bash
+ros2 launch big_bertha_bringup hardware_bringup.launch.py
+```
+
+### 3. Run Diagnostics
+```bash
+python3 scripts/servo_diag.py
+```
+
+## Documentation
+
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** — Full deployment guide, troubleshooting, rollback procedures
+- **[API.md](API.md)** — Complete ROS 2 interface reference (topics, services, parameters)
+- **[VALIDATION_CHECKLIST.md](VALIDATION_CHECKLIST.md)** — Hardware testing checklist before production use
+- **[firmware/hardware_bridge_app/README.md](firmware/hardware_bridge_app/README.md)** — Firmware architecture and Bridge RPC protocol
+
+## Hardware
+
+- **Compute:** Arduino UNO Q (4GB RAM, Cortex-A35 + STM32U585 M33)
+- **Servos:** 12× MG995 (max angular velocity: 6.54 rad/s)
+- **IMU:** MPU-6500 6-axis (note: no magnetometer despite "MPU-9265" labeling)
+- **Servo Controller:** PCA9685 16-channel PWM driver
+- **I2C Bus:** 50 kHz (empirically reliable on STM32U585, workaround for Zephyr #83550)
+
+## Development
+
+### Build
+```bash
+colcon build --packages-select big_bertha_bringup
+```
+
+### Test
+```bash
+colcon test --packages-select big_bertha_bringup
+ros2 run big_bertha_bringup hardware_bridge_node --ros-args --log-level debug
+```
+
+### Lint
+```bash
+colcon test --packages-select big_bertha_bringup --event-handlers console_direct+
+```
+
+## Known Issues
+
+1. **No magnetometer:** Board is labeled "MPU-9265" but contains MPU-6500 die (WHO_AM_I=0x70). Yaw will drift without absolute heading reference.
+2. **I2C clock 50 kHz:** Below standard (100 kHz) but required for STM32U585 I2C v2 peripheral reliability (Zephyr issue #83550).
+3. **Startup calibration required:** Robot must remain stationary for 2-3 seconds during node startup for gyro/accel bias estimation.
+4. **No position feedback:** MG995 servos have no encoders. `/joint_states` publishes commanded positions, not actual positions.
+
+## Migration from TCP Relay
+
+The Python TCP relay architecture (ports 50007/50008, Docker container) was removed in commit `88e1d25`. The new native bridge eliminates:
+- Python relay process (main.py, ~364 lines → 31 line stub)
+- TCP JSON protocol overhead
+- Docker runtime dependency
+
+**Previous architecture (removed):**
+```
+ROS2 → TCP JSON (50007/50008) → Python relay (Docker) → router socket → firmware
+```
+
+If you need to roll back to the TCP relay:
+```bash
+git checkout 5de3e5e  # commit before native bridge
+colcon build --packages-select big_bertha_bringup
+```
+
+## Deployment
+
+For first-time deployment or updates, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+For systematic hardware validation before production, see [VALIDATION_CHECKLIST.md](VALIDATION_CHECKLIST.md).
+
+## Bill of Materials (BOM)
+
+Full hardware specification from [PLAN.md §11](../PLAN.md):
+
+| Subsystem | Part | Quantity | Notes |
+|-----------|------|----------|-------|
+| Compute | Arduino UNO Q (4 GB) | 1 | ROS 2 Jazzy (arm64) |
+| Structure | 3D-printed frame + legs | — | Spider quadruped design |
+| Actuators | MG995 servos | 12 | 4 legs × 3 joints |
+| Lidar | YDLidar X2 (2D) | 1 | `/scan` topic |
+| IMU | MPU-6500 (6-axis) | 1 | On "MPU-9265" breakout |
+| Servo Driver | PCA9685 | 1 | 16-channel PWM @ 50 Hz |
+
+## Troubleshooting
+
+**Node won't connect:**
+- Check `systemctl status arduino-router`
+- Verify socket exists: `ls -l /run/arduino-router/rpc.sock`
+- Check firmware running: `arduino-app-cli app status`
+
+**No IMU data:**
+- Run I2C scan: `ros2 service call /hardware_bridge/scan_i2c std_srvs/srv/Trigger`
+- Check IMU diagnostic: `ros2 service call /hardware_bridge/imu_diag std_srvs/srv/Trigger`
+
+**Servos not responding:**
+- Check PCA9685: `ros2 service call /hardware_bridge/scan_i2c std_srvs/srv/Trigger`
+- Run servo diagnostic: `ros2 service call /hardware_bridge/servo_diag std_srvs/srv/Trigger`
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for comprehensive troubleshooting guide.
+
+## License
+
+Apache 2.0 — See [LICENSE](../LICENSE) for details.
+
+## Maintainer
+
+Jjateen Gundesha (@Jjateen)
