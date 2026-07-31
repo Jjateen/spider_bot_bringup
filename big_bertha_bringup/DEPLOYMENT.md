@@ -1,0 +1,571 @@
+# Hardware Bridge Deployment Guide
+
+Complete guide for deploying the native C++ hardware bridge to the Arduino UNO Q board.
+
+## Prerequisites
+
+### Board-Side (Arduino UNO Q)
+- Ubuntu 24.04 (or compatible Linux distribution)
+- ROS 2 Jazzy installed and sourced
+- `arduino-app-cli` daemon running
+- `arduino-router` service running
+- I2C devices connected:
+  - PCA9685 @ 0x40 (servo controller)
+  - MPU9250/MPU6500 @ 0x68 (IMU)
+- Workspace at `~/ros2_ws/src/spider_bot_bringup`
+
+### Host-Side (Development Machine)
+- Git access to repository
+- SSH access to board
+- ROS 2 Jazzy sourced (for testing)
+
+### Hardware Setup
+- 12× MG995 servos connected to PCA9685 channels (see config)
+- Power supply adequate for simultaneous servo operation (recommend 6V 10A+)
+- IMU mounted securely with known orientation
+- Emergency stop accessible (power switch or E-stop button)
+
+## Initial Setup (First-Time Deployment)
+
+### Step 1: Clone Repository on Board
+
+```bash
+ssh arduino@<board-ip>
+cd ~/ros2_ws/src
+git clone git@github.com:Jjateen/spider_bot_bringup.git
+cd spider_bot_bringup
+git checkout pr/hw-bringup
+```
+
+**Verification:**
+```bash
+git log --oneline -1
+# Should show: 88e1d25 feat(bringup): replace python tcp relay with native bridge rpc client
+```
+
+### Step 2: Build ROS Workspace
+
+```bash
+cd ~/ros2_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select big_bertha_bringup
+source install/setup.bash
+```
+
+**Expected output:**
+```
+Starting >>> big_bertha_bringup
+Finished <<< big_bertha_bringup [0.xx s]
+Summary: 1 package finished [x.xx s]
+```
+
+**Verification:**
+```bash
+ros2 pkg list | grep big_bertha_bringup
+# Should show: big_bertha_bringup
+
+ros2 run big_bertha_bringup hardware_bridge_node --help
+# Should show usage (or start attempting connection)
+```
+
+### Step 3: Upload Firmware to STM32U585
+
+```bash
+cd ~/ros2_ws/src/spider_bot_bringup
+./scripts/upload_firmware.sh
+```
+
+**Expected output:**
+```
+[CHECK] Prerequisites
+  ✔ Workspace app exists
+  ✔ app-cli daemon is active
+[SYNC] Syncing workspace sketch to ArduinoApps
+  ✔ Sketch synced (XXXXX bytes)
+[FLASH] Compiling and uploading sketch to STM32U585 M33
+  ✔ Sketch compiled and uploaded successfully
+[DOCKER] Stopping Python relay container (not needed)
+  ✔ Container stopped
+[VERIFY] Checking Bridge RPC health...
+  ✔ arduino-router is running
+  ✔ Bridge RPC socket exists
+  ✔ Ping test successful (round-trip < 10 ms)
+```
+
+**Troubleshooting upload:**
+- If `app-cli daemon is not running`: `sudo systemctl start arduino-app-cli`
+- If sketch won't compile: Check `journalctl -u arduino-app-cli -n 50` for errors
+- If upload times out: Power cycle the board, ensure M33 co-processor is responsive
+
+### Step 4: Test Bridge Manually
+
+```bash
+# Terminal 1: Run the bridge node
+ros2 run big_bertha_bringup hardware_bridge_node --ros-args --log-level info
+```
+
+**Expected startup log:**
+```
+[INFO] [hardware_bridge]: Connected to arduino-router at /run/arduino-router/rpc.sock
+[INFO] [hardware_bridge]: calibrating sensors (200 samples)...
+[INFO] [hardware_bridge]: gyro bias: gx=0.XXXXXX gy=0.XXXXXX gz=0.XXXXXX rad/s
+[INFO] [hardware_bridge]: accel bias: ax=0.XXXXXX ay=0.XXXXXX az=0.XXXXXX m/s²
+[INFO] [hardware_bridge]: calibration complete (200 samples)
+```
+
+```bash
+# Terminal 2: Verify topics
+ros2 topic list
+# Should include: /imu, /joint_states
+
+ros2 topic hz /imu
+# Should report: ~125 Hz
+
+ros2 topic echo /imu --once
+# Should show realistic IMU data
+```
+
+```bash
+# Terminal 3: Test services
+ros2 service call /hardware_bridge/status std_srvs/srv/Trigger
+# Should return: success=true, message with hardware status
+
+ros2 service call /hardware_bridge/scan_i2c std_srvs/srv/Trigger
+# Should return: addrs=[64, 104] (0x40=PCA9685, 0x68=IMU)
+```
+
+**If all tests pass, proceed to Step 5. If not, see Troubleshooting section.**
+
+### Step 5: Install Systemd Service (Optional but Recommended)
+
+```bash
+sudo cp ~/ros2_ws/src/spider_bot_bringup/scripts/hardware-bridge.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable hardware-bridge
+sudo systemctl start hardware-bridge
+```
+
+**Verification:**
+```bash
+sudo systemctl status hardware-bridge
+# Should show: active (running)
+
+journalctl -u hardware-bridge -n 20
+# Should show calibration complete, no errors
+```
+
+**Configure service (if needed):**
+Edit `/etc/systemd/system/hardware-bridge.service` to adjust:
+- `User=` (default: arduino)
+- `WorkingDirectory=`
+- Environment variables
+
+Then: `sudo systemctl daemon-reload && sudo systemctl restart hardware-bridge`
+
+## Updates (Pulling Changes)
+
+### Standard Update (Code Changes Only)
+
+When updating C++ node code without firmware changes:
+
+```bash
+ssh arduino@<board-ip>
+cd ~/ros2_ws/src/spider_bot_bringup
+git pull origin pr/hw-bringup
+cd ~/ros2_ws
+colcon build --packages-select big_bertha_bringup
+source install/setup.bash
+
+# If using systemd:
+sudo systemctl restart hardware-bridge
+
+# If running manually:
+# Ctrl+C the running node, then re-run:
+ros2 run big_bertha_bringup hardware_bridge_node
+```
+
+### Update with Firmware Change
+
+When sketch.ino or firmware logic changes:
+
+```bash
+ssh arduino@<board-ip>
+cd ~/ros2_ws/src/spider_bot_bringup
+git pull origin pr/hw-bringup
+
+# Re-flash the firmware
+./scripts/upload_firmware.sh
+
+# Rebuild ROS node
+cd ~/ros2_ws
+colcon build --packages-select big_bertha_bringup
+source install/setup.bash
+
+# Restart bridge
+sudo systemctl restart hardware-bridge
+```
+
+### Update Configuration Only
+
+When only `config/hardware_bridge.yaml` changes:
+
+```bash
+ssh arduino@<board-ip>
+cd ~/ros2_ws/src/spider_bot_bringup
+git pull origin pr/hw-bringup
+
+# No rebuild needed, just restart
+sudo systemctl restart hardware-bridge
+```
+
+## Validation Checklist
+
+After any deployment or update, complete the [VALIDATION_CHECKLIST.md](VALIDATION_CHECKLIST.md):
+
+**Quick validation (30 seconds):**
+```bash
+# 1. Check node is running
+sudo systemctl status hardware-bridge
+
+# 2. Verify IMU publishes
+ros2 topic hz /imu
+# Expect: ~125 Hz
+
+# 3. Check hardware status
+ros2 service call /hardware_bridge/status std_srvs/srv/Trigger
+# Expect: scan=0 (all devices present)
+
+# 4. Quick I2C scan
+ros2 service call /hardware_bridge/scan_i2c std_srvs/srv/Trigger
+# Expect: addrs=[64, 104]
+```
+
+**Full validation:** See [VALIDATION_CHECKLIST.md](VALIDATION_CHECKLIST.md) for comprehensive testing procedure.
+
+## Troubleshooting
+
+### Node Won't Start
+
+**Symptom:** `Failed to connect to arduino-router (candidates probed)`
+
+**Diagnosis:**
+```bash
+# Check arduino-router is running
+systemctl status arduino-router
+# Should show: active (running)
+
+# Check socket exists
+ls -l /run/arduino-router/rpc.sock
+# Should show: srwxrwxrwx ... /run/arduino-router/rpc.sock
+
+# Check arduino-app-cli
+systemctl status arduino-app-cli
+arduino-app-cli app status
+# Should show hardware_bridge_app running
+```
+
+**Solutions:**
+1. Restart arduino-router: `sudo systemctl restart arduino-router`
+2. Restart app: `arduino-app-cli app restart ~/ArduinoApps/hardware_bridge_app`
+3. Check socket permissions: `sudo chmod 666 /run/arduino-router/rpc.sock` (if needed)
+4. Verify sketch uploaded: `./scripts/upload_firmware.sh`
+
+### No IMU Data
+
+**Symptom:** `/imu` topic not publishing or publishing zeros
+
+**Diagnosis:**
+```bash
+# Check I2C devices present
+ros2 service call /hardware_bridge/scan_i2c std_srvs/srv/Trigger
+# Should return addrs including 104 (0x68)
+
+# Check IMU diagnostic
+ros2 service call /hardware_bridge/imu_diag std_srvs/srv/Trigger
+# Should show WHO_AM_I and device detection
+```
+
+**Solutions:**
+1. **I2C wiring:** Verify SDA/SCL connections, pull-up resistors
+2. **I2C address conflict:** Run scan, ensure 0x68 is the only device at that address
+3. **Power issue:** Check IMU VCC/GND, measure with multimeter (should be 3.3V or 5V)
+4. **Firmware issue:** Re-upload firmware, check `journalctl -u arduino-app-cli -f`
+5. **Calibration timeout:** Check node logs, ensure robot is stationary during startup
+
+### Servo Commands Not Working
+
+**Symptom:** Publishing to `/position_controller/commands` but servos don't move
+
+**Diagnosis:**
+```bash
+# Check PCA9685 present
+ros2 service call /hardware_bridge/scan_i2c std_srvs/srv/Trigger
+# Should include addrs with 64 (0x40)
+
+# Run servo diagnostic
+ros2 service call /hardware_bridge/servo_diag std_srvs/srv/Trigger
+# Should report PWM writes successful
+
+# Check hardware status
+ros2 service call /hardware_bridge/status std_srvs/srv/Trigger
+# Check pwm_write_fails counter
+```
+
+**Solutions:**
+1. **PCA9685 not detected:** Check I2C wiring, run scan
+2. **PWM writes failing:** Check `pwm_write_fails` counter in status, indicates I2C NAKs
+3. **Servo power:** Ensure external 6V power supply connected to PCA9685 V+ terminal
+4. **Servo channels:** Verify `servo_channel` config matches physical wiring
+5. **Rate limiting too aggressive:** Check if commands are within rate limit (see API.md)
+
+### Socket Path Not Found
+
+**Symptom:** Node tries all socket candidates, none exist
+
+**Diagnosis:**
+```bash
+# Find actual socket path
+find /run /var/run /tmp -name "rpc.sock" -o -name "arduino-router.sock" 2>/dev/null
+```
+
+**Solution:**
+Edit `config/hardware_bridge.yaml`, set `router_socket: "/actual/path/rpc.sock"`, then restart.
+
+### I2C Timeouts/Consecutive Failures
+
+**Symptom:** Firmware logs show `g_i2c_consecutive_fails` increasing, IMU stops publishing
+
+**Diagnosis:**
+Check firmware diagnostic counters via `~/status` service.
+
+**Solutions:**
+1. **Bad connections:** Reseat I2C wires, check for loose connections
+2. **EMI/noise:** Shorten I2C wires, add ferrite beads, separate from power lines
+3. **Clock issue:** Sketch uses 50 kHz (hardcoded), already below spec for reliability
+4. **Power brownout:** Check power supply is stable under servo load
+5. **STM32 I2C bug:** Known Zephyr #83550, 50 kHz is workaround but not perfect
+6. **Nuclear option:** Power cycle board: `sudo reboot`
+
+### Calibration Fails
+
+**Symptom:** Node logs "IMU appears to be missing — all samples were zero"
+
+**Diagnosis:**
+IMU is not responding or all data is zero.
+
+**Solutions:**
+1. Check I2C scan finds IMU
+2. Verify IMU power (VCC should be 3.3V or 5V)
+3. Check WHO_AM_I register via `~/imu_diag` service
+4. If IMU is detected but returns all zeros, suspect firmware I2C read issue
+
+### High Gyro Drift
+
+**Symptom:** `gyro accumulated drift` logs show large values (> 0.1 rad after 10s)
+
+**Cause:** No magnetometer on this hardware (MPU-6500 instead of MPU-9250), so yaw has no absolute reference.
+
+**Mitigation:**
+1. **Increase calibration samples:** Edit config, set `gyro_calibration_samples: 500`
+2. **Ensure stationary startup:** Robot must be perfectly still during calibration
+3. **Temperature stabilization:** Let IMU warm up for 30 seconds before starting node
+4. **Accept limitation:** Without magnetometer, some drift is inevitable
+
+**Long-term solution:** Replace IMU with genuine MPU-9250 or add external magnetometer.
+
+## Rollback Procedure
+
+### Rollback to Previous Commit
+
+If the current version has issues:
+
+```bash
+ssh arduino@<board-ip>
+cd ~/ros2_ws/src/spider_bot_bringup
+
+# View recent commits
+git log --oneline -10
+
+# Rollback to specific commit
+git checkout <commit-hash>
+
+# If sketch changed, re-upload firmware
+./scripts/upload_firmware.sh
+
+# Rebuild
+cd ~/ros2_ws
+colcon build --packages-select big_bertha_bringup
+source install/setup.bash
+
+# Restart
+sudo systemctl restart hardware-bridge
+```
+
+### Rollback to TCP Relay (Pre-Native Bridge)
+
+If native bridge is fundamentally broken and you need the Python relay:
+
+```bash
+git checkout 5de3e5e  # Last commit before native bridge (88e1d25)
+cd ~/ros2_ws
+colcon build --packages-select big_bertha_bringup
+source install/setup.bash
+
+# Python relay needs Docker container
+cd ~/ros2_ws/src/spider_bot_bringup/big_bertha_bringup/firmware/hardware_bridge_app
+# Follow old deployment procedure (Docker setup, TCP ports)
+```
+
+**Note:** TCP relay architecture is deprecated. Only use for emergency recovery.
+
+### Emergency Stop
+
+To immediately stop all servo commands:
+
+```bash
+# Stop the bridge node
+sudo systemctl stop hardware-bridge
+
+# Stop the firmware (halts IMU and servos)
+arduino-app-cli app stop ~/ArduinoApps/hardware_bridge_app
+
+# Power off servos (if separate power supply)
+# Flip external power switch or disconnect PCA9685 V+ terminal
+```
+
+## Logs & Diagnostics
+
+### ROS Node Logs
+
+```bash
+# If using systemd
+journalctl -u hardware-bridge -f
+
+# If running manually
+ros2 run big_bertha_bringup hardware_bridge_node --ros-args --log-level debug
+```
+
+**Key log messages:**
+- `Connected to arduino-router at ...` — Socket connection successful
+- `calibrating sensors (N samples)...` — Calibration started
+- `gyro bias: ...` — Calibration results
+- `gyro accumulated drift: ...` — Every 10 seconds, shows drift accumulation
+
+### Firmware Logs (MCU)
+
+```bash
+journalctl -u arduino-app-cli -f
+```
+
+**Key indicators:**
+- `Bridge.begin(460800)` — Bridge RPC initialized
+- `provide("set_servo_pwms", ...)` — Handlers registered
+- I2C transaction errors logged by sketch
+
+### Systemd Service Logs
+
+```bash
+# Last 100 lines
+journalctl -u hardware-bridge -n 100
+
+# Follow live
+journalctl -u hardware-bridge -f
+
+# Since last boot
+journalctl -u hardware-bridge -b
+```
+
+### Network Diagnostics (If Remote)
+
+```bash
+# Test connectivity
+ping <board-ip>
+
+# Verbose SSH
+ssh -v arduino@<board-ip>
+
+# Check SSH daemon
+systemctl status ssh
+```
+
+## Performance Tuning
+
+### IMU Publish Rate
+
+**Default:** 125 Hz (8 ms interval in sketch)
+
+**To adjust:**
+Edit `firmware/hardware_bridge_app/sketch/sketch.ino`, line 85:
+```cpp
+static const unsigned long IMU_INTERVAL = 8;  // Change to desired milliseconds
+```
+
+Then re-upload: `./scripts/upload_firmware.sh`
+
+**Recommended:** 125 Hz matches policy controller update rate.
+
+### Servo Rate Limiting
+
+**Config:** `config/hardware_bridge.yaml`
+
+```yaml
+command_rate_hz: 200.0              # Policy publish rate
+max_joint_rate_rad_s: 6.54          # MG995 physical limit
+# Computed: rate_limit_rad = 6.54 / 200.0 = 0.0327 rad/step
+```
+
+**To adjust:**
+- Increase `max_joint_rate_rad_s` for faster motion (but MG995 cannot exceed 6.54)
+- Decrease for smoother, safer motion
+- Adjust `command_rate_hz` to match actual policy rate
+
+### Calibration Duration
+
+**Config:** `config/hardware_bridge.yaml`
+
+```yaml
+gyro_calibration_samples: 200       # ~2.2 seconds @ 91 Hz
+accel_calibration_samples: 200
+```
+
+**To adjust:**
+- Increase if bias estimate is noisy or drift is high
+- Decrease for faster startup (minimum ~50 samples)
+- Measured IMU rate is ~91 Hz, so 200 samples ≈ 2.2 seconds
+
+## Security Considerations
+
+1. **Unix socket permissions:** Bridge RPC socket should be accessible only by authorized users
+2. **No authentication:** Bridge RPC has no auth mechanism, assumes trusted local environment
+3. **Servo safety:** Rate limiting prevents abrupt motion, but no collision detection or torque limits
+4. **Emergency stop required:** Physical E-stop or power switch mandatory for safety
+5. **Network exposure:** If board is network-accessible, ensure firewall rules prevent unauthorized access
+
+## Known Limitations
+
+1. **No encoder feedback:** MG995 servos have no position sensors, so commanded ≠ actual position
+2. **No magnetometer:** Yaw drift is unbounded without absolute heading reference
+3. **I2C 50 kHz:** Below spec, but required for STM32U585 reliability
+4. **Startup calibration required:** Robot must be stationary for 2-3 seconds at node start
+5. **No runtime reconfiguration:** Parameter changes require node restart
+
+## Next Steps After Deployment
+
+1. **Run full validation:** Complete [VALIDATION_CHECKLIST.md](VALIDATION_CHECKLIST.md)
+2. **Launch full stack:** `ros2 launch big_bertha_bringup big_bertha.launch.py`
+3. **Verify policy integration:** Ensure policy controller receives IMU + joint_states
+4. **Calibrate servo offsets:** Adjust `servo_offset` if legs are misaligned at rest
+5. **Tune IMU axis signs:** Adjust `imu_axis_sign` if orientation is inverted
+6. **Characterize drift:** Log gyro drift over 5 minutes, decide if acceptable
+7. **Test locomotion:** Run policy controller, verify smooth walking gait
+
+## Support
+
+For issues not covered here:
+- Check logs: `journalctl -u hardware-bridge -n 100`
+- Review API docs: [API.md](API.md)
+- Test systematically: [VALIDATION_CHECKLIST.md](VALIDATION_CHECKLIST.md)
+- Check firmware logs: `journalctl -u arduino-app-cli -n 100`
+- File GitHub issue with logs attached
+
+**Emergency contact:** Maintain physical access to board for power cycling and hardware inspection.
