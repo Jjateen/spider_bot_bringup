@@ -6,8 +6,7 @@
 // Communication via Arduino Bridge RPC (mailbox-based IPC).
 //
 // ── Data flow ─────────────────────────────────────────────────────────
-//   ROS 2 node (C++) → TCP JSON :50007 → Python relay (main.py)
-//     → Bridge RPC → STM32U585 (this sketch) → I2C → PCA9685 + MPU9250
+//   ROS 2 node (C++) → arduino-router (MsgPack-RPC socket) → this sketch
 //
 // ── Design principles ─────────────────────────────────────────────────
 //   - Non-blocking: Bridge RPC handler never waits on I2C. Servo PWM
@@ -593,10 +592,10 @@ void setup()
 
 void loop()
 {
-  // Process incoming RPC calls from the Python relay (set_servo_pwms,
-  // ping, scan_i2c) regardless of whether the background thread started
-  // successfully.  update() is guarded by internal mutexes so redundant
-  // calls from the background thread are harmless.
+  // Process incoming RPC calls from the ROS 2 hardware_bridge_node
+  // (set_servo_pwms, ping, scan_i2c) regardless of whether the background
+  // thread started successfully. update() is guarded by internal mutexes so
+  // redundant calls from the background thread are harmless.
   Bridge.update();
 
   unsigned long now = millis();
