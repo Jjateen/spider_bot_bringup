@@ -51,7 +51,7 @@ public:
   std::vector<int> convert(const std::vector<double> & targets)
   {
     if (targets.size() != 12) {
-      return {}
+      return {};
     }
 
     // EWMA smoothing

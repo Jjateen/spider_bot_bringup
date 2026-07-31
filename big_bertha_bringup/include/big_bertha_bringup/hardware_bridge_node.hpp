@@ -17,19 +17,21 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <memory>
+#include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "big_bertha_bringup/imu_parser.hpp"
 #include "big_bertha_bringup/servo_converter.hpp"
-#include "big_bertha_bringup/tcp_client.hpp"
+#include "bridge_rpc_client.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "sensor_msgs/msg/magnetic_field.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
+#include "std_srvs/srv/trigger.hpp"
 
 namespace big_bertha_bringup
 {
@@ -42,17 +44,31 @@ public:
 
 private:
   void on_cmd(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
-  void reader_loop();
-  bool calibrate_sensors();
-  void publish_imu(const ImuData & data);
 
-  // TCP
-  std::string servo_host_;
-  int servo_port_;
-  std::string imu_host_;
-  int imu_port_;
-  TcpClient servo_client_;
-  TcpClient imu_client_;
+  // Bridge RPC notification handlers (called from the client reader thread).
+  void on_imu(const std::vector<double> & params);
+  void on_hw_status(const std::vector<double> & params);
+  void on_i2c_scan(const std::vector<double> & params);
+  void on_pong(const std::vector<double> & params);
+  void on_imu_diag(const std::string & text);
+  void on_servo_diag_result(const std::string & text);
+
+  void publish_imu(const ImuData & data);
+  void accumulate_calibration(const ImuData & data);
+  void finish_calibration();
+
+  // Diagnostic services.
+  void handle_status(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                     std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
+  void handle_scan_i2c(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                       std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
+  void handle_servo_diag(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                         std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
+  void handle_imu_diag(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                       std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
+
+  // Bridge RPC client.
+  std::unique_ptr<BridgeRPCClient> bridge_;
 
   // Servo conversion
   ServoConverter servo_converter_;
@@ -62,6 +78,10 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr mag_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_sub_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr status_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr scan_i2c_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr servo_diag_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr imu_diag_srv_;
   std::vector<std::string> joint_names_;
   std::vector<double> orient_cov_;
   std::vector<double> accel_cov_;
@@ -79,9 +99,23 @@ private:
   int64_t cal_duration_ms_{0};
   std::chrono::steady_clock::time_point cal_finish_time_;
 
-  // Threading
-  std::thread reader_thread_;
-  std::atomic<bool> running_{true};
+  // Calibration accumulator (fed by on_imu on the reader thread).
+  std::mutex cal_mutex_;
+  bool calibration_done_{false};
+  int cal_collected_{0};
+  double cal_gx_sum_{0}, cal_gy_sum_{0}, cal_gz_sum_{0};
+  double cal_ax_sum_{0}, cal_ay_sum_{0}, cal_az_sum_{0};
+  double cal_ax_sq_sum_{0}, cal_ay_sq_sum_{0}, cal_az_sq_sum_{0};
+
+  // Diagnostics cache (also updated from the reader thread).
+  std::mutex diag_mutex_;
+  std::condition_variable diag_cv_;
+  std::string hw_status_str_;
+  std::string imu_diag_str_;
+  std::string servo_diag_str_;
+  std::vector<double> i2c_scan_addrs_;
+  uint64_t i2c_gen_{0};
+  uint64_t servo_diag_gen_{0};
 
   // Joint state tracking (finite-differenced velocity from commanded targets)
   rclcpp::Time last_joint_state_time_{0, 0, RCL_ROS_TIME};

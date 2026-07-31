@@ -2,7 +2,4 @@ name: hardware_bridge_app
 description: "Drives PCA9685 servos and reads MPU9250 IMU via Bridge RPC from the ROS 2 hardware_bridge_node"
 icon: 🕷️
 version: "0.1.0"
-ports:
-  - 50007   # servo commands
-  - 50008   # IMU polling
 bricks: []

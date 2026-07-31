@@ -22,18 +22,16 @@
 #include <utility>
 #include <vector>
 
-#include "sensor_msgs/msg/joint_state.hpp"
-
 namespace big_bertha_bringup
 {
 
 HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
 {
   // ── Parameters ────────────────────────────────────────────────────────
-  servo_host_ = declare_parameter<std::string>("servo_host", "127.0.0.1");
-  servo_port_ = declare_parameter<int>("servo_port", 50007);
-  imu_host_ = declare_parameter<std::string>("imu_host", "127.0.0.1");
-  imu_port_ = declare_parameter<int>("imu_port", 50008);
+  std::string router_socket = declare_parameter<std::string>("router_socket", "");
+  if (router_socket.empty()) {
+    router_socket = "/run/arduino-router/rpc.sock";
+  }
 
   int pwm_min = declare_parameter<int>("pwm_min", 102);
   int pwm_max = declare_parameter<int>("pwm_max", 512);
@@ -99,19 +97,6 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
 
   servo_converter_ = ServoConverter(std::move(scp));
 
-  // ── TCP connects ──────────────────────────────────────────────────────
-  if (!servo_client_.connect(servo_host_, servo_port_)) {
-    RCLCPP_WARN(
-      get_logger(), "servo relay connect to %s:%d failed", servo_host_.c_str(), servo_port_);
-  } else {
-    RCLCPP_INFO(get_logger(), "connected servo relay at %s:%d", servo_host_.c_str(), servo_port_);
-  }
-  if (!imu_client_.connect(imu_host_, imu_port_)) {
-    RCLCPP_WARN(get_logger(), "IMU relay connect to %s:%d failed", imu_host_.c_str(), imu_port_);
-  } else {
-    RCLCPP_INFO(get_logger(), "connected IMU relay at %s:%d", imu_host_.c_str(), imu_port_);
-  }
-
   // ── ROS ───────────────────────────────────────────────────────────────
   joint_names_ = declare_parameter<std::vector<std::string>>(
     "joint_names", {"Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119", "Revolute_111",
@@ -125,18 +110,70 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
     "/position_controller/commands", rclcpp::QoS(1),
     std::bind(&HardwareBridgeNode::on_cmd, this, std::placeholders::_1));
 
-  reader_thread_ = std::thread(&HardwareBridgeNode::reader_loop, this);
+  status_srv_ = create_service<std_srvs::srv::Trigger>(
+    "~/status",
+    [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
+           std::shared_ptr<std_srvs::srv::Trigger::Response> resp) {
+      handle_status(req, resp);
+    });
+  scan_i2c_srv_ = create_service<std_srvs::srv::Trigger>(
+    "~/scan_i2c",
+    [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
+           std::shared_ptr<std_srvs::srv::Trigger::Response> resp) {
+      handle_scan_i2c(req, resp);
+    });
+  servo_diag_srv_ = create_service<std_srvs::srv::Trigger>(
+    "~/servo_diag",
+    [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
+           std::shared_ptr<std_srvs::srv::Trigger::Response> resp) {
+      handle_servo_diag(req, resp);
+    });
+  imu_diag_srv_ = create_service<std_srvs::srv::Trigger>(
+    "~/imu_diag",
+    [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
+           std::shared_ptr<std_srvs::srv::Trigger::Response> resp) {
+      handle_imu_diag(req, resp);
+    });
+
+  // ── Bridge RPC ───────────────────────────────────────────────────────
+  // Candidate socket paths: the running arduino-router may expose either of
+  // these (guide vs PoC differ). Probing means no board-side config needed.
+  std::vector<std::string> candidates = {
+    router_socket,
+    "/run/arduino-router/rpc.sock",
+    "/var/run/arduino-router.sock",
+    "/tmp/arduino-router.sock",
+  };
+  bridge_ = std::make_unique<BridgeRPCClient>(std::move(candidates));
+
+  bridge_->provide("imu", std::bind(&HardwareBridgeNode::on_imu, this, std::placeholders::_1));
+  bridge_->provide(
+    "hw_status", std::bind(&HardwareBridgeNode::on_hw_status, this, std::placeholders::_1));
+  bridge_->provide(
+    "i2c_scan", std::bind(&HardwareBridgeNode::on_i2c_scan, this, std::placeholders::_1));
+  bridge_->provide("pong", std::bind(&HardwareBridgeNode::on_pong, this, std::placeholders::_1));
+  bridge_->provide_str(
+    "imu_diag", std::bind(&HardwareBridgeNode::on_imu_diag, this, std::placeholders::_1));
+  bridge_->provide_str(
+    "servo_diag_result",
+    std::bind(&HardwareBridgeNode::on_servo_diag_result, this, std::placeholders::_1));
+
+  if (!bridge_->start()) {
+    RCLCPP_ERROR(get_logger(), "Failed to connect to arduino-router (candidates probed)");
+  } else {
+    RCLCPP_INFO(get_logger(), "Connected to arduino-router at %s",
+                bridge_->connected_path().c_str());
+  }
 }
 
 HardwareBridgeNode::~HardwareBridgeNode()
 {
-  running_ = false;
-  if (reader_thread_.joinable()) {
-    reader_thread_.join();
+  if (bridge_) {
+    bridge_->stop();
   }
 }
 
-// ── Outbound: joint targets → servo PWM via TCP + Bridge RPC ──────────
+// ── Outbound: joint targets → servo PWM via Bridge RPC ────────────────
 void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
 {
   if (msg->data.size() != 12) {
@@ -169,120 +206,139 @@ void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPt
   last_joint_state_time_ = now();
   joint_state_pub_->publish(js);
 
-  // Build JSON command
-  std::string json = R"({"cmd":"servo","pwms":[)";
+  // The firmware's set_servo_pwms takes ONE comma-separated string (a
+  // 12-argument Bridge RPC call would exceed the router's arg limit).
+  std::string payload;
   for (size_t i = 0; i < 12; ++i) {
     if (i > 0) {
-      json += ',';
+      payload += ',';
     }
-    json += std::to_string(pwms[i]);
+    payload += std::to_string(pwms[i]);
   }
-  json += "]}\n";
+  bridge_->notify_str("set_servo_pwms", payload);
+}
 
-  if (!servo_client_.send(json)) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000, "servo socket write error — reconnecting");
-    if (!servo_client_.connect(servo_host_, servo_port_)) {
-      RCLCPP_WARN(get_logger(), "servo reconnect failed");
-    }
+// ── Inbound Bridge RPC notifications (client reader thread) ──────────
+void HardwareBridgeNode::on_imu(const std::vector<double> & params)
+{
+  // [ax, ay, az, gx, gy, gz, mx, my, mz, sample, ts]
+  if (params.size() < 9) {
+    return;
+  }
+  ImuData data;
+  data.ax = params[0];
+  data.ay = params[1];
+  data.az = params[2];
+  data.gx = params[3];
+  data.gy = params[4];
+  data.gz = params[5];
+  data.mx = params[6];
+  data.my = params[7];
+  data.mz = params[8];
+  data.mag_ok = (std::abs(data.mx) + std::abs(data.my) + std::abs(data.mz)) > 1e-9;
+
+  accumulate_calibration(data);
+  publish_imu(data);
+}
+
+void HardwareBridgeNode::on_hw_status(const std::vector<double> & params)
+{
+  // [scan, ai, servo_calls, ping_count, pwm_attempts, pwm_fails,
+  //  pwm_last_fail_ch, pwm_last_fail_code, set_servo_last_len,
+  //  set_servo_last_idx, pwm_readback_ch0]
+  if (params.size() < 11) {
+    return;
+  }
+  int scan = static_cast<int>(params[0]);
+  std::string status = "scan=" + std::to_string(scan);
+  status += ",ai_ok=" + std::string(params[1] > 0.5 ? "true" : "false");
+  status += ",pca9685_ok=" + std::string((scan & 1) == 0 ? "true" : "false");
+  status += ",mpu9250_ok=" + std::string((scan & 2) == 0 ? "true" : "false");
+  status += ",servo_calls=" + std::to_string(static_cast<int>(params[2]));
+  status += ",ping_count=" + std::to_string(static_cast<int>(params[3]));
+  status += ",pwm_write_attempts=" + std::to_string(static_cast<int>(params[4]));
+  status += ",pwm_write_fails=" + std::to_string(static_cast<int>(params[5]));
+  status += ",pwm_last_fail_ch=" + std::to_string(static_cast<int>(params[6]));
+  status += ",pwm_last_fail_code=" + std::to_string(static_cast<int>(params[7]));
+  status += ",set_servo_last_len=" + std::to_string(static_cast<int>(params[8]));
+  status += ",set_servo_last_idx=" + std::to_string(static_cast<int>(params[9]));
+  status += ",pwm_readback_ch0=" + std::to_string(static_cast<int>(params[10]));
+  {
+    std::lock_guard<std::mutex> lk(diag_mutex_);
+    hw_status_str_ = status;
+  }
+  diag_cv_.notify_all();
+}
+
+void HardwareBridgeNode::on_i2c_scan(const std::vector<double> & params)
+{
+  {
+    std::lock_guard<std::mutex> lk(diag_mutex_);
+    i2c_scan_addrs_ = params;
+    ++i2c_gen_;
+  }
+  diag_cv_.notify_all();
+}
+
+void HardwareBridgeNode::on_pong(const std::vector<double> & /*params*/)
+{
+  // Connectivity is tracked via the router socket itself; nothing to do.
+}
+
+void HardwareBridgeNode::on_imu_diag(const std::string & text)
+{
+  {
+    std::lock_guard<std::mutex> lk(diag_mutex_);
+    imu_diag_str_ = text;
+  }
+  diag_cv_.notify_all();
+}
+
+void HardwareBridgeNode::on_servo_diag_result(const std::string & text)
+{
+  {
+    std::lock_guard<std::mutex> lk(diag_mutex_);
+    servo_diag_str_ = text;
+    ++servo_diag_gen_;
+  }
+  diag_cv_.notify_all();
+}
+
+void HardwareBridgeNode::accumulate_calibration(const ImuData & data)
+{
+  std::lock_guard<std::mutex> lk(cal_mutex_);
+  if (calibration_done_ || !(gyro_calibration_enabled_ || accel_calibration_enabled_)) {
+    return;
+  }
+
+  int target = std::max(gyro_calibration_samples_, accel_calibration_samples_);
+  if (target == 0) {
+    calibration_done_ = true;
+    return;
+  }
+
+  cal_gx_sum_ += data.gx;
+  cal_gy_sum_ += data.gy;
+  cal_gz_sum_ += data.gz;
+  cal_ax_sum_ += data.ax;
+  cal_ay_sum_ += data.ay;
+  cal_az_sum_ += data.az;
+  cal_ax_sq_sum_ += data.ax * data.ax;
+  cal_ay_sq_sum_ += data.ay * data.ay;
+  cal_az_sq_sum_ += data.az * data.az;
+  ++cal_collected_;
+
+  if (cal_collected_ >= target) {
+    finish_calibration();
   }
 }
 
-// ── Inbound reader thread: poll IMU over TCP ─────────────────────────
-void HardwareBridgeNode::reader_loop()
+void HardwareBridgeNode::finish_calibration()
 {
-  while (running_) {
-    if (!imu_client_.is_connected()) {
-      imu_client_.connect(imu_host_, imu_port_);
-    }
-    if (imu_client_.is_connected() && calibrate_sensors()) {
-      break;
-    }
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-  }
-
-  while (running_) {
-    if (!imu_client_.is_connected()) {
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-      imu_client_.connect(imu_host_, imu_port_);
-      continue;
-    }
-
-    if (!imu_client_.send(R"({"cmd":"imu"})"
-                          "\n")) {
-      continue;
-    }
-
-    {
-      std::string line;
-      if (!imu_client_.read_line(line)) {
-        continue;
-      }
-
-      if (!line.empty()) {
-        ImuData data;
-        bool got = parse_imu_json(line, data);
-        if (!got) {
-          std::string next;
-          if (imu_client_.read_line(next) && !next.empty()) {
-            got = parse_imu_json(next, data);
-          }
-        }
-        if (got) {
-          publish_imu(data);
-        }
-      }
-    }
-
-    imu_client_.drain();
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
-}
-
-bool HardwareBridgeNode::calibrate_sensors()
-{
-  int samples = std::max(gyro_calibration_samples_, accel_calibration_samples_);
-  if (samples == 0) {
-    return true;
-  }
-
-  RCLCPP_INFO(get_logger(), "calibrating sensors (%d samples)...", samples);
-
-  auto cal_start = std::chrono::steady_clock::now();
-  double gx_sum = 0, gy_sum = 0, gz_sum = 0;
-  double ax_sum = 0, ay_sum = 0, az_sum = 0;
-  double ax_sq_sum = 0, ay_sq_sum = 0, az_sq_sum = 0;
-  int collected = 0;
-
-  while (running_ && collected < samples) {
-    if (!imu_client_.send(R"({"cmd":"imu"})"
-                          "\n")) {
-      return false;
-    }
-
-    std::string line;
-    if (!imu_client_.read_line(line)) {
-      return false;
-    }
-
-    if (!line.empty()) {
-      ImuData data;
-      if (!parse_imu_json(line, data)) {
-        continue;
-      }
-      gx_sum += data.gx;
-      gy_sum += data.gy;
-      gz_sum += data.gz;
-      ax_sum += data.ax;
-      ay_sum += data.ay;
-      az_sum += data.az;
-      ax_sq_sum += data.ax * data.ax;
-      ay_sq_sum += data.ay * data.ay;
-      az_sq_sum += data.az * data.az;
-      ++collected;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  }
+  const int collected = cal_collected_;
+  const double gx_sum = cal_gx_sum_, gy_sum = cal_gy_sum_, gz_sum = cal_gz_sum_;
+  const double ax_sum = cal_ax_sum_, ay_sum = cal_ay_sum_, az_sum = cal_az_sum_;
+  const double ax_sq_sum = cal_ax_sq_sum_, ay_sq_sum = cal_ay_sq_sum_, az_sq_sum = cal_az_sq_sum_;
 
   if (
     collected == 0 ||
@@ -293,7 +349,8 @@ bool HardwareBridgeNode::calibrate_sensors()
       "IMU appears to be missing — all %d samples were zero. Check wiring and I2C bus.", collected);
     gyro_calibration_enabled_ = false;
     accel_calibration_enabled_ = false;
-    return true;
+    calibration_done_ = true;
+    return;
   }
 
   if (gyro_calibration_enabled_) {
@@ -324,24 +381,9 @@ bool HardwareBridgeNode::calibrate_sensors()
       get_logger(), "accel var:  ax=%.6e ay=%.6e az=%.6e (m/s²)²", ax_var, ay_var, az_var);
   }
 
-  auto cal_end = std::chrono::steady_clock::now();
-  cal_duration_ms_ =
-    std::chrono::duration_cast<std::chrono::milliseconds>(cal_end - cal_start).count();
-  cal_finish_time_ = cal_end;
-
-  RCLCPP_INFO(
-    get_logger(), "calibration took %ld ms (%d samples, ~%.1f Hz)", cal_duration_ms_, collected,
-    collected / (cal_duration_ms_ / 1000.0));
-
-  if (gyro_calibration_enabled_) {
-    double drift_x = gyro_bias_x_ * (cal_duration_ms_ / 1000.0);
-    double drift_y = gyro_bias_y_ * (cal_duration_ms_ / 1000.0);
-    double drift_z = gyro_bias_z_ * (cal_duration_ms_ / 1000.0);
-    RCLCPP_INFO(
-      get_logger(), "gyro drift over cal period:  %.3e  %.3e  %.3e rad", drift_x, drift_y, drift_z);
-  }
-
-  return true;
+  calibration_done_ = true;
+  cal_finish_time_ = std::chrono::steady_clock::now();
+  RCLCPP_INFO(get_logger(), "calibration complete (%d samples)", collected);
 }
 
 void HardwareBridgeNode::publish_imu(const ImuData & data)
@@ -371,7 +413,7 @@ void HardwareBridgeNode::publish_imu(const ImuData & data)
 
   imu_pub_->publish(msg);
 
-  if (data.mag_ok && (std::abs(data.mx) + std::abs(data.my) + std::abs(data.mz) > 1e-9)) {
+  if (data.mag_ok) {
     auto m = sensor_msgs::msg::MagneticField();
     m.header.stamp = msg.header.stamp;
     m.header.frame_id = "imu_link";
@@ -387,6 +429,7 @@ void HardwareBridgeNode::publish_imu(const ImuData & data)
   double drift_angle_y = gyro_bias_y_ * elapsed;
   double drift_angle_z = gyro_bias_z_ * elapsed;
 
+  // publish_imu runs only on the bridge reader thread, so a static is safe.
   static auto last_drift_log = std::chrono::steady_clock::now();
   double since_last_log = std::chrono::duration<double>(now_steady - last_drift_log).count();
   if (since_last_log > 10.0) {
@@ -395,6 +438,70 @@ void HardwareBridgeNode::publish_imu(const ImuData & data)
       get_logger(), "gyro accumulated drift:  %.3e  %.3e  %.3e rad  (elapsed %.0f s)",
       drift_angle_x, drift_angle_y, drift_angle_z, elapsed);
   }
+}
+
+// ── Diagnostic services ────────────────────────────────────────────────
+void HardwareBridgeNode::handle_status(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> resp)
+{
+  (void)req;
+  std::lock_guard<std::mutex> lk(diag_mutex_);
+  resp->success = !hw_status_str_.empty();
+  resp->message = hw_status_str_.empty() ? "no status yet" : hw_status_str_;
+}
+
+void HardwareBridgeNode::handle_scan_i2c(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> resp)
+{
+  (void)req;
+  uint64_t before;
+  {
+    std::lock_guard<std::mutex> lk(diag_mutex_);
+    before = i2c_gen_;
+  }
+  bridge_->notify("scan_i2c");
+
+  std::unique_lock<std::mutex> lk(diag_mutex_);
+  diag_cv_.wait_for(lk, std::chrono::seconds(2), [&]() { return i2c_gen_ > before; });
+  std::string msg = "addrs=[";
+  for (size_t i = 0; i < i2c_scan_addrs_.size(); ++i) {
+    if (i > 0) msg += ", ";
+    msg += std::to_string(static_cast<int>(i2c_scan_addrs_[i]));
+  }
+  msg += "]";
+  resp->success = !i2c_scan_addrs_.empty();
+  resp->message = msg;
+}
+
+void HardwareBridgeNode::handle_servo_diag(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> resp)
+{
+  (void)req;
+  uint64_t before;
+  {
+    std::lock_guard<std::mutex> lk(diag_mutex_);
+    before = servo_diag_gen_;
+    servo_diag_str_.clear();
+  }
+  bridge_->notify("servo_diag");
+
+  std::unique_lock<std::mutex> lk(diag_mutex_);
+  diag_cv_.wait_for(lk, std::chrono::seconds(5), [&]() { return servo_diag_gen_ > before; });
+  resp->success = !servo_diag_str_.empty();
+  resp->message = servo_diag_str_.empty() ? "no servo diag result after 5s" : servo_diag_str_;
+}
+
+void HardwareBridgeNode::handle_imu_diag(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> resp)
+{
+  (void)req;
+  std::lock_guard<std::mutex> lk(diag_mutex_);
+  resp->success = !imu_diag_str_.empty();
+  resp->message = imu_diag_str_.empty() ? "no imu_diag yet" : imu_diag_str_;
 }
 
 }  // namespace big_bertha_bringup

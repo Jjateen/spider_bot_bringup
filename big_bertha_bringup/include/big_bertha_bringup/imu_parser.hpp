@@ -34,11 +34,11 @@ inline bool parse_imu_json(const std::string & line, ImuData & out)
   auto find_val = [&](const std::string & key) -> std::pair<bool, double> {
     auto pos = line.find("\"" + key + "\"");
     if (pos == std::string::npos) {
-      return { false, 0.0 }
+      return { false, 0.0 };
     }
     auto colon = line.find(':', pos);
     if (colon == std::string::npos) {
-      return { false, 0.0 }
+      return { false, 0.0 };
     }
     auto start = colon + 1;
     while (start < line.size() && (line[start] == ' ' || line[start] == '\t')) {

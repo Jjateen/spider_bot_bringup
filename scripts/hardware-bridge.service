@@ -1,0 +1,19 @@
+[Unit]
+Description=Big Bertha hardware bridge node (ROS 2)
+Documentation=file:///home/arduino/ros2_ws/src/spider_bot_bringup/big_bertha_bringup/README.md
+# Start once the arduino-router owns the serial port and exposes its socket.
+After=arduino-router.service
+Wants=arduino-router.service
+
+[Service]
+Type=simple
+User=arduino
+WorkingDirectory=/home/arduino/ros2_ws
+# Load the ROS 2 environment, then run the bridge node. It talks to the
+# arduino-router MsgPack-RPC unix socket directly (no TCP, no Python relay).
+ExecStart=/usr/bin/bash -lc 'source /home/arduino/ros2_ws/install/setup.bash && exec ros2 run big_bertha_bringup hardware_bridge_node'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

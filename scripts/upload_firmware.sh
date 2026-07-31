@@ -48,9 +48,10 @@ ok "app-cli daemon is active"
 
 say SYNC "Syncing workspace sketch to ArduinoApps"
 mkdir -p "$BOARD_APP/sketch" "$BOARD_APP/python"
+# python/ holds only a no-op stub main.py — arduino-app-cli app start requires
+# one to exist to build+flash the sketch. The real bridge is the C++ node.
 cp "$WORKSPACE_APP/sketch/sketch.ino" "$BOARD_APP/sketch/sketch.ino"
-cp -u "$WORKSPACE_APP/python/"*.py "$BOARD_APP/python/" 2>/dev/null || true
-cp -u "$WORKSPACE_APP/python/"*.txt "$BOARD_APP/python/" 2>/dev/null || true
+cp "$WORKSPACE_APP/python/main.py" "$BOARD_APP/python/main.py" 2>/dev/null || true
 cp -u "$WORKSPACE_APP/app.yaml" "$BOARD_APP/app.yaml" 2>/dev/null || true
 
 # Check the sync actually changed something worthwhile
@@ -66,43 +67,16 @@ if [ "$BA_SIZE" -eq 0 ]; then
 fi
 ok "Sketch synced ($BA_SIZE bytes)"
 
-# ── Stop production service & release port 50007 ────────────────────────────
-
-say STOP "Stopping hardware-bridge service and releasing port 50007"
-
-sudo systemctl stop hardware-bridge.service 2>/dev/null || true
-
-# Wait until port 50007 is free (up to 30s)
-for i in $(seq 1 15); do
-  if ! ss -tlnp 2>/dev/null | grep -q ':50007\b'; then
-    break
-  fi
-  sleep 2
-done
-if ss -tlnp 2>/dev/null | grep -q ':50007\b'; then
-  fail "Port 50007 still bound after 30s — aborting"
-  exit 1
-fi
-ok "Port 50007 released"
-
-# ── Clean up stale Docker compose containers ────────────────────────────────
-
-say CLEAN "Removing stale compose containers from previous runs"
-
-STALE_CONTAINERS=$(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -v '^hardware-bridge$' | grep -E '(hardware_bridge_app|ros2_ws.*hardware_bridge)' || true)
-if [ -n "$STALE_CONTAINERS" ]; then
-  for c in $STALE_CONTAINERS; do
-    docker rm -f "$c" 2>/dev/null || true
-  done
-  ok "Removed stale containers"
-else
-  ok "No stale containers to clean"
-fi
-
 # ── Compile & upload sketch ─────────────────────────────────────────────────
 
 say FLASH "Compiling and uploading sketch to STM32U585 M33"
 say FLASH "This takes ~15-20 seconds..."
+
+# Stop the app first so `app start` is allowed to re-flash. This stops the MCU
+# and the stub container; `app start` below re-runs the MCU (the sketch that
+# pushes IMU), and we stop only the container afterwards — NOT via `app stop`
+# again, which would halt the MCU and kill the IMU stream.
+arduino-app-cli app stop "$BOARD_APP" 2>/dev/null || true
 
 # Capture output so we can verify the upload succeeded
 TMPLOG=$(mktemp /tmp/hw_bridge_flash.XXXXXX)
@@ -125,106 +99,64 @@ fi
 rm -f "$TMPLOG"
 trap - EXIT
 
-# ── Stop compose container (we use our own) ─────────────────────────────────
+# ── Stop the stub container `app start` auto-created ────────────────────────
+# The stub python/main.py does nothing — the real bridge is the C++ node.
+# Stop the auto-started compose container so nothing holds the router route.
+# IMPORTANT: use `docker stop` (container only), NOT `app stop` — app stop
+# also stops the microcontroller, which kills the sketch that pushes IMU.
 
-say CLEAN "Stopping compose container created by app start"
-arduino-app-cli app stop "$BOARD_APP" 2>/dev/null || true
+say CLEAN "Stopping the stub compose container from app start"
+docker stop hardware_bridge_app-main-1 2>/dev/null || true
 docker rm -f hardware_bridge_app-main-1 2>/dev/null || true
-docker ps -a --format '{{.Names}}' 2>/dev/null | grep -v '^hardware-bridge$' | grep -E '(hardware_bridge_app|ros2_ws.*hardware_bridge)' | while IFS= read -r c; do
-  docker rm -f "$c" 2>/dev/null || true
-done
-
-ok "Compose container cleaned"
-
-# ── Restart production service ──────────────────────────────────────────────
-
-say START "Starting hardware-bridge service"
-sudo systemctl start hardware-bridge.service 2>/dev/null
-
-# Verify the service started
-sleep 2
-if ! systemctl is-active --quiet hardware-bridge.service 2>/dev/null; then
-  fail "hardware-bridge.service failed to start"
-  sudo journalctl -u hardware-bridge.service -n 10 --no-pager 2>/dev/null | tail -5 | while IFS= read -r line; do fail "$line"; done
-  exit 1
-fi
-ok "hardware-bridge.service started"
 
 # ── Poll for Bridge RPC connectivity ────────────────────────────────────────
 
 say POLL "Waiting for Bridge RPC (up to ${PING_TIMEOUT}s)..."
+say POLL "The hardware_bridge_node reconnects to the router socket on its own"
+say POLL "after the MCU resets — nothing needs to be stopped or restarted."
 
 CONNECTED=false
 for i in $(seq 1 $((PING_TIMEOUT / POLL_INTERVAL))); do
-  result=$(echo '{"cmd":"ping"}' | timeout 3 nc 127.0.0.1 50007 2>/dev/null)
-  if echo "$result" | grep -q '"ok":true'; then
+  if [ -S /run/arduino-router/rpc.sock ] || [ -S /var/run/arduino-router.sock ]; then
     CONNECTED=true
-    ok "Bridge RPC connected after ~$((i * POLL_INTERVAL))s"
+    ok "Router socket present after ~$((i * POLL_INTERVAL))s"
     break
   fi
   sleep "$POLL_INTERVAL"
 done
 
 if [ "$CONNECTED" = false ]; then
-  fail "Bridge RPC did not connect within ${PING_TIMEOUT}s"
-  fail "Check: sudo journalctl -u hardware-bridge.service -n 30 --no-pager"
+  fail "Router socket not found within ${PING_TIMEOUT}s"
+  fail "Check: systemctl status arduino-router"
   exit 1
 fi
 
 # ── Wait for enough samples to get a non-stale IMU/status ───────────────────
 sleep 3
 
-# ── Verify subsystems ───────────────────────────────────────────────────────
+# ── Verify subsystems via ROS 2 services ───────────────────────────────────
 
 say VERIFY "Verifying subsystems"
 
-# Ping
-PING=$(echo '{"cmd":"ping"}' | timeout 3 nc 127.0.0.1 50007 2>/dev/null)
-if echo "$PING" | grep -q '"ok":true'; then
-  ok "Ping: $PING"
-else
-  fail "Ping failed: $PING"
-  exit 1
-fi
-
-# Status (I2C devices) — served on the IMU port (50008), NOT the servo port (50007)
-STATUS=$(echo '{"cmd":"status"}' | timeout 5 nc 127.0.0.1 50008 2>/dev/null)
-if echo "$STATUS" | grep -q '"pca9685_ok":true'; then
-  ok "PCA9685 (0x40): present"
-else
-  fail "PCA9685 (0x40) not detected — check I2C wiring"
-fi
-if echo "$STATUS" | grep -q '"mpu9250_ok":true'; then
-  ok "MPU9250 (0x68): present"
-else
-  fail "MPU9250 (0x68) not detected — check I2C wiring"
-fi
-
-# IMU data — served on the IMU port (50008), NOT the servo port (50007)
-IMU=$(echo '{"cmd":"imu"}' | timeout 3 nc 127.0.0.1 50008 2>/dev/null)
-if echo "$IMU" | grep -q '"az":'; then
-  AZ=$(echo "$IMU" | grep -o '"az":[0-9.eE+-]*' | cut -d: -f2)
-  if [ -n "$AZ" ] && echo "$AZ" | awk '{ exit ($1 > 5.0 ? 0 : 1) }' 2>/dev/null; then
-    ok "IMU: az=$AZ m/s² (gravity detected)"
+# The hardware_bridge_node exposes diagnostics as ROS 2 services. The verify
+# is a soft check — the node may not be running yet (it is launched via
+# ros2 launch big_bertha_bringup big_bertha.launch.py, or the repo-side
+# hardware-bridge.service unit).
+if command -v ros2 >/dev/null 2>&1; then
+  STATUS=$(ros2 service call /hardware_bridge/status std_srvs/srv/Trigger 2>/dev/null | tail -2)
+  if echo "$STATUS" | grep -q "success=True" || echo "$STATUS" | grep -q '"success": true'; then
+    ok "hardware_bridge status: $(echo "$STATUS" | tr '\n' ' ')"
   else
-    fail "IMU: az=$AZ (suspicious — expected ~9.81)"
+    fail "hardware_bridge status failed: $STATUS"
+    fail "Start the node: ros2 launch big_bertha_bringup big_bertha.launch.py"
   fi
 else
-  fail "IMU: no data received"
-fi
-
-# On-demand I2C scan (most direct check that the bus is alive)
-SCAN=$(echo '{"cmd":"scan_i2c"}' | timeout 8 nc 127.0.0.1 50008 2>/dev/null)
-if echo "$SCAN" | grep -q '"addrs"'; then
-  ok "I2C scan: $SCAN"
-else
-  fail "I2C scan: no result ($SCAN)"
+  say VERIFY "ros2 CLI not found on this host — skipping service checks"
 fi
 
 # ── Done ────────────────────────────────────────────────────────────────────
 
 echo ""
-say DONE "Firmware upload complete — all subsystems healthy"
+say DONE "Firmware upload complete — sketch flashed, router healthy"
 echo "  I2C devices: PCA9685 @ 0x40 (64), MPU9250 @ 0x68 (104)"
-echo "  Expected: non-zero accel/gyro values from IMU"
-echo "  Bridge RPC: serving ping, status, imu, scan_i2c, servo commands"
+echo "  Start the bridge: ros2 launch big_bertha_bringup big_bertha.launch.py"
