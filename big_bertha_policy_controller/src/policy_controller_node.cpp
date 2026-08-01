@@ -264,6 +264,7 @@ private:
     cmd_vx_ = msg->linear.x;
     cmd_vy_ = msg->linear.y;
     cmd_wz_ = msg->angular.z;
+    raw_cmd_wz_ = msg->angular.z;  // Save raw wz for moving gate check
     last_cmd_time_ = now();
   }
 
@@ -350,8 +351,11 @@ private:
         // Gate the gait when neither forward nor turn is commanded (the policy
         // cannot stand still). The |wz| half matters: gating on vx alone would
         // swallow the trained turn-in-place commands.
+        // Check raw_cmd_wz (before heading correction) not obs_.commands[2]
+        // (after correction). With heading_kp=2.0 and thresh=0.05, any heading
+        // error >0.025 rad would trigger walking instead of standing correction.
         moving = obs_.commands[0] > shaper_.stand_vx_thresh ||
-                 std::abs(obs_.commands[2]) > stand_yaw_thresh_;
+                 std::abs(raw_cmd_wz_) > stand_yaw_thresh_;
         if (!moving) {
           // Hold the default stance; with station_keep the hip-bias steering
           // stays active to hold the latched heading against contact creep.
@@ -489,6 +493,7 @@ private:
   double cmd_vx_{0.0};
   double cmd_vy_{0.0};
   double cmd_wz_{0.0};
+  double raw_cmd_wz_{0.0};  // Raw wz before heading correction, for moving gate
   double current_x_{0.0};
   double current_y_{0.0};
   double current_yaw_{0.0};
