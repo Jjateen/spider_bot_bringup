@@ -225,7 +225,9 @@ private:
       if (sock_fd_ < 0) return false;
       ::send(sock_fd_, buf.data(), buf.size(), MSG_NOSIGNAL);
 
-      // Read response: [1, msgid, nil, true]  (4-element fixarray)
+      // Read response: [1, msgid, nil, true]
+      // Encodes as: [0x94, 0x01, 0x01, 0xc0, 0xc3] = 5 bytes
+      // Previous check at >= 4 left 0xc3 in socket, breaking next registration.
       auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
       while (std::chrono::steady_clock::now() < deadline) {
         uint8_t byte;
@@ -237,10 +239,18 @@ private:
         ssize_t n = ::read(sock_fd_, &byte, 1);
         if (n <= 0) break;
         resp.push_back(byte);
-        // Check if we have a complete response (first byte = 0x94 = fixarray of 4)
-        if (!resp.empty() && resp[0] == 0x94 && resp.size() >= 4) {
-          // Minimal check: response is at least 4 elements worth of bytes
-          return true;
+        
+        // Check for complete response: 5 bytes minimum
+        // [0x94] [type] [msgid] [error] [result]
+        if (resp.size() >= 5 && resp[0] == 0x94) {
+          // Validate structure:
+          // resp[1] should be 0x01 (type=1 for response)
+          // resp[2] should be 0x01 (msgid=1, fixint)
+          // resp[3] should be 0xc0 (nil error)
+          // resp[4] should be 0xc3 (bool true result)
+          if (resp[1] == 0x01 && resp[3] == 0xc0 && resp[4] == 0xc3) {
+            return true;  // Success
+          }
         }
       }
     }
@@ -592,33 +602,23 @@ private:
     while (running_) {
       uint8_t tmp[4096];
       ssize_t n;
+      
+      // Copy socket fd without holding lock during I/O
+      int fd_copy = -1;
       {
         std::lock_guard<std::mutex> lk(sock_mutex_);
-        if (sock_fd_ < 0) {
-          sock_fd_ = -1;
-          n = -1;  // reconnect below, without holding sock_mutex_
-        } else {
-          fd_set rfds;
-          FD_ZERO(&rfds);
-          FD_SET(sock_fd_, &rfds);
-          struct timeval tv = {0, 100000};
-          if (select(sock_fd_ + 1, &rfds, nullptr, nullptr, &tv) <= 0) continue;
-          n = ::read(sock_fd_, tmp, sizeof(tmp));
-        }
+        fd_copy = sock_fd_;
       }
 
-      if (n <= 0) {
-        // Connection lost - close socket and attempt reconnection.
-        // Reconnect without holding the socket lock (register_method also
-        // locks it, so taking it here would deadlock).
+      // Check if socket is valid
+      if (fd_copy < 0) {
+        // Reconnect without holding lock (register_method needs it)
         bool reconnected = false;
         {
           std::lock_guard<std::mutex> lk(sock_mutex_);
-          if (sock_fd_ >= 0) {
-            ::close(sock_fd_);
-            sock_fd_ = -1;
+          if (sock_fd_ < 0) {
+            reconnected = connect_socket_locked();
           }
-          reconnected = connect_socket_locked();
         }
         if (reconnected) {
           std::lock_guard<std::mutex> hlk(handlers_mutex_);
@@ -630,6 +630,30 @@ private:
         continue;
       }
 
+      // Perform select() and read() WITHOUT holding sock_mutex_
+      fd_set rfds;
+      FD_ZERO(&rfds);
+      FD_SET(fd_copy, &rfds);
+      struct timeval tv = {0, 100000};  // 100ms timeout
+      if (select(fd_copy + 1, &rfds, nullptr, nullptr, &tv) <= 0) {
+        continue;
+      }
+      
+      n = ::read(fd_copy, tmp, sizeof(tmp));
+
+      if (n <= 0) {
+        // Invalidate socket only if it's still the same fd
+        {
+          std::lock_guard<std::mutex> lk(sock_mutex_);
+          if (sock_fd_ == fd_copy) {
+            ::close(sock_fd_);
+            sock_fd_ = -1;
+          }
+        }
+        continue;  // Reconnect on next iteration
+      }
+
+      // Process received data
       buf.insert(buf.end(), tmp, tmp + n);
 
       // Parse and dispatch as many messages as possible
