@@ -8,9 +8,16 @@
     # arduino-router unix socket (MsgPack-RPC). Empty = auto-probe.
     router_socket: "/run/arduino-router/rpc.sock"
 
-    # Servo PWM range (12-bit, 0-4095) corresponding to 500-2500 µs at 50 Hz.
-    pwm_min: 102
-    pwm_max: 512
+    # Servo PWM range (12-bit, 0-4095) corresponding to 1000-2000 µs at 50 Hz.
+    # Standard MG995 servos: 1.0-2.0ms for 0-180°. The PCA9685 counts 102 and
+    # 512 are the mechanical hard stops (0.5ms and 2.5ms); 205-410 is the
+    # safe operational band.
+    # 
+    # IMPORTANT: This assumes standard MG995 servos (1.0-2.0ms range).
+    # If using wide-range clones (0.5-2.5ms), revert to pwm_min: 102, pwm_max: 512
+    # REQUIRES HARDWARE VALIDATION - see protractor test procedure in PR #88.
+    pwm_min: 205
+    pwm_max: 410
 
     # Joint angle limit in radians — final safety clamp before PWM conversion.
     joint_limit: 3.14159
@@ -48,7 +55,18 @@
     # Values from the physical hardware calibration (spider_bot_training/README.md).
     servo_lower_limit: [45.0, 30.0, 180.0, 140.0, 135.0, 140.0, 50.0, 50.0, 40.0, 180.0, 150.0, 0.0]    # degrees — smallest angle per joint
     servo_upper_limit: [180.0, 150.0, 50.0, 0.0, 0.0, 0.0, 180.0, 180.0, 180.0, 40.0, 0.0, 150.0]      # degrees — largest angle per joint
-    servo_offset: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 8.0, 2.0, 5.0]                      # degrees — servo mounting offset
+    
+    # TEMPORARY: Offsets zeroed after PWM range change (102-512 -> 205-410).
+    # Previous offsets were calibrated against the 102-512 mapping and are now
+    # wrong by 2x factor. Each joint needs physical recalibration:
+    # 1. Set single_joint_mode: true, single_joint_index: <N>
+    # 2. Command 90° (π/2 rad = 1.571 rad)
+    # 3. Measure actual horn angle with protractor
+    # 4. offset = (90 - measured_angle)
+    # Previous offsets (for 102-512 range):
+    #   [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 8.0, 2.0, 5.0]
+    servo_offset: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]                      # degrees — NEEDS RECALIBRATION
+    
     servo_channel: [14, 10, 2, 6, 13, 9, 1, 5, 12, 8, 0, 4]                                           # which plug on the board each servo uses
     servo_direction: [1, 1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1]                                   # +1 = keep sign, -1 = flip sign
 

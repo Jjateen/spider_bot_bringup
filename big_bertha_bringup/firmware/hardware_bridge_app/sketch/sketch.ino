@@ -533,7 +533,16 @@ void on_scan_i2c()
 // never blocks waiting on I2C.
 void on_servo_diag()
 {
-  for (int i = 0; i < 12; ++i) g_diag_test_pwms[i] = 100 + i * 200;  // 100, 300, 500, ..., 2300
+  // Distribute test values evenly across the configured PWM range.
+  // Must match pwm_min/pwm_max in hardware_bridge.yaml.
+  const int pwm_min = 205;  // 1.0ms for standard MG995
+  const int pwm_max = 410;  // 2.0ms for standard MG995
+  const int range = pwm_max - pwm_min;
+  
+  for (int i = 0; i < 12; ++i) {
+    // Evenly distributed: 205, 223, 242, 261, ..., 410
+    g_diag_test_pwms[i] = pwm_min + (i * range / 11);
+  }
   g_diag_pending = true;
 }
 
