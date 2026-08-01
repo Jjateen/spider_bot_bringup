@@ -157,6 +157,8 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   bridge_->provide_str(
     "servo_diag_result",
     std::bind(&HardwareBridgeNode::on_servo_diag_result, this, std::placeholders::_1));
+  bridge_->provide(
+    "servo_timeout", std::bind(&HardwareBridgeNode::on_servo_timeout, this, std::placeholders::_1));
 
   if (!bridge_->start()) {
     RCLCPP_ERROR(get_logger(), "Failed to connect to arduino-router (candidates probed)");
@@ -176,6 +178,13 @@ HardwareBridgeNode::~HardwareBridgeNode()
 // ── Outbound: joint targets → servo PWM via Bridge RPC ────────────────
 void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
 {
+  if (!bridge_->is_connected()) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000, 
+      "Bridge disconnected, cannot send servo commands");
+    return;
+  }
+  
   if (msg->data.size() != 12) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000, "expected 12 joints, got %zu", msg->data.size());
@@ -302,6 +311,16 @@ void HardwareBridgeNode::on_servo_diag_result(const std::string & text)
     ++servo_diag_gen_;
   }
   diag_cv_.notify_all();
+}
+
+void HardwareBridgeNode::on_servo_timeout(const std::vector<double> & params)
+{
+  if (params.size() > 0) {
+    RCLCPP_ERROR(
+      get_logger(), 
+      "MCU servo watchdog triggered - no commands for %.0f ms (timeout=250ms)", 
+      params[0]);
+  }
 }
 
 void HardwareBridgeNode::accumulate_calibration(const ImuData & data)

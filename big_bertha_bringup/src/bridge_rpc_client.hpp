@@ -401,10 +401,33 @@ private:
     size_t arr_len = data[off] & 0x0f;
     off++;
 
-    // If this is a response (4 elements), skip it entirely.
-    // We handle responses synchronously in register_method().
+    // If this is a response (4 elements), parse its length and consume only
+    // those bytes, not the entire buffer. We handle responses synchronously
+    // in register_method(), but batched notifications following a response
+    // must be preserved for dispatch.
     if (arr_len == 4) {
-      return len;  // consume everything (we don't care about async responses)
+      size_t resp_off = off;
+      
+      // Element 0: message type (should be 1, fixint = 1 byte)
+      if (resp_off >= len) return 0;
+      resp_off++;
+      
+      // Element 1: msgid (parse variable-length int)
+      int64_t dummy_msgid;
+      size_t msgid_used = scan_int(data + resp_off, len - resp_off, dummy_msgid);
+      if (msgid_used == 0) return 0;
+      resp_off += msgid_used;
+      
+      // Element 2: error (should be nil = 0xc0, 1 byte)
+      if (resp_off >= len) return 0;
+      resp_off++;
+      
+      // Element 3: result (should be bool = 0xc3 or 0xc2, 1 byte)
+      if (resp_off >= len) return 0;
+      resp_off++;
+      
+      // Return only the bytes consumed by this response frame
+      return resp_off;
     }
 
     // Must be a notification (3 elements)
@@ -585,14 +608,17 @@ private:
       }
 
       if (n <= 0) {
+        // Connection lost - close socket and attempt reconnection.
         // Reconnect without holding the socket lock (register_method also
         // locks it, so taking it here would deadlock).
         bool reconnected = false;
         {
           std::lock_guard<std::mutex> lk(sock_mutex_);
-          if (sock_fd_ < 0) {
-            reconnected = connect_socket_locked();
+          if (sock_fd_ >= 0) {
+            ::close(sock_fd_);
+            sock_fd_ = -1;
           }
+          reconnected = connect_socket_locked();
         }
         if (reconnected) {
           std::lock_guard<std::mutex> hlk(handlers_mutex_);

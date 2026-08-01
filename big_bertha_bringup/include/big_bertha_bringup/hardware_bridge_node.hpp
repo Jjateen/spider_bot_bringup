@@ -52,6 +52,7 @@ private:
   void on_pong(const std::vector<double> & params);
   void on_imu_diag(const std::string & text);
   void on_servo_diag_result(const std::string & text);
+  void on_servo_timeout(const std::vector<double> & params);
 
   void publish_imu(const ImuData & data);
   void accumulate_calibration(const ImuData & data);
