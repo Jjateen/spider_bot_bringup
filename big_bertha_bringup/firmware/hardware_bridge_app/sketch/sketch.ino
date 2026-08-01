@@ -81,6 +81,10 @@ static unsigned long g_diag_start_ms = 0;  // when phase 1 started, for timeout 
 static int g_i2c_consecutive_fails = 0;  // resets on any success
 static bool g_i2c_busy = false;          // guard for BG-thread vs loop() race
 
+// Servo command watchdog - safe mode if no commands received
+static unsigned long g_last_servo_cmd = 0;
+static const unsigned long SERVO_TIMEOUT_MS = 250;  // 250ms watchdog
+
 // 125 Hz IMU (8 ms) — matches expected rate for the 50 Hz policy controller
 static const unsigned long IMU_INTERVAL = 8;
 static const unsigned long STATUS_INTERVAL = 1000;
@@ -484,6 +488,7 @@ static void blink_update()
 void set_servo_pwms(String data)
 {
   ++g_servo_calls;
+  g_last_servo_cmd = millis();  // Timestamp for watchdog
 
   // Parse comma-separated PWM values (e.g. "307,153,512,...")
   // Single-arg format avoids the Bridge RPC 12-argument limit.
@@ -604,6 +609,21 @@ void loop()
   // Write new PWM values to the PCA9685 if the Python relay sent them.
   // No verify/init check on the hot path — health checks happen at 1 Hz.
   if (g_pwm_dirty) {
+    // Watchdog: if no command received in SERVO_TIMEOUT_MS, drive to neutral
+    unsigned long cmd_age = now - g_last_servo_cmd;
+    if (cmd_age > SERVO_TIMEOUT_MS) {
+      int neutral = 307;  // center position (1.5ms)
+      for (int i = 0; i < 16; ++i) {
+        g_pwm[i] = neutral;
+      }
+      // Log timeout event (throttled to once per second)
+      static unsigned long last_timeout_log = 0;
+      if (now - last_timeout_log > 1000) {
+        last_timeout_log = now;
+        Bridge.notify("servo_timeout", (float)cmd_age);
+      }
+    }
+    
     g_pwm_dirty = false;  // optimistic clear — re-set below on failure
     if (!pca9685_write_servos()) {
       g_pwm_dirty = true;  // transaction failed, retry next cycle
