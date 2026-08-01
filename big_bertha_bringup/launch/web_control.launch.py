@@ -43,6 +43,7 @@ def generate_launch_description():
             launch_arguments={
                 'imu_topic': '/filtered/imu',
                 'use_sim_time': use_sim_time,
+                'publish_joint_states': 'false',
             }.items(),
         ),
 
