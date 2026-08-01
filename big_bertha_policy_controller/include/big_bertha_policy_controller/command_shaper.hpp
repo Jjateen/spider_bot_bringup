@@ -64,6 +64,7 @@ struct CommandShaper
   double ref_y{0.0};
   double steer_i{0.0};
   double steer_cmd{0.0};  // hip-bias steering output, read by the caller
+  double last_steer_cmd{0.0};  // for rate limiting
 
   struct Cmd
   {
@@ -175,7 +176,20 @@ struct CommandShaper
       const double i_lim = steer_max / steer_ki;  // anti-windup
       steer_i = std::clamp(steer_i, -i_lim, i_lim);
     }
-    steer_cmd = std::clamp(steer_kp * err + steer_ki * steer_i, -steer_max, steer_max);
+    
+    // Compute unlimited steering command
+    double steer_unlimited = steer_kp * err + steer_ki * steer_i;
+    
+    // Apply rate limit: 0.01 rad/tick at 50 Hz = 0.5 rad/s slew rate
+    // Prevents sudden hip jerks on large heading errors
+    double max_delta = 0.01;  // From policy.yaml steer_rate_limit
+    double steer_delta = steer_unlimited - last_steer_cmd;
+    steer_delta = std::clamp(steer_delta, -max_delta, max_delta);
+    steer_cmd = last_steer_cmd + steer_delta;
+    
+    // Clamp to absolute max
+    steer_cmd = std::clamp(steer_cmd, -steer_max, steer_max);
+    last_steer_cmd = steer_cmd;
 
     // Slow forward while a large heading error is being corrected.
     double fwd_scale = 1.0;
