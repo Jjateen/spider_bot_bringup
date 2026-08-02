@@ -98,42 +98,32 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   servo_converter_ = ServoConverter(std::move(scp));
 
   // ── ROS ───────────────────────────────────────────────────────────────
-  joint_names_ = declare_parameter<std::vector<std::string>>(
-    "joint_names", {"Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119", "Revolute_111",
-                    "Revolute_114", "Revolute_117", "Revolute_120", "Revolute_112", "Revolute_115",
-                    "Revolute_118", "Revolute_121"});
   imu_pub_ = create_publisher<sensor_msgs::msg::Imu>("/imu", rclcpp::SensorDataQoS());
   mag_pub_ = create_publisher<sensor_msgs::msg::MagneticField>("/imu/mag", rclcpp::SensorDataQoS());
-  joint_state_pub_ =
-    create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(1));
   cmd_sub_ = create_subscription<std_msgs::msg::Float64MultiArray>(
     "/position_controller/commands", rclcpp::QoS(1),
     std::bind(&HardwareBridgeNode::on_cmd, this, std::placeholders::_1));
 
   status_srv_ = create_service<std_srvs::srv::Trigger>(
     "~/status",
-    [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
-           std::shared_ptr<std_srvs::srv::Trigger::Response> resp) {
-      handle_status(req, resp);
-    });
+    [this](
+      const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> resp) { handle_status(req, resp); });
   scan_i2c_srv_ = create_service<std_srvs::srv::Trigger>(
     "~/scan_i2c",
-    [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
-           std::shared_ptr<std_srvs::srv::Trigger::Response> resp) {
-      handle_scan_i2c(req, resp);
-    });
+    [this](
+      const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> resp) { handle_scan_i2c(req, resp); });
   servo_diag_srv_ = create_service<std_srvs::srv::Trigger>(
     "~/servo_diag",
-    [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
-           std::shared_ptr<std_srvs::srv::Trigger::Response> resp) {
-      handle_servo_diag(req, resp);
-    });
+    [this](
+      const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> resp) { handle_servo_diag(req, resp); });
   imu_diag_srv_ = create_service<std_srvs::srv::Trigger>(
     "~/imu_diag",
-    [this](const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
-           std::shared_ptr<std_srvs::srv::Trigger::Response> resp) {
-      handle_imu_diag(req, resp);
-    });
+    [this](
+      const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> resp) { handle_imu_diag(req, resp); });
 
   // ── Bridge RPC ───────────────────────────────────────────────────────
   // Candidate socket paths: the running arduino-router may expose either of
@@ -163,8 +153,8 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   if (!bridge_->start()) {
     RCLCPP_ERROR(get_logger(), "Failed to connect to arduino-router (candidates probed)");
   } else {
-    RCLCPP_INFO(get_logger(), "Connected to arduino-router at %s",
-                bridge_->connected_path().c_str());
+    RCLCPP_INFO(
+      get_logger(), "Connected to arduino-router at %s", bridge_->connected_path().c_str());
   }
 }
 
@@ -180,11 +170,10 @@ void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPt
 {
   if (!bridge_->is_connected()) {
     RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000, 
-      "Bridge disconnected, cannot send servo commands");
+      get_logger(), *get_clock(), 5000, "Bridge disconnected, cannot send servo commands");
     return;
   }
-  
+
   if (msg->data.size() != 12) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000, "expected 12 joints, got %zu", msg->data.size());
@@ -192,28 +181,6 @@ void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPt
   }
 
   auto pwms = servo_converter_.convert(msg->data);
-
-  // Publish /joint_states from the post-smoothing, post-rate-limit values
-  // (what was actually commanded to the servos), with finite-differenced
-  // velocity. This is the policy's only feedback on hardware — without it
-  // 46% of the observation is dead (joint_pos and joint_vel stay zero).
-  auto js = sensor_msgs::msg::JointState();
-  js.header.stamp = now();
-  js.name = joint_names_;
-  const auto & limited = servo_converter_.last_targets();
-  double dt =
-    last_joint_state_time_.nanoseconds() > 0 ? (now() - last_joint_state_time_).seconds() : 0.0;
-  for (size_t i = 0; i < 12; ++i) {
-    js.position.push_back(limited[i]);
-    if (dt > 1e-6) {
-      js.velocity.push_back((limited[i] - last_joint_state_positions_[i]) / dt);
-    } else {
-      js.velocity.push_back(0.0);
-    }
-  }
-  last_joint_state_positions_ = limited;
-  last_joint_state_time_ = now();
-  joint_state_pub_->publish(js);
 
   // The firmware's set_servo_pwms takes ONE comma-separated string (a
   // 12-argument Bridge RPC call would exceed the router's arg limit).
@@ -317,8 +284,7 @@ void HardwareBridgeNode::on_servo_timeout(const std::vector<double> & params)
 {
   if (params.size() > 0) {
     RCLCPP_ERROR(
-      get_logger(), 
-      "MCU servo watchdog triggered - no commands for %.0f ms (timeout=250ms)", 
+      get_logger(), "MCU servo watchdog triggered - no commands for %.0f ms (timeout=250ms)",
       params[0]);
   }
 }

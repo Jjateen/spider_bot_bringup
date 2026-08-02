@@ -4,6 +4,11 @@
 # to the same topic and publishes /joint_states with matching names so the policy
 # reads back correct joint_pos - default_joint_pos in its observation. See
 # big_bertha_policy_controller/config/policy.yaml.
+#
+# On hardware leg_odometry is the SOLE /joint_states publisher (publish_joint_states
+# defaults to true): its EWMA simulates the MG995 lag, which is the feedback the
+# policy needs. hardware_bridge_node no longer publishes /joint_states at all, so
+# the two never collide.
 /**:
   ros__parameters:
     joint_names:

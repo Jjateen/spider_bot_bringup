@@ -43,7 +43,9 @@ def generate_launch_description():
             launch_arguments={
                 'imu_topic': '/filtered/imu',
                 'use_sim_time': use_sim_time,
-                'publish_joint_states': 'false',
+                # leg_odometry owns /joint_states (EWMA-simulated servo feedback);
+                # the bridge's publisher is disabled by default.
+                'publish_joint_states': 'true',
             }.items(),
         ),
 

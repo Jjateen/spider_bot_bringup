@@ -105,7 +105,7 @@ Systematic testing procedure for hardware bridge deployment. Complete this check
   ```
   [INFO] [hardware_bridge]: gyro bias: gx=0.XXXXXX gy=0.XXXXXX gz=0.XXXXXX rad/s
   ```
-  ✅ **Expected:** |gx|, |gy|, |gz| < 0.1 rad/s (typically < 0.05)  
+  ✅ **Expected:** |gx|, |gy|, |gz| < 0.1 rad/s (typically < 0.05)
   ⚠️ **Warning if:** Any axis > 0.1 rad/s (recalibrate or increase sample count)
 
 - [ ] **Accel bias logged**
@@ -157,7 +157,7 @@ Open a second terminal for topic checks.
   ```bash
   ros2 topic hz /imu
   ```
-  ✅ **Expected:** 120-130 Hz (target 125 Hz)  
+  ✅ **Expected:** 120-130 Hz (target 125 Hz)
   ⚠️ **Warning if:** < 100 Hz or > 150 Hz
 
 - [ ] **Data looks reasonable** (at rest)
@@ -188,11 +188,15 @@ If `/imu/mag` appears, this is unexpected (firmware should not publish with no m
 
 ### `/joint_states` Topic
 
+> The hardware bridge never publishes `/joint_states`. `legged_odometry` owns
+> this topic — its EWMA simulates the MG995 lag that is the policy's feedback.
+> Run `legged_odometry` alongside the bridge for these checks.
+
 - [ ] **Topic exists**
   ```bash
   ros2 topic list | grep /joint_states
   ```
-  Expected: `/joint_states` present
+  Expected: `/joint_states` present (from `legged_odometry`)
 
 - [ ] **NOT publishing yet** (no commands sent)
   ```bash
@@ -246,7 +250,7 @@ This will be tested in Phase 5 (servo commands).
   - [ ] `64` (0x40) = PCA9685 servo controller
   - [ ] `104` (0x68) = MPU9250/MPU6500 IMU
 
-  ⚠️ **If missing 64:** PCA9685 not detected, check wiring/power  
+  ⚠️ **If missing 64:** PCA9685 not detected, check wiring/power
   ⚠️ **If missing 104:** IMU not detected, check wiring
 
 ### IMU Diagnostic Service
@@ -263,7 +267,7 @@ This will be tested in Phase 5 (servo commands).
   - [ ] `mag_present=false` (expected, no magnetometer)
   - [ ] `mag_wia=0x00` (AK8963 not found, expected)
 
-  ✅ **Current hardware:** MPU-6500 (0x70), no mag  
+  ✅ **Current hardware:** MPU-6500 (0x70), no mag
   ℹ️ **If 0x71 or 0x73:** Genuine MPU-9250/9255, mag_present should be true
 
 ### Servo Diagnostic Service (Deferred)
@@ -299,7 +303,7 @@ This will be tested in Phase 5 (servo commands).
   ```bash
   ros2 topic hz /joint_states
   ```
-  Expected: ~200 Hz (matches command rate)
+  Expected: ~200 Hz (matches command rate; publisher is `legged_odometry`)
 
 - [ ] **Verify joint_states content**
   ```bash
@@ -544,9 +548,9 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for comprehensive troubleshooting.
 
 ## Validation Sign-Off
 
-**Tested by:** ___________________  
-**Date:** ___________________  
-**Result:** ☐ PASS  ☐ FAIL (with issues documented)  
+**Tested by:** ___________________
+**Date:** ___________________
+**Result:** ☐ PASS  ☐ FAIL (with issues documented)
 **Notes:**
 
 ---
