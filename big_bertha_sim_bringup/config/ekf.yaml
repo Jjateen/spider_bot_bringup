@@ -31,12 +31,12 @@ ekf_filter_node:
     # --- Sensor 0: odometry (X and Y position only, yaw NOT fused) ---
     # Fuse the absolute X/Y position, NOT yaw or velocities. Integrating the
     # noisy legged twist drifted metres while standing, so twist is excluded.
-    # 
+    #
     # Yaw (index 5) is NOT fused from odometry in either sim or hardware:
     # - Sim: leg_odometry yaw drifts significantly even with gz ground truth
     # - Hardware: yaw is pure gyro integration from an MPU-6500 with no
     #   magnetometer, making it unsuitable for absolute fusion
-    # 
+    #
     # The EKF propagates heading internally from IMU yaw rate (imu0_config
     # index 11 = true). This is open-loop gyro integration with no absolute
     # reference, so yaw drift is unbounded. With two_d_mode: true, this
@@ -57,7 +57,7 @@ ekf_filter_node:
     # with the EKF's internal orientation estimate. IMU provides:
     # - Linear acceleration (indices 9, 10, 11 = ax, ay, az)
     # - Angular velocity (indices 12, 13, 14 = gyro_x, gyro_y, gyro_z)
-    # 
+    #
     # The EKF uses gyro_z (yaw rate, index 14 = true) to propagate heading
     # internally. With no absolute yaw source fused (odom0_config[5] = false,
     # imu0_config[5] = false), yaw is pure gyro integration and drifts
