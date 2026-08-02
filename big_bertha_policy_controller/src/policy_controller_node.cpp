@@ -354,8 +354,8 @@ private:
         // Check raw_cmd_wz (before heading correction) not obs_.commands[2]
         // (after correction). With heading_kp=2.0 and thresh=0.05, any heading
         // error >0.025 rad would trigger walking instead of standing correction.
-        moving = obs_.commands[0] > shaper_.stand_vx_thresh ||
-                 std::abs(raw_cmd_wz_) > stand_yaw_thresh_;
+        moving =
+          obs_.commands[0] > shaper_.stand_vx_thresh || std::abs(raw_cmd_wz_) > stand_yaw_thresh_;
         if (!moving) {
           // Hold the default stance; with station_keep the hip-bias steering
           // stays active to hold the latched heading against contact creep.

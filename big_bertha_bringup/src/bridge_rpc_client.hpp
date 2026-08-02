@@ -119,10 +119,7 @@ public:
   }
 
   // Fire-and-forget notification, no params.
-  void notify(const std::string & method)
-  {
-    send_bytes(pack_notification(method));
-  }
+  void notify(const std::string & method) { send_bytes(pack_notification(method)); }
 
   // Fire-and-forget notification with double params.
   void notify(const std::string & method, const std::vector<double> & params)
@@ -239,7 +236,7 @@ private:
         ssize_t n = ::read(sock_fd_, &byte, 1);
         if (n <= 0) break;
         resp.push_back(byte);
-        
+
         // Check for complete response: 5 bytes minimum
         // [0x94] [type] [msgid] [error] [result]
         if (resp.size() >= 5 && resp[0] == 0x94) {
@@ -259,14 +256,14 @@ private:
 
   // ── MsgPack packers ─────────────────────────────────────────────────
 
-  static void pack_byte(std::vector<uint8_t> & buf, uint8_t b)
-  {
-    buf.push_back(b);
-  }
+  static void pack_byte(std::vector<uint8_t> & buf, uint8_t b) { buf.push_back(b); }
 
   static void pack_array(std::vector<uint8_t> & buf, size_t n)
   {
-    if (n <= 15) { pack_byte(buf, 0x90 | n); return; }
+    if (n <= 15) {
+      pack_byte(buf, 0x90 | n);
+      return;
+    }
     if (n <= 0xFFFF) {
       pack_byte(buf, 0xdc);
       pack_byte(buf, (n >> 8) & 0xFF);
@@ -301,9 +298,19 @@ private:
 
   static void pack_int(std::vector<uint8_t> & buf, int64_t val)
   {
-    if (val >= 0 && val <= 0x7F) { pack_byte(buf, val); return; }
-    if (val >= -32 && val <= -1) { pack_byte(buf, 0xe0 | (val & 0x1F)); return; }
-    if (val >= -128 && val <= 127) { pack_byte(buf, 0xd0); pack_byte(buf, val & 0xFF); return; }
+    if (val >= 0 && val <= 0x7F) {
+      pack_byte(buf, val);
+      return;
+    }
+    if (val >= -32 && val <= -1) {
+      pack_byte(buf, 0xe0 | (val & 0x1F));
+      return;
+    }
+    if (val >= -128 && val <= 127) {
+      pack_byte(buf, 0xd0);
+      pack_byte(buf, val & 0xFF);
+      return;
+    }
     if (val >= -32768 && val <= 32767) {
       pack_byte(buf, 0xd1);
       pack_byte(buf, (val >> 8) & 0xFF);
@@ -323,14 +330,11 @@ private:
     uint64_t bits;
     std::memcpy(&bits, &val, sizeof(bits));
     bits = htobe64(bits);
-    buf.insert(buf.end(), reinterpret_cast<uint8_t *>(&bits),
-               reinterpret_cast<uint8_t *>(&bits) + 8);
+    buf.insert(
+      buf.end(), reinterpret_cast<uint8_t *>(&bits), reinterpret_cast<uint8_t *>(&bits) + 8);
   }
 
-  static void pack_nil(std::vector<uint8_t> & buf)
-  {
-    pack_byte(buf, 0xc0);
-  }
+  static void pack_nil(std::vector<uint8_t> & buf) { pack_byte(buf, 0xc0); }
 
   // Notification: [2, "method", []]
   static std::vector<uint8_t> pack_notification(const std::string & method)
@@ -417,25 +421,25 @@ private:
     // must be preserved for dispatch.
     if (arr_len == 4) {
       size_t resp_off = off;
-      
+
       // Element 0: message type (should be 1, fixint = 1 byte)
       if (resp_off >= len) return 0;
       resp_off++;
-      
+
       // Element 1: msgid (parse variable-length int)
       int64_t dummy_msgid;
       size_t msgid_used = scan_int(data + resp_off, len - resp_off, dummy_msgid);
       if (msgid_used == 0) return 0;
       resp_off += msgid_used;
-      
+
       // Element 2: error (should be nil = 0xc0, 1 byte)
       if (resp_off >= len) return 0;
       resp_off++;
-      
+
       // Element 3: result (should be bool = 0xc3 or 0xc2, 1 byte)
       if (resp_off >= len) return 0;
       resp_off++;
-      
+
       // Return only the bytes consumed by this response frame
       return resp_off;
     }
@@ -495,9 +499,18 @@ private:
   {
     if (len == 0) return 0;
     uint8_t b = data[0];
-    if (b <= 0x7f) { out = b; return 1; }
-    if (b >= 0xe0) { out = static_cast<int8_t>(b); return 1; }
-    if (b == 0xd0 && len >= 2) { out = static_cast<int8_t>(data[1]); return 2; }
+    if (b <= 0x7f) {
+      out = b;
+      return 1;
+    }
+    if (b >= 0xe0) {
+      out = static_cast<int8_t>(b);
+      return 1;
+    }
+    if (b == 0xd0 && len >= 2) {
+      out = static_cast<int8_t>(data[1]);
+      return 2;
+    }
     if (b == 0xd1 && len >= 3) {
       out = static_cast<int16_t>((data[1] << 8) | data[2]);
       return 3;
@@ -530,7 +543,7 @@ private:
     uint8_t b = data[0];
     size_t str_len = 0;
     size_t header = 1;
-    if ((b & 0xe0) == 0xa0) {           // fixstr
+    if ((b & 0xe0) == 0xa0) {  // fixstr
       str_len = b & 0x1f;
     } else if (b == 0xd9 && len >= 2) {  // str8
       str_len = data[1];
@@ -559,13 +572,11 @@ private:
 
     // float64
     if (b == 0xcb && len >= 9) {
-      uint64_t bits = (static_cast<uint64_t>(data[1]) << 56) |
-                      (static_cast<uint64_t>(data[2]) << 48) |
-                      (static_cast<uint64_t>(data[3]) << 40) |
-                      (static_cast<uint64_t>(data[4]) << 32) |
-                      (static_cast<uint64_t>(data[5]) << 24) |
-                      (static_cast<uint64_t>(data[6]) << 16) |
-                      (static_cast<uint64_t>(data[7]) << 8) | static_cast<uint64_t>(data[8]);
+      uint64_t bits =
+        (static_cast<uint64_t>(data[1]) << 56) | (static_cast<uint64_t>(data[2]) << 48) |
+        (static_cast<uint64_t>(data[3]) << 40) | (static_cast<uint64_t>(data[4]) << 32) |
+        (static_cast<uint64_t>(data[5]) << 24) | (static_cast<uint64_t>(data[6]) << 16) |
+        (static_cast<uint64_t>(data[7]) << 8) | static_cast<uint64_t>(data[8]);
       std::memcpy(&out, &bits, sizeof(out));
       return 9;
     }
@@ -602,7 +613,7 @@ private:
     while (running_) {
       uint8_t tmp[4096];
       ssize_t n;
-      
+
       // Copy socket fd without holding lock during I/O
       int fd_copy = -1;
       {
@@ -638,7 +649,7 @@ private:
       if (select(fd_copy + 1, &rfds, nullptr, nullptr, &tv) <= 0) {
         continue;
       }
-      
+
       n = ::read(fd_copy, tmp, sizeof(tmp));
 
       if (n <= 0) {
