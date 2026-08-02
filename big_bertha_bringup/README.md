@@ -34,7 +34,10 @@ The hardware bridge node communicates directly with the STM32U585 co-processor v
 **Published Topics:**
 - `/imu` (sensor_msgs/Imu) — 125 Hz, bias-corrected, axis-mapped
 - `/imu/mag` (sensor_msgs/MagneticField) — if magnetometer present (not on current hardware)
-- `/joint_states` (sensor_msgs/JointState) — commanded positions + finite-differenced velocities
+
+> `/joint_states` is **not** published by the bridge. On hardware it is owned by
+> `legged_odometry` — its EWMA simulates the MG995 lag, which is the policy's
+> joint feedback (feeding back raw commands would close a positive-feedback loop).
 
 **Subscribed Topics:**
 - `/position_controller/commands` (std_msgs/Float64MultiArray) — 12 joint targets from policy

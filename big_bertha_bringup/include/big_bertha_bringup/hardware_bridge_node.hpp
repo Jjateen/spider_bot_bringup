@@ -28,7 +28,6 @@
 #include "bridge_rpc_client.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
-#include "sensor_msgs/msg/joint_state.hpp"
 #include "sensor_msgs/msg/magnetic_field.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
 #include "std_srvs/srv/trigger.hpp"
@@ -59,14 +58,18 @@ private:
   void finish_calibration();
 
   // Diagnostic services.
-  void handle_status(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
-                     std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
-  void handle_scan_i2c(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
-                       std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
-  void handle_servo_diag(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
-                         std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
-  void handle_imu_diag(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
-                       std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
+  void handle_status(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
+  void handle_scan_i2c(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
+  void handle_servo_diag(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
+  void handle_imu_diag(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
 
   // Bridge RPC client.
   std::unique_ptr<BridgeRPCClient> bridge_;
@@ -77,13 +80,11 @@ private:
   // ROS
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr mag_pub_;
-  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_sub_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr status_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr scan_i2c_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr servo_diag_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr imu_diag_srv_;
-  std::vector<std::string> joint_names_;
   std::vector<double> orient_cov_;
   std::vector<double> accel_cov_;
   std::vector<double> gyro_cov_;
@@ -117,10 +118,6 @@ private:
   std::vector<double> i2c_scan_addrs_;
   uint64_t i2c_gen_{0};
   uint64_t servo_diag_gen_{0};
-
-  // Joint state tracking (finite-differenced velocity from commanded targets)
-  rclcpp::Time last_joint_state_time_{0, 0, RCL_ROS_TIME};
-  std::vector<double> last_joint_state_positions_{12, 0.0};
 };
 
 }  // namespace big_bertha_bringup

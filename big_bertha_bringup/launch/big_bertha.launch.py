@@ -125,12 +125,15 @@ def generate_launch_description():
     ], scoped=True)
 
     # ── 4. Leg odometry (commanded joints -> /odom) ──────────────────
+    # leg_odometry owns /joint_states: its EWMA simulates the MG995 lag, which
+    # is the policy's joint feedback on hardware (the bridge publishes raw
+    # commands; feeding those back would close a positive-feedback loop).
     leg_odom = include(
         leg_pkg,
         os.path.join('launch', 'legged_odometry.launch.py'),
         {
             'imu_topic': imu_topic,
-            'publish_joint_states': 'false',
+            'publish_joint_states': 'true',
         },
     )
 

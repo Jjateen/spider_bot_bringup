@@ -4,9 +4,9 @@ Complete ROS 2 interface documentation for the `hardware_bridge_node`.
 
 ## Node Information
 
-**Package:** `big_bertha_bringup`  
-**Executable:** `hardware_bridge_node`  
-**Node Name:** `hardware_bridge`  
+**Package:** `big_bertha_bringup`
+**Executable:** `hardware_bridge_node`
+**Node Name:** `hardware_bridge`
 **Namespace:** `/` (global by default)
 
 ---
@@ -17,8 +17,8 @@ Complete ROS 2 interface documentation for the `hardware_bridge_node`.
 
 IMU data with bias correction and axis mapping applied.
 
-**Rate:** ~125 Hz (8 ms interval in firmware)  
-**QoS:** `SensorDataQoS` (best effort, volatile)  
+**Rate:** ~125 Hz (8 ms interval in firmware)
+**QoS:** `SensorDataQoS` (best effort, volatile)
 **Frame ID:** `imu_link`
 
 #### Fields
@@ -85,8 +85,8 @@ orientation:
 
 Magnetometer data (if magnetometer present).
 
-**Rate:** 125 Hz (if publishing)  
-**QoS:** `SensorDataQoS`  
+**Rate:** 125 Hz (if publishing)
+**QoS:** `SensorDataQoS`
 **Frame ID:** `imu_link`
 
 #### Status
@@ -108,73 +108,9 @@ Current IMU (MPU-6500 die on "MPU-9265" breakout) has **no magnetometer**. Topic
 
 ### `/joint_states` (sensor_msgs/msg/JointState)
 
-Commanded joint positions and velocities (post-rate-limiting).
-
-**Rate:** Matches `/position_controller/commands` rate (~200 Hz when policy is running)  
-**QoS:** `QoS(1)` (reliable, volatile)
-
-#### Fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `header.stamp` | Time | ROS time when command processed |
-| `name` | string[12] | Joint names (Revolute_110..121) |
-| `position` | float64[12] | Commanded positions (rad), post-rate-limit |
-| `velocity` | float64[12] | Finite-differenced velocities (rad/s) |
-| `effort` | float64[] | **Empty** (no torque sensing) |
-
-#### Important Notes
-
-1. **These are COMMANDED values, not actual positions.** MG995 servos have no encoders.
-2. **Velocities are computed:** `v[i] = (position[i] - prev_position[i]) / dt`
-3. **Publishes only when commands received:** If no `/position_controller/commands`, this topic is silent.
-4. **Rate limiting applied:** Commanded positions are clamped by `rate_limit_rad` (default 0.0327 rad/step @ 200 Hz).
-
-#### Joint Order
-
-Policy output order (matches `/position_controller/commands`):
-
-| Index | Joint Name | Leg | Type |
-|-------|-----------|-----|------|
-| 0 | Revolute_110 | FL | Hip |
-| 1 | Revolute_113 | FL | Thigh |
-| 2 | Revolute_116 | FL | Calf |
-| 3 | Revolute_119 | FR | Hip |
-| 4 | Revolute_111 | FR | Thigh |
-| 5 | Revolute_114 | FR | Calf |
-| 6 | Revolute_117 | HL | Hip |
-| 7 | Revolute_120 | HL | Thigh |
-| 8 | Revolute_112 | HL | Calf |
-| 9 | Revolute_115 | HR | Hip |
-| 10 | Revolute_118 | HR | Thigh |
-| 11 | Revolute_121 | HR | Calf |
-
-#### Example
-
-```bash
-ros2 topic echo /joint_states --once
-```
-
-```yaml
-header:
-  stamp:
-    sec: 1722451200
-    nanosec: 234567890
-  frame_id: ''
-name:
-  - Revolute_110
-  - Revolute_113
-  # ... (12 total)
-position:
-  - 0.123
-  - -0.456
-  # ... (12 total, radians)
-velocity:
-  - 0.034
-  - -0.012
-  # ... (12 total, rad/s)
-effort: []
-```
+> Not published by the hardware bridge. On hardware this topic is owned by
+> `legged_odometry` — its EWMA simulates the MG995 lag, which is the policy's
+> joint feedback. See `leg_odometry/config/legged_odometry.yaml`.
 
 ---
 
@@ -184,7 +120,7 @@ effort: []
 
 Joint position commands from policy controller.
 
-**Expected Rate:** 200 Hz (from `big_bertha_policy_controller`)  
+**Expected Rate:** 200 Hz (from `big_bertha_policy_controller`)
 **QoS:** `QoS(1)` (reliable, volatile)
 
 #### Format
@@ -229,12 +165,12 @@ string message
 
 Returns last `hw_status` notification from firmware.
 
-**Namespace:** `<node_namespace>/hardware_bridge/status`  
+**Namespace:** `<node_namespace>/hardware_bridge/status`
 **Default:** `/hardware_bridge/status`
 
 #### Response Format
 
-**success:** `true` if status has been received, `false` if no status yet  
+**success:** `true` if status has been received, `false` if no status yet
 **message:** Comma-separated key-value pairs
 
 **Example response:**
@@ -275,12 +211,12 @@ ros2 service call /hardware_bridge/status std_srvs/srv/Trigger
 
 Triggers I2C bus scan on firmware, returns device addresses.
 
-**Namespace:** `<node_namespace>/hardware_bridge/scan_i2c`  
+**Namespace:** `<node_namespace>/hardware_bridge/scan_i2c`
 **Timeout:** 2 seconds
 
 #### Response Format
 
-**success:** `true` if devices found, `false` if scan returned empty  
+**success:** `true` if devices found, `false` if scan returned empty
 **message:** `addrs=[...]` (decimal addresses)
 
 **Example response:**
@@ -310,7 +246,7 @@ ros2 service call /hardware_bridge/scan_i2c std_srvs/srv/Trigger
 
 Runs on-MCU servo diagnostic test.
 
-**Namespace:** `<node_namespace>/hardware_bridge/servo_diag`  
+**Namespace:** `<node_namespace>/hardware_bridge/servo_diag`
 **Timeout:** 5 seconds
 
 #### Test Procedure (Firmware-Side)
@@ -323,7 +259,7 @@ Runs on-MCU servo diagnostic test.
 
 #### Response Format
 
-**success:** `true` if test completed, `false` if timeout  
+**success:** `true` if test completed, `false` if timeout
 **message:** JSON string with test results
 
 **Example response (success):**
@@ -368,7 +304,7 @@ Returns last IMU diagnostic string from firmware.
 
 #### Response Format
 
-**success:** `true` if diagnostic string has been received, `false` otherwise  
+**success:** `true` if diagnostic string has been received, `false` otherwise
 **message:** Diagnostic string from firmware
 
 **Example response:**
@@ -405,7 +341,7 @@ See `config/hardware_bridge.yaml` for defaults.
 
 arduino-router unix socket path.
 
-**Default:** `"/run/arduino-router/rpc.sock"`  
+**Default:** `"/run/arduino-router/rpc.sock"`
 **Auto-probe:** If empty string, tries candidates in order:
 1. Value from parameter (if non-empty)
 2. `/run/arduino-router/rpc.sock`
@@ -425,22 +361,22 @@ router_socket: "/custom/path/rpc.sock"
 
 12-bit PWM value for minimum servo pulse (500 µs @ 50 Hz).
 
-**Default:** `102`  
-**Range:** 0-4095 (12-bit)  
+**Default:** `102`
+**Range:** 0-4095 (12-bit)
 **Calculation:** `(500µs / 20000µs) * 4096 ≈ 102`
 
 #### `pwm_max` (int)
 
 12-bit PWM value for maximum servo pulse (2500 µs @ 50 Hz).
 
-**Default:** `512`  
+**Default:** `512`
 **Calculation:** `(2500µs / 20000µs) * 4096 ≈ 512`
 
 #### `joint_limit` (float64)
 
 Absolute joint position clamp (radians), applied before servo conversion.
 
-**Default:** `3.14159` (π rad)  
+**Default:** `3.14159` (π rad)
 **Safety:** Prevents commands outside ±π from reaching servos.
 
 ---
@@ -477,14 +413,14 @@ PCA9685 PWM channel (0-15) for each joint.
 
 Direction multiplier (±1).
 
-**Default:** `[1, 1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1]`  
+**Default:** `[1, 1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1]`
 **Values:** `1` = keep sign, `-1` = flip sign
 
 #### `policy_center` (float64[12])
 
 Policy output value (radians) at which servo is at physical center.
 
-**Default:** `[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.57, 1.57, 1.57, 1.57]`  
+**Default:** `[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.57, 1.57, 1.57, 1.57]`
 **Note:** Hip/thigh centered at 0, ankle at π/2 (90°)
 
 ---
@@ -495,24 +431,24 @@ Policy output value (radians) at which servo is at physical center.
 
 Expected policy publish rate (Hz).
 
-**Default:** `200.0`  
+**Default:** `200.0`
 **Used for:** Computing `rate_limit_rad`
 
 #### `max_joint_rate_rad_s` (float64)
 
 Maximum joint angular velocity (rad/s).
 
-**Default:** `6.54` (MG995 spec: 60°/0.16s ≈ 6.54 rad/s @ 6V)  
-**Calculation:** `rate_limit_rad = max_joint_rate_rad_s / command_rate_hz`  
+**Default:** `6.54` (MG995 spec: 60°/0.16s ≈ 6.54 rad/s @ 6V)
+**Calculation:** `rate_limit_rad = max_joint_rate_rad_s / command_rate_hz`
 **Example:** `6.54 / 200 = 0.0327 rad/step`
 
 #### `smoothing_alpha` (float64)
 
 EWMA smoothing coefficient.
 
-**Default:** `1.0` (disabled)  
-**Range:** 0.0-1.0  
-**Formula:** `smoothed = alpha * new + (1 - alpha) * old`  
+**Default:** `1.0` (disabled)
+**Range:** 0.0-1.0
+**Formula:** `smoothed = alpha * new + (1 - alpha) * old`
 **Note:** Rate limiting is primary safety mechanism; smoothing is optional.
 
 ---
@@ -523,21 +459,21 @@ EWMA smoothing coefficient.
 
 Orientation quaternion covariance (row-major).
 
-**Default:** `[-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]`  
+**Default:** `[-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]`
 **Note:** First element -1.0 = orientation not estimated
 
 #### `linear_acceleration_covariance` (float64[9])
 
 Acceleration covariance (m/s²)².
 
-**Default:** `[0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001]`  
+**Default:** `[0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001]`
 **Diagonal:** 0.001 (based on MPU9250 datasheet + empirical margin)
 
 #### `angular_velocity_covariance` (float64[9])
 
 Gyro covariance (rad/s)².
 
-**Default:** `[0.00001, 0.0, 0.0, 0.0, 0.00001, 0.0, 0.0, 0.0, 0.00001]`  
+**Default:** `[0.00001, 0.0, 0.0, 0.0, 0.00001, 0.0, 0.0, 0.0, 0.00001]`
 **Diagonal:** 0.00001
 
 ---
@@ -572,14 +508,14 @@ Number of IMU samples to collect for accel bias.
 
 Axis flip for chip frame → base_link.
 
-**Default:** `[-1.0, 1.0, -1.0]`  
+**Default:** `[-1.0, 1.0, -1.0]`
 **Explanation:** IMU mounted 180° about Y-axis (chip Z down, base_link Z up)
 
 #### `mag_axis_sign` (float64[3])
 
 Magnetometer axis mapping (unused, no mag on current hardware).
 
-**Default:** `[-1.0, 1.0, -1.0]`  
+**Default:** `[-1.0, 1.0, -1.0]`
 **Note:** Would need axis permutation (not just sign flip) for real MPU-9250
 
 ---
@@ -597,12 +533,6 @@ Test mode: drive only one joint.
 Which joint to drive in single-joint mode.
 
 **Default:** `10` (FR calf, Revolute_118)
-
-#### `joint_names` (string[12])
-
-Joint names for `/joint_states` message.
-
-**Default:** `["Revolute_110", "Revolute_113", ..., "Revolute_121"]`
 
 ---
 
@@ -625,7 +555,7 @@ MsgPack-RPC over unix socket:
 
 Notification with comma-separated PWM values.
 
-**Format:** `[2, "set_servo_pwms", ["307,153,204,..."]]`  
+**Format:** `[2, "set_servo_pwms", ["307,153,204,..."]]`
 **Params:** Single string with 12 comma-separated integers
 
 #### `scan_i2c` (no params)
@@ -652,7 +582,7 @@ Connectivity test (not used by node).
 
 IMU data notification.
 
-**Format:** `[2, "imu", [ax, ay, az, gx, gy, gz, mx, my, mz, sample, timestamp]]`  
+**Format:** `[2, "imu", [ax, ay, az, gx, gy, gz, mx, my, mz, sample, timestamp]]`
 **Params:**
 - `ax, ay, az` — Linear acceleration (m/s²)
 - `gx, gy, gz` — Angular velocity (rad/s)
@@ -664,35 +594,35 @@ IMU data notification.
 
 Hardware status notification.
 
-**Format:** `[2, "hw_status", [scan, ai, servo_calls, ping_count, ...]]`  
+**Format:** `[2, "hw_status", [scan, ai, servo_calls, ping_count, ...]]`
 **Params:** See `~/status` service documentation for field meanings.
 
 #### `i2c_scan` (array of ints)
 
 I2C scan result.
 
-**Format:** `[2, "i2c_scan", [64, 104, ...]]`  
+**Format:** `[2, "i2c_scan", [64, 104, ...]]`
 **Params:** Device addresses found (7-bit, decimal)
 
 #### `imu_diag` (string)
 
 IMU diagnostic report.
 
-**Format:** `[2, "imu_diag", ["WHO_AM_I=0x70, ..."]]`  
+**Format:** `[2, "imu_diag", ["WHO_AM_I=0x70, ..."]]`
 **Params:** Single diagnostic string
 
 #### `servo_diag_result` (string)
 
 Servo diagnostic test result.
 
-**Format:** `[2, "servo_diag_result", ["{\"phase\":\"complete\", ...}"]]`  
+**Format:** `[2, "servo_diag_result", ["{\"phase\":\"complete\", ...}"]]`
 **Params:** JSON string with test results
 
 #### `pong` (int)
 
 Ping response.
 
-**Format:** `[2, "pong", [count]]`  
+**Format:** `[2, "pong", [count]]`
 **Params:** Ping counter
 
 ---
