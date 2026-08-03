@@ -786,15 +786,21 @@ void loop()
       g_i2c_consecutive_fails = 0;
     }
 
-    // Back to the original 11 arguments. Bridge RPC drops arguments past a
-    // limit (~12, see the servo path at set_servo_pwms), and a dropped
-    // argument arrives on the Python side as its default — which for the IMU
-    // diagnostics is 0, i.e. indistinguishable from a real "nothing found".
-    // Everything added since goes out as one string instead, below.
-    Bridge.notify(
-      "hw_status", g_i2c_scan, ai ? 1 : 0, g_servo_calls, g_ping_count, g_pwm_write_attempts,
-      g_pwm_write_fails, g_pwm_last_fail_ch, g_pwm_last_fail_code, g_set_servo_last_len,
-      g_set_servo_last_idx, g_pwm_readback_ch0);
+    // hw_status as ONE comma-separated string, matching the set_servo_pwms /
+    // imu_diag pattern: Bridge RPC drops arguments past a limit (~12, see the
+    // servo path at set_servo_pwms), and the 11-arg notify was seen to misframe
+    // the router (log: "invalid packet, expected array, got: int8") which
+    // dropped THIS notification and swallowed the adjacent imu_diag too.
+    // The host-side hardware_bridge_node parses "scan,ai,servo_calls,...".
+    char hs[80];
+    int hso = 0;
+    hso += snprintf(
+      hs + hso, sizeof(hs) - hso, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", g_i2c_scan, ai ? 1 : 0,
+      g_servo_calls, g_ping_count, g_pwm_write_attempts, g_pwm_write_fails, g_pwm_last_fail_ch,
+      g_pwm_last_fail_code, g_set_servo_last_len, g_set_servo_last_idx, g_pwm_readback_ch0);
+    if (hso >= (int)sizeof(hs)) hso = sizeof(hs) - 1;
+    hs[hso] = '\0';
+    Bridge.notify("hw_status", (const char *)hs);
 
     // IMU diagnostics as a single string: identity, magnetometer state, the
     // aux-bus sweep AND proof the sweep actually ran, plus the config
