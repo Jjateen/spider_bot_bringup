@@ -77,6 +77,11 @@ private:
   // Servo conversion
   ServoConverter servo_converter_;
 
+  // Outbound servo throttle. Both derived from the command_rate_hz parameter
+  // so the send rate always matches the converter's per-message slew budget.
+  rclcpp::Duration servo_tx_period_{0, 0};
+  rclcpp::Time last_servo_tx_{0, 0, RCL_ROS_TIME};
+
   // ROS
   rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
   rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr mag_pub_;
