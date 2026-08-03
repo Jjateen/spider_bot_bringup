@@ -56,16 +56,14 @@
     servo_lower_limit: [45.0, 30.0, 180.0, 140.0, 135.0, 140.0, 50.0, 50.0, 40.0, 180.0, 150.0, 0.0]    # degrees — smallest angle per joint
     servo_upper_limit: [180.0, 150.0, 50.0, 0.0, 0.0, 0.0, 180.0, 180.0, 180.0, 40.0, 0.0, 150.0]      # degrees — largest angle per joint
 
-    # TEMPORARY: Offsets zeroed after PWM range change (102-512 -> 205-410).
-    # Previous offsets were calibrated against the 102-512 mapping and are now
-    # wrong by 2x factor. Each joint needs physical recalibration:
-    # 1. Set single_joint_mode: true, single_joint_index: <N>
-    # 2. Command 90° (π/2 rad = 1.571 rad)
-    # 3. Measure actual horn angle with protractor
-    # 4. offset = (90 - measured_angle)
-    # Previous offsets (for 102-512 range):
-    #   [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 8.0, 2.0, 5.0]
-    servo_offset: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]                      # degrees — NEEDS RECALIBRATION
+    # Offsets are the physically measured servo horn-center deviations (deg),
+    # from the servo-center test in the README map — independent of the PWM
+    # count mapping. Restored per review; Phase 0 bench check (stand, legs
+    # free) confirms each joint sits at its measured center at policy_center:
+    #   1. Set single_joint_mode: true, single_joint_index: <N>
+    #   2. Command that joint's policy_center value
+    #   3. Measure horn angle with protractor; offset = 90 - measured if off
+    servo_offset: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 8.0, 2.0, 5.0]                      # degrees — servo mounting offset
 
     servo_channel: [14, 10, 2, 6, 13, 9, 1, 5, 12, 8, 0, 4]                                           # which plug on the board each servo uses
     servo_direction: [1, 1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1]                                   # +1 = keep sign, -1 = flip sign
