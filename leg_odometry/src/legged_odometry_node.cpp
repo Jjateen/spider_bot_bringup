@@ -78,13 +78,16 @@ public:
 
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
-    // One-shot-ish initial /joint_states publish breaks the policy<->leg_odometry
-    // deadlock: policy_controller gates /position_controller/commands on having
-    // seen a /joint_states message, while this node only publishes on commands.
-    // Re-emit the default pose every 200 ms until a command arrives (steady state
-    // takes over) or a 2 s discovery window elapses — a single early shot races
-    // DDS discovery and can be missed by a just-started subscriber. Steady state
-    // stays command-driven — no interleaved timer stream.
+    // Initial /joint_states publish breaks the policy<->leg_odometry deadlock:
+    // policy_controller gates /position_controller/commands on having seen a
+    // /joint_states message, while this node only publishes on commands.
+    // Re-emit the default pose every 200 ms until the first command arrives.
+    // The stop condition is have_cmd_ alone, never a timeout: policy_controller
+    // builds its Ort::Session before creating the /joint_states subscription,
+    // and on the UNO Q's A35 that load takes longer than any fixed discovery
+    // window, so a bounded one is missed every boot and the deadlock is
+    // permanent. have_cmd_ latches, so steady state stays command-driven with
+    // no interleaved timer stream.
     init_timer_ =
       create_wall_timer(200ms, std::bind(&LeggedOdometryNode::publish_initial_joint_states, this));
   }
@@ -142,7 +145,7 @@ private:
 
   void publish_initial_joint_states()
   {
-    if (have_cmd_ || !publish_joint_states_ || init_publishes_ >= 10) {
+    if (have_cmd_ || !publish_joint_states_) {
       init_timer_->cancel();
       return;
     }
