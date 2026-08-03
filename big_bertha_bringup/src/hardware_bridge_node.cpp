@@ -90,9 +90,14 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   accel_calibration_samples_ = declare_parameter<int>("accel_calibration_samples", 200);
   scp.single_joint_mode = declare_parameter<bool>("single_joint_mode", false);
   scp.single_joint_index = declare_parameter<int>("single_joint_index", 10);
-  double command_rate = declare_parameter<double>("command_rate_hz", 200.0);
+  // command_rate_hz is the rate this node forwards to the servos, NOT the rate
+  // policy_controller publishes at. It drives both the outbound throttle in
+  // on_cmd and the converter's per-message slew allowance, from this one value,
+  // so the two cannot drift apart and silently cap joint speed.
+  double command_rate = declare_parameter<double>("command_rate_hz", 50.0);
   double max_joint_rate = declare_parameter<double>("max_joint_rate_rad_s", 6.54);
   scp.rate_limit_rad = max_joint_rate / command_rate;
+  servo_tx_period_ = rclcpp::Duration::from_seconds(1.0 / command_rate);
   scp.smoothing_alpha = declare_parameter<double>("smoothing_alpha", 1.0);
 
   servo_converter_ = ServoConverter(std::move(scp));
@@ -179,6 +184,23 @@ void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPt
       get_logger(), *get_clock(), 5000, "expected 12 joints, got %zu", msg->data.size());
     return;
   }
+
+  // policy_controller publishes at pd_rate (200 Hz) but the PCA9685 only
+  // refreshes at 50 Hz, so three of every four messages are discarded by the
+  // hardware anyway. Forwarding all of them costs ~15 kB/s on a 460800 baud
+  // link that the 125 Hz IMU stream already loads to roughly three quarters,
+  // and an over-full link is what mis-frames the router. Drop them here
+  // rather than at the far end.
+  //
+  // servo_tx_period_ must stay in lockstep with the command_rate_hz parameter:
+  // ServoConverter's rate limit is max_joint_rate_rad_s / command_rate_hz, a
+  // per-message allowance, so a send rate below command_rate_hz silently caps
+  // joint speed by the ratio between them.
+  const rclcpp::Time stamp = now();
+  if (last_servo_tx_.nanoseconds() > 0 && (stamp - last_servo_tx_) < servo_tx_period_) {
+    return;
+  }
+  last_servo_tx_ = stamp;
 
   auto pwms = servo_converter_.convert(msg->data);
 

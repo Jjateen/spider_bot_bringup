@@ -23,12 +23,20 @@
     # Joint angle limit in radians — final safety clamp before PWM conversion.
     joint_limit: 3.14159
 
-    # Rate limiter: per-step change clamp (radians/step).
-    # Derived from max_joint_rate_rad_s / command_rate_hz so it tracks the
-    # actual command publish rate — the old hardcoded 0.03 was correct at
-    # 200 Hz but broke when pd_rate was 50 (1.5 rad/s, legs couldn't swing).
-    # MG995 max = 6.54 rad/s. policy_controller publishes at pd_rate (200 Hz).
-    command_rate_hz: 200.0
+    # Rate at which this node forwards targets to the servos. NOT the rate
+    # policy_controller publishes at: that is pd_rate (200 Hz), and on_cmd
+    # throttles down to this value because the PCA9685 only refreshes at 50 Hz,
+    # so the other three of every four messages are discarded by the hardware
+    # while still costing UART bandwidth the IMU stream needs.
+    #
+    # This one value drives both the throttle and the converter's rate limiter
+    # (rate_limit_rad = max_joint_rate_rad_s / command_rate_hz, a PER-MESSAGE
+    # allowance). Raising the send rate without raising this, or vice versa,
+    # caps joint speed by the ratio between them: at 50 Hz sends against a
+    # 200 Hz limiter every joint is clamped to 1.635 rad/s, the same class of
+    # limit that stopped the legs swinging before.
+    # MG995 max = 6.54 rad/s.
+    command_rate_hz: 50.0
     max_joint_rate_rad_s: 6.54
     # rate_limit_rad is computed in code: max_joint_rate_rad_s / command_rate_hz
 
