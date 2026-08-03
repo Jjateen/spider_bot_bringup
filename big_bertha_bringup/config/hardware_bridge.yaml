@@ -5,8 +5,9 @@
 # If router_socket is empty the node probes the known candidate paths.
 /**:
   ros__parameters:
-    # arduino-router unix socket (MsgPack-RPC). Empty = auto-probe.
-    router_socket: "/run/arduino-router/rpc.sock"
+    # arduino-router unix socket (MsgPack-RPC). Empty = auto-probe. The board's
+    # arduino-router is started with --unix-port /var/run/arduino-router.sock.
+    router_socket: "/var/run/arduino-router.sock"
 
     # Servo PWM range (12-bit, 0-4095) corresponding to 1000-2000 µs at 50 Hz.
     # Standard MG995 servos: 1.0-2.0ms for 0-180°. The PCA9685 counts 102 and
