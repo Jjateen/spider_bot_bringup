@@ -56,6 +56,7 @@ static volatile bool g_pwm_dirty = false;
 
 static unsigned long g_last_imu_push = 0;
 static unsigned long g_last_status_push = 0;
+static unsigned long g_last_imu_diag_push = 0;  // imu_diag throttled (every 5 s)
 static unsigned long g_last_blink = 0;
 static int g_blink_code = 0;
 static uint32_t g_imu_sample = 0;
@@ -499,7 +500,18 @@ void set_servo_pwms(String data)
   int len = data.length();
   for (int i = 0; i <= len && idx < 12; ++i) {
     if (i == len || data.charAt(i) == ',') {
-      vals[idx++] = data.substring(start, i).toInt();
+      // data.substring().toInt() heap-allocates a String per field, and this
+      // runs at 200 Hz (12 fields) -> ~2400 allocations/sec. The M33 heap is
+      // small and the sketch was observed to die ~20 s after boot under this
+      // churn. Parse the digits in place instead.
+      int v = 0;
+      for (int j = start; j < i; ++j) {
+        const char c = data.charAt(j);
+        if (c >= '0' && c <= '9') {
+          v = v * 10 + (c - '0');
+        }
+      }
+      vals[idx++] = v;
       start = i + 1;
     }
   }
@@ -774,34 +786,43 @@ void loop()
     // aux-bus sweep AND proof the sweep actually ran, plus the config
     // registers the accel/gyro scaling depends on. One argument, so nothing
     // can be silently truncated.
-    String d = "whoami=0x" + String(g_mpu_whoami, HEX);
-    d += ",whoami_dec=" + String((int)g_mpu_whoami);
-    d += ",mag_present=" + String(g_mag_present ? 1 : 0);
-    d += ",mag_wia=0x" + String(g_mag_wia, HEX);
-    d += ",aux_n=" + String(g_aux_found_count);
-    d += ",aux0=0x" + String(g_aux_found[0], HEX);
-    // Proof of life for the sweep: how many I2C_MST_STATUS reads succeeded
-    // (should be 112) and the OR of every status byte seen. status_or bit 0
-    // set means slaves were genuinely NACKing; 0x00 with reads_ok 0 would
-    // mean the probe never ran and the empty result is meaningless.
-    d += ",st_ok=" + String(g_aux_status_reads_ok);
-    d += ",st_or=0x" + String(g_aux_status_or, HEX);
-    d += ",aux_n_slow=" + String(g_aux_found_slow);
-    d += ",fast_stok=" + String(g_aux_fast_stok);
-    d += ",fast_stor=0x" + String(g_aux_fast_stor, HEX);
-    d += ",slow_stok=" + String(g_aux_slow_stok);
-    d += ",slow_stor=0x" + String(g_aux_slow_stor, HEX);
-    // Scaling registers: accel is decoded as +-2g (16384 LSB/g) and gyro as
-    // +-250 dps (131 LSB/dps). If ACCEL_CONFIG/GYRO_CONFIG are not 0x00 those
-    // divisors are wrong and every published value is mis-scaled.
-    d += ",accel_cfg=0x" + String(g_reg_accel_cfg, HEX);
-    d += ",accel_cfg2=0x" + String(g_reg_accel_cfg2, HEX);
-    d += ",gyro_cfg=0x" + String(g_reg_gyro_cfg, HEX);
-    d += ",user_ctrl=0x" + String(g_reg_user_ctrl, HEX);
-    d += ",int_pin=0x" + String(g_reg_int_pin, HEX);
-    d += ",pwr1=0x" + String(g_reg_pwr1, HEX);
-    d += ",pwr2=0x" + String(g_reg_pwr2, HEX);
-    Bridge.notify("imu_diag", d);
+    //
+    // Built with snprintf into a fixed stack buffer (no heap String churn)
+    // and kept under 256 bytes total because the sketch tells the router
+    // $/setMaxMsgSize = 256; an oversized packet made the router mis-frame
+    // the serial stream (log: "invalid packet, expected array, got: int8")
+    // and the heap String churn starved the small M33 heap around ~20 s after
+    // boot. imu_diag is debug-only so it is also throttled to 5 s.
+    if (now - g_last_imu_diag_push >= 5000) {
+      g_last_imu_diag_push = now;
+      char d[224];
+      int off = 0;
+      off +=
+        snprintf(d + off, sizeof(d) - off, "whoami=0x%02x,%d", g_mpu_whoami, (int)g_mpu_whoami);
+      off += snprintf(d + off, sizeof(d) - off, ",mag_present=%d", g_mag_present ? 1 : 0);
+      off += snprintf(d + off, sizeof(d) - off, ",mag_wia=0x%02x", g_mag_wia);
+      off += snprintf(d + off, sizeof(d) - off, ",aux_n=%d", g_aux_found_count);
+      off += snprintf(d + off, sizeof(d) - off, ",aux0=0x%02x", g_aux_found[0]);
+      // Proof of life for the sweep: how many I2C_MST_STATUS reads succeeded
+      // (should be 112) and the OR of every status byte seen. status_or bit 0
+      // set means slaves were genuinely NACKing; 0x00 with reads_ok 0 would
+      // mean the probe never ran and the empty result is meaningless.
+      off += snprintf(d + off, sizeof(d) - off, ",st_ok=%d", g_aux_status_reads_ok);
+      off += snprintf(d + off, sizeof(d) - off, ",st_or=0x%02x", g_aux_status_or);
+      // Scaling registers: accel is decoded as +-2g (16384 LSB/g) and gyro as
+      // +-250 dps (131 LSB/dps). If ACCEL_CONFIG/GYRO_CONFIG are not 0x00 those
+      // divisors are wrong and every published value is mis-scaled.
+      off += snprintf(d + off, sizeof(d) - off, ",accel_cfg=0x%02x", g_reg_accel_cfg);
+      off += snprintf(d + off, sizeof(d) - off, ",accel_cfg2=0x%02x", g_reg_accel_cfg2);
+      off += snprintf(d + off, sizeof(d) - off, ",gyro_cfg=0x%02x", g_reg_gyro_cfg);
+      off += snprintf(d + off, sizeof(d) - off, ",user_ctrl=0x%02x", g_reg_user_ctrl);
+      off += snprintf(d + off, sizeof(d) - off, ",int_pin=0x%02x", g_reg_int_pin);
+      off += snprintf(d + off, sizeof(d) - off, ",pwr1=0x%02x", g_reg_pwr1);
+      off += snprintf(d + off, sizeof(d) - off, ",pwr2=0x%02x", g_reg_pwr2);
+      if (off >= (int)sizeof(d)) off = sizeof(d) - 1;
+      d[off] = '\0';
+      Bridge.notify("imu_diag", (const char *)d);
+    }
   }
 
   // LED blink codes (non-blocking)
