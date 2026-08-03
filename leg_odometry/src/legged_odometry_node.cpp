@@ -78,15 +78,22 @@ public:
 
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
 
-    // Joint states are published on every cmd callback. A separate timer
-    // is intentionally avoided to prevent two interleaved streams at
-    // different rates for the same topic.
+    // One-shot-ish initial /joint_states publish breaks the policy<->leg_odometry
+    // deadlock: policy_controller gates /position_controller/commands on having
+    // seen a /joint_states message, while this node only publishes on commands.
+    // Re-emit the default pose every 200 ms until a command arrives (steady state
+    // takes over) or a 2 s discovery window elapses — a single early shot races
+    // DDS discovery and can be missed by a just-started subscriber. Steady state
+    // stays command-driven — no interleaved timer stream.
+    init_timer_ =
+      create_wall_timer(200ms, std::bind(&LeggedOdometryNode::publish_initial_joint_states, this));
   }
 
 private:
   void on_cmd(const std_msgs::msg::Float64MultiArray::SharedPtr msg)
   {
     if (msg->data.size() != 12) return;
+    have_cmd_ = true;
 
     std::lock_guard<std::mutex> lk(joint_mutex_);
 
@@ -130,6 +137,27 @@ private:
 
     if (publish_joint_states_) {
       joint_state_pub_->publish(js);
+    }
+  }
+
+  void publish_initial_joint_states()
+  {
+    if (have_cmd_ || !publish_joint_states_ || init_publishes_ >= 10) {
+      init_timer_->cancel();
+      return;
+    }
+    ++init_publishes_;
+
+    auto js = sensor_msgs::msg::JointState();
+    js.header.stamp = now();
+    js.name = joint_names_;
+    for (size_t i = 0; i < 12; ++i) {
+      js.position.push_back(default_joint_pos_[i]);
+      js.velocity.push_back(0.0);
+    }
+    joint_state_pub_->publish(js);
+    if (init_publishes_ == 1) {
+      RCLCPP_INFO(get_logger(), "published initial joint states (default pose)");
     }
   }
 
@@ -334,6 +362,9 @@ private:
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+  rclcpp::TimerBase::SharedPtr init_timer_;
+  bool have_cmd_{false};
+  int init_publishes_{0};
 
   std::vector<std::string> joint_names_;
   std::vector<double> default_joint_pos_;
