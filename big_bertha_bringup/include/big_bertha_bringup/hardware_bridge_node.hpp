@@ -46,7 +46,7 @@ private:
 
   // Bridge RPC notification handlers (called from the client reader thread).
   void on_imu(const std::vector<double> & params);
-  void on_hw_status(const std::vector<double> & params);
+  void on_hw_status(const std::string & text);
   void on_i2c_scan(const std::vector<double> & params);
   void on_pong(const std::vector<double> & params);
   void on_imu_diag(const std::string & text);

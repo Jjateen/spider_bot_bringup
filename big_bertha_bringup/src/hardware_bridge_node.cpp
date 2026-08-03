@@ -142,7 +142,7 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   bridge_ = std::make_unique<BridgeRPCClient>(std::move(candidates));
 
   bridge_->provide("imu", std::bind(&HardwareBridgeNode::on_imu, this, std::placeholders::_1));
-  bridge_->provide(
+  bridge_->provide_str(
     "hw_status", std::bind(&HardwareBridgeNode::on_hw_status, this, std::placeholders::_1));
   bridge_->provide(
     "i2c_scan", std::bind(&HardwareBridgeNode::on_i2c_scan, this, std::placeholders::_1));
@@ -239,11 +239,24 @@ void HardwareBridgeNode::on_imu(const std::vector<double> & params)
   publish_imu(data);
 }
 
-void HardwareBridgeNode::on_hw_status(const std::vector<double> & params)
+void HardwareBridgeNode::on_hw_status(const std::string & text)
 {
-  // [scan, ai, servo_calls, ping_count, pwm_attempts, pwm_fails,
-  //  pwm_last_fail_ch, pwm_last_fail_code, set_servo_last_len,
-  //  set_servo_last_idx, pwm_readback_ch0]
+  // The sketch sends "scan,ai,servo_calls,ping_count,pwm_attempts,pwm_fails,
+  // pwm_last_fail_ch,pwm_last_fail_code,set_servo_last_len,set_servo_last_idx,
+  // pwm_readback_ch0" as ONE comma-separated string. It was changed from an
+  // 11-arg notify because Bridge RPC drops arguments past its limit, which
+  // both lost this notification and mis-framed the router stream.
+  std::vector<double> params;
+  size_t start = 0;
+  while (true) {
+    const size_t comma = text.find(',', start);
+    if (comma == std::string::npos) {
+      params.push_back(std::stod(text.substr(start)));
+      break;
+    }
+    params.push_back(std::stod(text.substr(start, comma - start)));
+    start = comma + 1;
+  }
   if (params.size() < 11) {
     return;
   }
