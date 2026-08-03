@@ -85,6 +85,11 @@ static bool g_i2c_busy = false;          // guard for BG-thread vs loop() race
 // Servo command watchdog - safe mode if no commands received
 static unsigned long g_last_servo_cmd = 0;
 static const unsigned long SERVO_TIMEOUT_MS = 250;  // 250ms watchdog
+// Latch so the neutral pose is written once per timeout, not every loop cycle.
+static bool g_servo_timed_out = false;
+// Center of the 205..410 count band (1.5 ms), matching pwm_min/pwm_max in
+// hardware_bridge.yaml.
+static const uint16_t SERVO_NEUTRAL_PWM = 307;
 
 // 125 Hz IMU (8 ms) — matches expected rate for the 50 Hz policy controller
 static const unsigned long IMU_INTERVAL = 8;
@@ -626,25 +631,34 @@ void loop()
 
   unsigned long now = millis();
 
+  // ── Servo command watchdog ────────────────────────────────────────
+  // Runs every cycle, deliberately outside the g_pwm_dirty gate below. The
+  // case this guards is commands having STOPPED, and in that case nothing
+  // sets g_pwm_dirty, so a watchdog nested inside the gate can only fire when
+  // commands are still arriving — the one situation it is not needed. Gated,
+  // it also mistook the 1 Hz health check's g_pwm_dirty re-set (which does
+  // not refresh g_last_servo_cmd) for a stale command and parked every
+  // channel at neutral once a second.
+  //
+  // g_last_servo_cmd == 0 means no command has ever arrived; hold the boot
+  // pose rather than snapping to neutral before the policy is even up.
+  if (g_last_servo_cmd != 0 && (now - g_last_servo_cmd) > SERVO_TIMEOUT_MS) {
+    if (!g_servo_timed_out) {  // edge-triggered: neutral once, not every cycle
+      g_servo_timed_out = true;
+      for (int i = 0; i < 12; ++i) {
+        g_pwm[PWM_CHANNEL_MAP[i]] = SERVO_NEUTRAL_PWM;
+      }
+      g_pwm_dirty = true;
+      Bridge.notify("servo_timeout", (float)(now - g_last_servo_cmd));
+    }
+  } else {
+    g_servo_timed_out = false;
+  }
+
   // ── Deferred servo write ──────────────────────────────────────────
   // Write new PWM values to the PCA9685 if the Python relay sent them.
   // No verify/init check on the hot path — health checks happen at 1 Hz.
   if (g_pwm_dirty) {
-    // Watchdog: if no command received in SERVO_TIMEOUT_MS, drive to neutral
-    unsigned long cmd_age = now - g_last_servo_cmd;
-    if (cmd_age > SERVO_TIMEOUT_MS) {
-      int neutral = 307;  // center position (1.5ms)
-      for (int i = 0; i < 16; ++i) {
-        g_pwm[i] = neutral;
-      }
-      // Log timeout event (throttled to once per second)
-      static unsigned long last_timeout_log = 0;
-      if (now - last_timeout_log > 1000) {
-        last_timeout_log = now;
-        Bridge.notify("servo_timeout", (float)cmd_age);
-      }
-    }
-
     g_pwm_dirty = false;  // optimistic clear — re-set below on failure
     if (!pca9685_write_servos()) {
       g_pwm_dirty = true;  // transaction failed, retry next cycle
