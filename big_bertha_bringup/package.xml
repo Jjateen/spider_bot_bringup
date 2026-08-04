@@ -22,6 +22,17 @@
   <depend>sensor_msgs</depend>
   <depend>std_srvs</depend>
 
+  <!-- Runtime deps for the launch files (reused sub-launches + nodes). -->
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>big_bertha_description</exec_depend>
+  <exec_depend>big_bertha_policy_controller</exec_depend>
+  <exec_depend>imu_filter_madgwick</exec_depend>
+  <exec_depend>joint_state_publisher</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>leg_odometry</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 
