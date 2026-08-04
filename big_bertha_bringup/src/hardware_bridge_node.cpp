@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <string>
 #include <utility>
 #include <vector>
@@ -246,18 +247,34 @@ void HardwareBridgeNode::on_hw_status(const std::string & text)
   // pwm_readback_ch0" as ONE comma-separated string. It was changed from an
   // 11-arg notify because Bridge RPC drops arguments past its limit, which
   // both lost this notification and mis-framed the router stream.
+  //
+  // The parse must not throw. This runs on the BridgeRPCClient reader thread
+  // and dispatch() invokes handlers without a try/catch, so an escaping
+  // exception unwinds out of the thread entry point and calls std::terminate,
+  // taking the whole node down. std::stod throws on an empty field, a trailing
+  // comma, or any non-numeric byte, and a mis-framed stream is precisely the
+  // condition this single-string encoding exists to survive. Drop a malformed
+  // payload instead: hw_status is diagnostics, so a missed sample costs
+  // nothing next to losing the servo command path with it.
+  constexpr size_t kFields = 11;
   std::vector<double> params;
-  size_t start = 0;
-  while (true) {
-    const size_t comma = text.find(',', start);
-    if (comma == std::string::npos) {
-      params.push_back(std::stod(text.substr(start)));
-      break;
+  try {
+    size_t start = 0;
+    while (params.size() < kFields) {
+      const size_t comma = text.find(',', start);
+      params.push_back(std::stod(
+        comma == std::string::npos ? text.substr(start) : text.substr(start, comma - start)));
+      if (comma == std::string::npos) {
+        break;
+      }
+      start = comma + 1;
     }
-    params.push_back(std::stod(text.substr(start, comma - start)));
-    start = comma + 1;
+  } catch (const std::exception & e) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000, "malformed hw_status payload, dropped (%s)", e.what());
+    return;
   }
-  if (params.size() < 11) {
+  if (params.size() < kFields) {
     return;
   }
   int scan = static_cast<int>(params[0]);
