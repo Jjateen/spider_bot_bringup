@@ -9,16 +9,13 @@
     # arduino-router is started with --unix-port /var/run/arduino-router.sock.
     router_socket: "/var/run/arduino-router.sock"
 
-    # Servo PWM range (12-bit, 0-4095) corresponding to 1000-2000 µs at 50 Hz.
-    # Standard MG995 servos: 1.0-2.0ms for 0-180°. The PCA9685 counts 102 and
-    # 512 are the mechanical hard stops (0.5ms and 2.5ms); 205-410 is the
-    # safe operational band.
-    #
-    # IMPORTANT: This assumes standard MG995 servos (1.0-2.0ms range).
-    # If using wide-range clones (0.5-2.5ms), revert to pwm_min: 102, pwm_max: 512
-    # REQUIRES HARDWARE VALIDATION - see protractor test procedure in PR #88.
-    pwm_min: 205
-    pwm_max: 410
+    # Servo PWM range (12-bit, 0-4095). PCA9685 counts 102 and 512 are the
+    # mechanical hard stops, corresponding to 0.5ms and 2.5ms at 50 Hz.
+    # Wide-range clone servos (0.5-2.5ms) sweep the full 0-180° across this
+    # band. REQUIRES HARDWARE VALIDATION - see protractor test procedure in
+    # PR #88.
+    pwm_min: 102
+    pwm_max: 512
 
     # Joint angle limit in radians — final safety clamp before PWM conversion.
     joint_limit: 3.14159
