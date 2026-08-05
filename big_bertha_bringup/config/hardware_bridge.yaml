@@ -53,11 +53,28 @@
     # rate_limit_rad is computed in code: max_joint_rate_rad_s / command_rate_hz
 
     # EWMA smoothing alpha on outbound position targets. 1.0 = passthrough.
-    # The gait is slow (<=1.4 Hz) next to the 50 Hz command rate, so an EWMA
-    # here removes step-to-step jitter almost for free: at 0.667 Hz, alpha 0.5
-    # keeps 99.3% of the commanded amplitude (alpha 0.3 keeps 97.4%). It is
-    # the rate limiter above that costs amplitude if set too low, not this.
-    smoothing_alpha: 0.5
+    #
+    # This is not jitter removal, it is waveform shaping. Every action the
+    # policy emits saturates the action_clip, so each joint target is a
+    # two-level square wave at the gait frequency rather than a smooth curve.
+    # Gazebo never sees that because JointEffortPdController turns the target
+    # into a torque and link inertia integrates it. On hardware the target
+    # goes to the servo as an absolute position, so the square edges arrive
+    # intact and the frame takes the full step on every transition.
+    #
+    # Measured against the 0.96 Hz fundamental at cmd 0.12:
+    #   alpha  fc      fundamental  3rd harm  max step   delivered p-p
+    #   0.5    5.5 Hz      99%         89%     0.250 rad     0.499
+    #   0.2    1.8 Hz      88%         53%     0.100 rad     0.476
+    #   0.08   0.7 Hz      57%         23%     0.039 rad     0.353
+    #
+    # 0.2 keeps 95% of the commanded amplitude while halving the harmonic
+    # content and cutting the worst instantaneous step 2.5x. Its 25 degree
+    # phase lag applies equally to all twelve joints, so it delays the gait
+    # without disturbing the inter-leg offsets the gait actually encodes.
+    # Do not go much below this: the amplitude loss becomes real (0.08 gives
+    # up 29%) and the lag starts eating the swing/stance boundary.
+    smoothing_alpha: 0.2
 
     # Policy center in radians — the policy output value at which the servo is at its
     # physical center (0 rad for hips/knees, π/2 rad for ankles). At this value the
