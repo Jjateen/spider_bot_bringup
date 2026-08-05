@@ -136,8 +136,13 @@ public:
 
 private:
   Params params_;
-  std::vector<double> last_targets_{12, 0.0};
-  std::vector<double> smoothed_targets_{12, 0.0};
+  // Parens, not braces: vector<double>{12, 0.0} selects the initializer_list
+  // constructor and yields the 2-element vector {12.0, 0.0}, not 12 zeros.
+  // first_cmd_ happens to overwrite both on the first convert() call, so the
+  // mistake is currently invisible, but it would index out of bounds the
+  // moment either buffer is read before that.
+  std::vector<double> last_targets_ = std::vector<double>(12, 0.0);
+  std::vector<double> smoothed_targets_ = std::vector<double>(12, 0.0);
   bool first_cmd_{true};
 };
 

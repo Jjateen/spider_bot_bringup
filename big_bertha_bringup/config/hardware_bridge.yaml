@@ -35,16 +35,32 @@
     # caps joint speed by the ratio between them: at 50 Hz sends against a
     # 200 Hz limiter every joint is clamped to 1.635 rad/s, the same class of
     # limit that stopped the legs swinging before.
-    # MG995 max = 6.54 rad/s.
     command_rate_hz: 50.0
-    max_joint_rate_rad_s: 6.54
+    # Slew ceiling. The MG995 free-running maximum is 6.54 rad/s, but the gait
+    # never needs anywhere near that, so leaving it at the servo maximum meant
+    # the limiter never engaged and every setpoint step was chased at full
+    # speed. That is what makes the frame snap on touchdown.
+    #
+    # Peak rate a sinusoidal joint actually needs is 2*pi*f*A. The largest
+    # amplitude is the ankle at 0.219 rad, and the gait clock caps at
+    # 0.667 Hz * 2.1 = 1.40 Hz, so the worst case over the whole command
+    # envelope is 2*pi*1.40*0.219 = 1.93 rad/s. 3.0 keeps 1.55x headroom
+    # there while cutting peak slew 2.2x, so it gentles the transitions
+    # without ever clipping the gait.
+    #
+    # Do NOT drop this below ~2.0 to slow the robot down further: that clips
+    # the ankles, which are what lift the feet, and the legs stop clearing the
+    # ground (the old 1.5 rad/s failure). To go slower, lower the commanded vx
+    # instead, which lowers the clock boost and with it the required rate.
+    max_joint_rate_rad_s: 3.0
     # rate_limit_rad is computed in code: max_joint_rate_rad_s / command_rate_hz
 
-    # EWMA smoothing alpha on outbound position targets. 1.0 = passthrough
-    # (no smoothing). The rate limiter above is the safety mechanism; the
-    # EWMA duplicates it and attenuates lift-off transients. Set <1.0 only
-    # if servo jitter is visible on the bench.
-    smoothing_alpha: 1.0
+    # EWMA smoothing alpha on outbound position targets. 1.0 = passthrough.
+    # The gait is slow (<=1.4 Hz) next to the 50 Hz command rate, so an EWMA
+    # here removes step-to-step jitter almost for free: at 0.667 Hz, alpha 0.5
+    # keeps 99.3% of the commanded amplitude (alpha 0.3 keeps 97.4%). It is
+    # the rate limiter above that costs amplitude if set too low, not this.
+    smoothing_alpha: 0.5
 
     # Policy center in radians — the policy output value at which the servo is at its
     # physical center (0 rad for hips/knees, π/2 rad for ankles). At this value the
