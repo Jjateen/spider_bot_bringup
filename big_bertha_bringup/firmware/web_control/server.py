@@ -107,9 +107,22 @@ class WebControlNode(Node):
         super().__init__('web_control_server')
         self.pub = self.create_publisher(
             Float64MultiArray, '/position_controller/commands', 1)
+        # Last commanded pose, re-sent every 100 ms. The firmware servo
+        # watchdog parks all channels at neutral 250 ms after the last
+        # set_servo_pwms, so a single manual Send would snap the servos back
+        # to the initial pose. Re-publishing keeps the watchdog fed, the same
+        # way the policy controller streams continuously.
+        self.last_angles_ = list(POLICY_CENTER)
+        self.timer = self.create_timer(0.1, self._heartbeat)
         self.get_logger().info('Web control server node started')
 
+    def _heartbeat(self):
+        msg = Float64MultiArray()
+        msg.data = self.last_angles_
+        self.pub.publish(msg)
+
     def send_servo_angles(self, angles_rad):
+        self.last_angles_ = list(angles_rad)
         msg = Float64MultiArray()
         msg.data = angles_rad
         self.pub.publish(msg)
@@ -117,6 +130,7 @@ class WebControlNode(Node):
         self.get_logger().info(f'Sent radian angles: [{rad_str}]')
 
     def send_home(self):
+        self.last_angles_ = list(POLICY_CENTER)
         msg = Float64MultiArray()
         msg.data = POLICY_CENTER
         self.pub.publish(msg)
