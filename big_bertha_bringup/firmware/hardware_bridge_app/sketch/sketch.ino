@@ -82,14 +82,12 @@ static unsigned long g_diag_start_ms = 0;  // when phase 1 started, for timeout 
 static int g_i2c_consecutive_fails = 0;  // resets on any success
 static bool g_i2c_busy = false;          // guard for BG-thread vs loop() race
 
-// Servo command watchdog - safe mode if no commands received
+// Servo command watchdog. Reports a stalled command stream; the legs hold
+// their last commanded pose (see the check in loop()).
 static unsigned long g_last_servo_cmd = 0;
 static const unsigned long SERVO_TIMEOUT_MS = 250;  // 250ms watchdog
-// Latch so the neutral pose is written once per timeout, not every loop cycle.
+// Latch so one stall reports once, not on every loop cycle.
 static bool g_servo_timed_out = false;
-// Center of the 102..512 count band (1.5 ms), matching pwm_min/pwm_max in
-// hardware_bridge.yaml.
-static const uint16_t SERVO_NEUTRAL_PWM = 307;
 
 // 125 Hz IMU (8 ms) — matches expected rate for the 50 Hz policy controller
 static const unsigned long IMU_INTERVAL = 8;
@@ -640,15 +638,18 @@ void loop()
   // not refresh g_last_servo_cmd) for a stale command and parked every
   // channel at neutral once a second.
   //
-  // g_last_servo_cmd == 0 means no command has ever arrived; hold the boot
-  // pose rather than snapping to neutral before the policy is even up.
+  // It reports the stall and stops refreshing; it does NOT reposition the
+  // legs. Driving all twelve channels to neutral mid-stride slams the frame
+  // into a pose the gait never asked for, and because the PCA9685 latches its
+  // last value anyway, holding is both safer mechanically and the same amount
+  // of code. The web control server had to add a 100 ms heartbeat purely to
+  // stop the old neutral-park yanking manually placed joints back to centre.
+  //
+  // g_last_servo_cmd == 0 means no command has ever arrived, so there is
+  // nothing to have stalled yet.
   if (g_last_servo_cmd != 0 && (now - g_last_servo_cmd) > SERVO_TIMEOUT_MS) {
-    if (!g_servo_timed_out) {  // edge-triggered: neutral once, not every cycle
+    if (!g_servo_timed_out) {  // edge-triggered: report once per stall
       g_servo_timed_out = true;
-      for (int i = 0; i < 12; ++i) {
-        g_pwm[PWM_CHANNEL_MAP[i]] = SERVO_NEUTRAL_PWM;
-      }
-      g_pwm_dirty = true;
       Bridge.notify("servo_timeout", (float)(now - g_last_servo_cmd));
     }
   } else {
