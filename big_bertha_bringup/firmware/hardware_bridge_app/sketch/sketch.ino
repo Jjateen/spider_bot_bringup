@@ -87,7 +87,7 @@ static unsigned long g_last_servo_cmd = 0;
 static const unsigned long SERVO_TIMEOUT_MS = 250;  // 250ms watchdog
 // Latch so the neutral pose is written once per timeout, not every loop cycle.
 static bool g_servo_timed_out = false;
-// Center of the 205..410 count band (1.5 ms), matching pwm_min/pwm_max in
+// Center of the 102..512 count band (1.5 ms), matching pwm_min/pwm_max in
 // hardware_bridge.yaml.
 static const uint16_t SERVO_NEUTRAL_PWM = 307;
 
@@ -552,12 +552,12 @@ void on_servo_diag()
 {
   // Distribute test values evenly across the configured PWM range.
   // Must match pwm_min/pwm_max in hardware_bridge.yaml.
-  const int pwm_min = 205;  // 1.0ms for standard MG995
-  const int pwm_max = 410;  // 2.0ms for standard MG995
+  const int pwm_min = 102;  // 0.5ms for wide-range clone
+  const int pwm_max = 512;  // 2.5ms for wide-range clone
   const int range = pwm_max - pwm_min;
 
   for (int i = 0; i < 12; ++i) {
-    // Evenly distributed: 205, 223, 242, 261, ..., 410
+    // Evenly distributed: 102, 139, 176, 213, ..., 512
     g_diag_test_pwms[i] = pwm_min + (i * range / 11);
   }
   g_diag_pending = true;

@@ -29,8 +29,8 @@ class ServoConverter
 public:
   struct Params
   {
-    int pwm_min{205};  // Standard MG995: 1.0ms
-    int pwm_max{410};  // Standard MG995: 2.0ms
+    int pwm_min{102};  // Wide-range clone: 0.5ms
+    int pwm_max{512};  // Wide-range clone: 2.5ms
     double joint_limit{3.14159};
     std::vector<double> servo_lower_limit;
     std::vector<double> servo_upper_limit;
