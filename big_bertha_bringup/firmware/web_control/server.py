@@ -47,38 +47,40 @@ SERVO_CENTER = [
 ]
 
 JOINT_NAMES = [
-    'arm_a_4_1 (hip)', 'arm_a_1_1 (hip)',
-    'arm_a_2_1 (hip)', 'arm_a_3_1 (hip)',
-    'arm_b_4_1 (knee)', 'arm_b_1_1 (knee)',
-    'arm_b_2_1 (knee)', 'arm_b_3_1 (knee)',
-    'arm_c_4_1 (ankle)', 'arm_c_1_1 (ankle)',
-    'arm_c_2_1 (ankle)', 'arm_c_3_1 (ankle)',
+    'Revolute_110',  # hip leg4 (back-left)
+    'Revolute_113',  # hip leg1 (front-left)
+    'Revolute_116',  # hip leg2 (front-right)
+    'Revolute_119',  # hip leg3 (back-right)
+    'Revolute_111',  # knee leg4 (back-left)
+    'Revolute_114',  # knee leg1 (front-left)
+    'Revolute_117',  # knee leg2 (front-right)
+    'Revolute_120',  # knee leg3 (back-right)
+    'Revolute_112',  # ankle leg4 (back-left)
+    'Revolute_115',  # ankle leg1 (front-left)
+    'Revolute_118',  # ankle leg2 (front-right)
+    'Revolute_121',  # ankle leg3 (back-right)
 ]
 
 LEG_GROUPS = [
     {
-        'name': 'Leg 4 back-left (arm_*_4_1)',
+        'name': 'Leg 4 back-left (Revolute_110/111/112)',
         'indices': [0, 4, 8],
-        'joints': ['arm_a_4_1 (hip)', 'arm_b_4_1 (knee)',
-                   'arm_c_4_1 (ankle)'],
+        'joints': ['Revolute_110', 'Revolute_111', 'Revolute_112'],
     },
     {
-        'name': 'Leg 1 front-left (arm_*_1_1)',
+        'name': 'Leg 1 front-left (Revolute_113/114/115)',
         'indices': [1, 5, 9],
-        'joints': ['arm_a_1_1 (hip)', 'arm_b_1_1 (knee)',
-                   'arm_c_1_1 (ankle)'],
+        'joints': ['Revolute_113', 'Revolute_114', 'Revolute_115'],
     },
     {
-        'name': 'Leg 2 front-right (arm_*_2_1)',
+        'name': 'Leg 2 front-right (Revolute_116/117/118)',
         'indices': [2, 6, 10],
-        'joints': ['arm_a_2_1 (hip)', 'arm_b_2_1 (knee)',
-                   'arm_c_2_1 (ankle)'],
+        'joints': ['Revolute_116', 'Revolute_117', 'Revolute_118'],
     },
     {
-        'name': 'Leg 3 back-right (arm_*_3_1)',
+        'name': 'Leg 3 back-right (Revolute_119/120/121)',
         'indices': [3, 7, 11],
-        'joints': ['arm_a_3_1 (hip)', 'arm_b_3_1 (knee)',
-                   'arm_c_3_1 (ankle)'],
+        'joints': ['Revolute_119', 'Revolute_120', 'Revolute_121'],
     },
 ]
 
