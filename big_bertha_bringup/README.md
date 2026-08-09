@@ -13,7 +13,7 @@ arduino-router
   ↓ UART (internal)
 STM32U585 M33 (sketch.ino)
   ↓ I2C (50 kHz)
-PCA9685 (servos) + MPU9250 (IMU)
+PCA9685 (servos) + BNO055 (fused IMU)
 ```
 
 **No Python relay, no TCP, no Docker containers.**
@@ -32,8 +32,8 @@ The hardware bridge node communicates directly with the STM32U585 co-processor v
 ### ROS 2 Interface
 
 **Published Topics:**
-- `/imu` (sensor_msgs/Imu) — 125 Hz, bias-corrected, axis-mapped
-- `/imu/mag` (sensor_msgs/MagneticField) — if magnetometer present (not on current hardware)
+- `/imu` (sensor_msgs/Imu) — 100 Hz, bias-corrected, axis-mapped, with fused orientation
+- `/imu/mag` (sensor_msgs/MagneticField) — raw BNO055 magnetometer field
 
 > `/joint_states` is **not** published by the bridge. On hardware it is owned by
 > `legged_odometry` — its EWMA simulates the MG995 lag, which is the policy's
@@ -46,7 +46,7 @@ The hardware bridge node communicates directly with the STM32U585 co-processor v
 - `~/status` — Hardware status (I2C health, PWM counters, error tracking)
 - `~/scan_i2c` — Trigger I2C bus scan, returns device addresses
 - `~/servo_diag` — Run servo write/readback test (5s timeout)
-- `~/imu_diag` — IMU identity, WHO_AM_I, magnetometer probe results
+- `~/imu_diag` — BNO055 identity, fusion mode, calibration status nibbles
 
 ### Key Parameters
 
@@ -89,7 +89,7 @@ python3 scripts/servo_diag.py
 
 - **Compute:** Arduino UNO Q (4GB RAM, Cortex-A35 + STM32U585 M33)
 - **Servos:** 12× MG995 (max angular velocity: 6.54 rad/s)
-- **IMU:** MPU-6500 6-axis (note: no magnetometer despite "MPU-9265" labeling)
+- **IMU:** BNO055 9-axis with on-chip sensor fusion (accel+gyro+mag, NDOF)
 - **Servo Controller:** PCA9685 16-channel PWM driver
 - **I2C Bus:** 50 kHz (empirically reliable on STM32U585, workaround for Zephyr #83550)
 
@@ -113,10 +113,15 @@ colcon test --packages-select big_bertha_bringup --event-handlers console_direct
 
 ## Known Issues
 
-1. **No magnetometer:** Board is labeled "MPU-9265" but contains MPU-6500 die (WHO_AM_I=0x70). Yaw will drift without absolute heading reference.
+1. **On-chip fusion needs initial calibration:** The BNO055's NDOF filter
+   converges on its own but the magnetometer must be calibrated before yaw is
+   absolute: rotate the chassis in a figure-of-eight while level until
+   `~/imu_diag` shows `calib_mag=3`. Until then heading drifts like the old
+   magnetometer-less MPU-6500.
 2. **I2C clock 50 kHz:** Below standard (100 kHz) but required for STM32U585 I2C v2 peripheral reliability (Zephyr issue #83550).
 3. **Startup calibration required:** Robot must remain stationary for 2-3 seconds during node startup for gyro/accel bias estimation.
 4. **No position feedback:** MG995 servos have no encoders. `/joint_states` publishes commanded positions, not actual positions.
+5. **Magnetic interference:** MG995 servo/motor fields near the IMU can corrupt the absolute heading. Mount the BNO055 clear of high-current wiring.
 
 ## Migration from TCP Relay
 
@@ -152,7 +157,7 @@ Full hardware specification from [PLAN.md §11](../PLAN.md):
 | Structure | 3D-printed frame + legs | — | Spider quadruped design |
 | Actuators | MG995 servos | 12 | 4 legs × 3 joints |
 | Lidar | YDLidar X2 (2D) | 1 | `/scan` topic |
-| IMU | MPU-6500 (6-axis) | 1 | On "MPU-9265" breakout |
+| IMU | BNO055 (9-axis, fused) | 1 | On-chip accel+gyro+mag fusion |
 | Servo Driver | PCA9685 | 1 | 16-channel PWM @ 50 Hz |
 
 ## Troubleshooting

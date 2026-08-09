@@ -158,5 +158,5 @@ fi
 
 echo ""
 say DONE "Firmware upload complete — sketch flashed, router healthy"
-echo "  I2C devices: PCA9685 @ 0x40 (64), MPU9250 @ 0x68 (104)"
+echo "  I2C devices: PCA9685 @ 0x40 (64), BNO055 @ 0x28 (40)"
 echo "  Start the bridge: ros2 launch big_bertha_bringup big_bertha.launch.py"

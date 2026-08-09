@@ -4,7 +4,7 @@
 The C++ hardware_bridge_node talks directly to the arduino-router socket and
 exposes firmware diagnostics as ROS 2 services:
 
-    /hardware_bridge/status      last hw_status (I2C/PCA9685/MPU health)
+    /hardware_bridge/status      last hw_status (I2C/PCA9685/BNO055 IMU health)
     /hardware_bridge/scan_i2c    trigger an I2C bus scan
     /hardware_bridge/servo_diag  run the on-MCU servo write/readback test
     /hardware_bridge/imu_diag    last IMU identity/magnetometer diagnostic

@@ -26,8 +26,7 @@
 #include <vector>
 
 // ── I2C device addresses ──────────────────────────────────────────────
-static const uint8_t MPU9250_ADDR = 0x68;
-static const uint8_t AK8963_ADDR = 0x0C;  // magnetometer inside the MPU9250
+static const uint8_t BNO055_ADDR = 0x28;  // BNO055 IMU (0x29 when ADR pin high)
 static const uint8_t PCA9685_ADDR = 0x40;
 
 // ── PCA9685 register map ──────────────────────────────────────────────
@@ -40,11 +39,10 @@ static const uint8_t PCA9685_LED0_ON_L = 0x06;
 static const uint8_t PWM_CHANNEL_MAP[12] = {0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14};
 
 // ── Diagnostic state ──────────────────────────────────────────────────
-// bit 0 = PCA9685 missing, bit 1 = MPU9250 missing
+// bit 0 = PCA9685 missing, bit 1 = BNO055 missing
 static int g_i2c_scan = 0;
 static bool g_ai_ok = false;
-static bool g_mpu9250_present = false;
-static bool g_mag_present = false;
+static bool g_imu_present = false;
 
 // Current PWM off-counts for all 16 channels (0 = output low = servo off)
 static uint16_t g_pwm[16] = {0};
@@ -89,8 +87,8 @@ static const unsigned long SERVO_TIMEOUT_MS = 250;  // 250ms watchdog
 // Latch so one stall reports once, not on every loop cycle.
 static bool g_servo_timed_out = false;
 
-// 125 Hz IMU (8 ms) — matches expected rate for the 50 Hz policy controller
-static const unsigned long IMU_INTERVAL = 8;
+// 100 Hz IMU (10 ms) — BNO055 fusion modes cap their output at 100 Hz.
+static const unsigned long IMU_INTERVAL = 10;
 static const unsigned long STATUS_INTERVAL = 1000;
 
 // ── I2C helpers ───────────────────────────────────────────────────────
@@ -190,250 +188,133 @@ static bool pca9685_verify_init()
   return (mode1 & 0x20) != 0 && (mode1 & 0x10) == 0;
 }
 
-// ── MPU9250 IMU ───────────────────────────────────────────────────────
+// ── BNO055 IMU ───────────────────────────────────────────────────────
 
-// WHO_AM_I (0x75) read at init: 0x71 = MPU-9250, 0x73 = MPU-9255,
-// 0x70 = MPU-6500 (six axis, no magnetometer die at all). Reported in
+// The BNO055 is a system-in-package 9-axis IMU with an on-board sensor
+// fusion MCU. It runs its own absolute-orientation filter (NDOF mode:
+// accel + gyro + magnetometer) and exposes the fused quaternion plus raw
+// accel/gyro/mag on the data registers, so no host-side AHRS is needed.
+// The previous MPU-6500 had no magnetometer die at all, which is why yaw
+// free-ran on gyro integration; the BNO055's fused heading is absolute.
+
+// CHIP_ID (0x00) read at init: 0xA0 = BNO055 answering. Reported in
 // hw_status so the part can be identified without a scope or a teardown.
-static uint8_t g_mpu_whoami = 0x00;
+static uint8_t g_bno_chip_id = 0x00;
 
-static bool mpu9250_init()
+// CALIB_STAT (0x35): four 2-bit fields, one per fused subsystem.
+//   bits[1:0] = accel, bits[3:2] = mag, bits[5:4] = gyro, bits[7:6] = sys
+// Each is 0 = uncalibrated .. 3 = fully calibrated. NDOF heading is only
+// trustworthy once the mag calibration reaches 3 (figure-of-eight while
+// level). Status registers are re-read before each imu_diag push.
+static uint8_t g_bno_calib_stat = 0x00;
+static uint8_t g_bno_sys_status = 0x00;
+static uint8_t g_bno_sys_err = 0x00;
+static uint8_t g_bno_unit_sel = 0x00;
+static uint8_t g_bno_op_mode = 0x00;
+static uint8_t g_bno_axis_config = 0x00;
+static uint8_t g_bno_axis_sign = 0x00;
+
+// Boot handshake. The BNO055 needs ~650 ms after power-on before it
+// answers on I2C at all; polling keeps setup() from racing it. Register
+// writes outside CONFIG mode are silently dropped, so configuration is
+// done in CONFIG mode and only then switched to NDOF.
+static bool bno055_wait_ready()
 {
-  Wire.beginTransmission(MPU9250_ADDR);
-  if (Wire.endTransmission() != 0) return false;
+  for (int i = 0; i < 20; ++i) {
+    if (i2c_write_byte(BNO055_ADDR, 0x07, 0x00)) {  // PAGE_ID -> page 0
+      return true;
+    }
+    delay(50);
+  }
+  return false;
+}
 
-  // Full device reset first. The MPU keeps its register state for as long as
-  // it stays powered, and reflashing the MCU does not power-cycle it, so
-  // without this the chip can still be carrying configuration from whatever
-  // ran before -- including I2C_MST_EN, which hides the magnetometer.
-  i2c_write_byte(MPU9250_ADDR, 0x6B, 0x80);
-  delay(100);
-  i2c_write_byte(MPU9250_ADDR, 0x6B, 0x00);  // wake, internal oscillator
-  delay(100);
+static bool bno055_init()
+{
+  if (!bno055_wait_ready()) return false;
+  delay(100);  // datasheet: writes right after first ACK can be silently dropped
 
-  i2c_read_bytes(MPU9250_ADDR, 0x75, &g_mpu_whoami, 1);
+  if (!i2c_write_byte(BNO055_ADDR, 0x3D, 0x00)) return false;  // OPR_MODE = CONFIG
+  delay(25);
+  i2c_write_byte(BNO055_ADDR, 0x3B, 0x00);  // UNIT_SEL: m/s^2 accel, dps gyro, Windows
+  i2c_write_byte(BNO055_ADDR, 0x3F, 0x00);  // SYS_TRIGGER: reset clear, no self-test
+  i2c_write_byte(BNO055_ADDR, 0x3E, 0x00);  // PWR_MODE: NORMAL
+  delay(20);
 
-  // USER_CTRL bit 5 I2C_MST_EN must be 0 or "pins ES_DA and ES_SCL are
-  // isolated from pins SDA/SDI and SCL/SCLK" (RM-000008 §4.33) -- the
-  // auxiliary bus carrying the magnetometer is cut off from the host, and
-  // BYPASS_EN is documented to work only "when the i2c master interface is
-  // disabled". Reset clears it; cleared explicitly so the requirement is
-  // visible rather than implied.
-  uint8_t user_ctrl = 0;
-  i2c_read_bytes(MPU9250_ADDR, 0x6A, &user_ctrl, 1);
-  i2c_write_byte(MPU9250_ADDR, 0x6A, user_ctrl & ~0x20);
-  delay(10);
+  i2c_read_bytes(BNO055_ADDR, 0x00, &g_bno_chip_id, 1);
+  if (g_bno_chip_id != 0xA0) return false;
+
+  // NDOF: 9-axis absolute orientation. AXIS_MAP_CONFIG/SIGN are left at
+  // their identity power-on defaults; mounting signs are applied on the
+  // host (imu_axis_sign) so this board needs no part-specific trans.
+  if (!i2c_write_byte(BNO055_ADDR, 0x3D, 0x0C)) return false;  // OPR_MODE = NDOF
+  delay(30);
   return true;
 }
 
-static bool mpu9250_read(float & ax, float & ay, float & az, float & gx, float & gy, float & gz)
+static bool bno055_read(
+  float & qw, float & qx, float & qy, float & qz,
+  float & gx, float & gy, float & gz,
+  float & ax, float & ay, float & az,
+  float & mx, float & my, float & mz)
 {
-  uint8_t raw[14] = {0};
-  if (!i2c_read_bytes(MPU9250_ADDR, 0x3B, raw, 14)) {
-    ax = ay = az = gx = gy = gz = 0.0f;
+  uint8_t quat[8] = {0};  // QUA at 0x20..0x27, 2^14 = 1.0 per unit
+  uint8_t gyro[6] = {0};  // GYR at 0x14..0x19, 16 LSB = 1 dps
+  uint8_t acc[6] = {0};   // ACC at 0x08..0x0D, 100 LSB = 1 m/s^2
+  uint8_t mag[6] = {0};   // MAG at 0x0E..0x13, 16 LSB = 1 uT
+  if (!i2c_read_bytes(BNO055_ADDR, 0x20, quat, 8)) {
+    qw = qx = qy = qz = gx = gy = gz = ax = ay = az = mx = my = mz = 0.0f;
     return false;
   }
-  int16_t rax = (raw[0] << 8) | raw[1];
-  int16_t ray = (raw[2] << 8) | raw[3];
-  int16_t raz = (raw[4] << 8) | raw[5];
-  int16_t rgx = (raw[8] << 8) | raw[9];
-  int16_t rgy = (raw[10] << 8) | raw[11];
-  int16_t rgz = (raw[12] << 8) | raw[13];
-  ax = rax / 16384.0f * 9.80665f;
-  ay = ray / 16384.0f * 9.80665f;
-  az = raz / 16384.0f * 9.80665f;
-  gx = rgx / 131.0f * (PI / 180.0f);
-  gy = rgy / 131.0f * (PI / 180.0f);
-  gz = rgz / 131.0f * (PI / 180.0f);
-  return true;
-}
-
-// ── AK8963 magnetometer (bundled inside the MPU9250) ───────────────
-// The AK8963 is wired to the MPU9250's auxiliary I2C. Enabling bypass
-// mode on the MPU9250 exposes the AK8963 at 0x0C on the main bus so we
-// can read it directly.
-
-// WIA (0x00) identity byte, read at init. 0x48 = AK8963 answering. Kept in a
-// global so the 1 Hz status push can report it: this board is an MPU-9265, and
-// some of those ship without a working magnetometer die, so "did the chip
-// answer" has to be observable rather than assumed.
-static uint8_t g_mag_wia = 0x00;
-// Factory sensitivity adjustment from the fuse ROM, per axis. Without it the
-// three axes are scaled differently by up to ~15% and any heading derived
-// from them is skewed.
-static float g_mag_asa[3] = {1.0f, 1.0f, 1.0f};
-static bool g_mag_overflow = false;  // last read tripped HOFL
-
-static bool ak8963_init()
-{
-  // Belt and braces: mpu9250_init() already reset the part and cleared
-  // I2C_MST_EN, but BYPASS_EN is a no-op while the master interface is on, so
-  // make the precondition explicit here too rather than depend on call order.
-  uint8_t user_ctrl = 0;
-  i2c_read_bytes(MPU9250_ADDR, 0x6A, &user_ctrl, 1);
-  if (user_ctrl & 0x20) {
-    i2c_write_byte(MPU9250_ADDR, 0x6A, user_ctrl & ~0x20);
-    delay(10);
-  }
-  // INT_PIN_CFG: set BYPASS_EN (bit 1) so the AK8963 sits on the main bus.
-  if (!i2c_write_byte(MPU9250_ADDR, 0x37, 0x02)) return false;
-  delay(10);
-
-  // Identity check. Anything other than 0x48 means no magnetometer answered
-  // and the caller must not publish a field.
-  if (!i2c_read_bytes(AK8963_ADDR, 0x00, &g_mag_wia, 1)) return false;
-  if (g_mag_wia != 0x48) return false;
-
-  // CNTL1 must pass through power-down before every mode change.
-  i2c_write_byte(AK8963_ADDR, 0x0A, 0x00);
-  delay(10);
-  // Fuse ROM access mode exposes ASAX/ASAY/ASAZ at 0x10..0x12.
-  i2c_write_byte(AK8963_ADDR, 0x0A, 0x0F);
-  delay(10);
-  uint8_t asa[3] = {128, 128, 128};
-  i2c_read_bytes(AK8963_ADDR, 0x10, asa, 3);
-  for (int i = 0; i < 3; ++i) {
-    // Datasheet 8.3.11: Hadj = H * ((ASA - 128) * 0.5 / 128 + 1)
-    g_mag_asa[i] = (asa[i] - 128) * 0.5f / 128.0f + 1.0f;
-  }
-  i2c_write_byte(AK8963_ADDR, 0x0A, 0x00);
-  delay(10);
-  // 16-bit output, continuous measurement mode 2 (~100 Hz).
-  i2c_write_byte(AK8963_ADDR, 0x0A, 0x16);
-  delay(10);
-  return true;
-}
-
-// Probe the AUXILIARY bus directly, driving it with the MPU's own I2C master
-// rather than bypassing it onto the main bus. Bypass and master mode are two
-// independent routes to the aux bus, and a device could in principle answer on
-// one but not the other (bypass MUX not routed on a given module, missing
-// pull-ups on ES_DA/ES_CL, and so on). Reading WIA back through EXT_SENS_DATA
-// closes that gap: if nothing answers here either, nothing is out there.
-//
-// Result byte per candidate address 0x0C..0x0F; 0x48 = AK8963 answering.
-static uint8_t g_aux_probe[4] = {0, 0, 0, 0};
-
-// Every aux address that ACKed, and how many. A magnetometer need not be an
-// AK8963 at 0x0C: HMC5883L/QMC5883L sit at 0x1E/0x0D, LIS3MDL at 0x1C/0x1E,
-// BMM150 at 0x10..0x13. Sweeping only the AK8963 range would miss all of them
-// if bypass were also broken, so the whole bus gets swept.
-static uint8_t g_aux_found[4] = {0, 0, 0, 0};
-static int g_aux_found_count = 0;
-// Proof the sweep ran: successful I2C_MST_STATUS reads, and the OR of every
-// status byte. An empty bus is only meaningful if these show the master was
-// actually transacting and the slaves were NACKing.
-static int g_aux_status_reads_ok = 0;
-static int g_aux_found_slow = -1;  // second pass at 258 kHz
-// Per-pass health. A pass is only believable if it observed at least one NACK
-// (st_or bit 0): that proves the master actually drove a transaction. A pass
-// reporting almost every address as present has instead driven NOTHING -- the
-// NACK bit simply never set -- and must be discarded, not read as a full bus.
-static int g_aux_fast_stok = 0, g_aux_slow_stok = 0;
-static uint8_t g_aux_fast_stor = 0, g_aux_slow_stor = 0;
-static uint8_t g_aux_status_or = 0x00;
-// Config registers the published scaling depends on.
-static uint8_t g_reg_accel_cfg = 0xFF, g_reg_accel_cfg2 = 0xFF;
-static uint8_t g_reg_gyro_cfg = 0xFF, g_reg_user_ctrl = 0xFF;
-static uint8_t g_reg_int_pin = 0xFF, g_reg_pwr1 = 0xFF, g_reg_pwr2 = 0xFF;
-
-static void read_config_registers()
-{
-  // Re-read WHO_AM_I here rather than trusting the copy taken during init:
-  // the aux-bus probe reconfigures USER_CTRL/INT_PIN_CFG in between, and this
-  // is the byte the whole part identification rests on.
-  i2c_read_bytes(MPU9250_ADDR, 0x75, &g_mpu_whoami, 1);
-  i2c_read_bytes(MPU9250_ADDR, 0x1C, &g_reg_accel_cfg, 1);
-  i2c_read_bytes(MPU9250_ADDR, 0x1D, &g_reg_accel_cfg2, 1);
-  i2c_read_bytes(MPU9250_ADDR, 0x1B, &g_reg_gyro_cfg, 1);
-  i2c_read_bytes(MPU9250_ADDR, 0x6A, &g_reg_user_ctrl, 1);
-  i2c_read_bytes(MPU9250_ADDR, 0x37, &g_reg_int_pin, 1);
-  i2c_read_bytes(MPU9250_ADDR, 0x6B, &g_reg_pwr1, 1);
-  i2c_read_bytes(MPU9250_ADDR, 0x6C, &g_reg_pwr2, 1);
-}
-
-// I2C_MST_CLK[3:0]: 13 = 400 kHz, 8 = 258 kHz (the slowest this part offers).
-// If the module lacks external pull-ups on ES_DA/ES_CL the bus relies on weak
-// internal ones, where the faster clock can fail to reach a valid level.
-static bool g_aux_slow = false;
-
-static void aux_bus_probe()
-{
-  // Take the aux bus off bypass and hand it to the internal master.
-  i2c_write_byte(MPU9250_ADDR, 0x37, 0x00);  // INT_PIN_CFG: BYPASS_EN off
-  delay(5);
-  i2c_write_byte(MPU9250_ADDR, 0x6A, 0x20);  // USER_CTRL: I2C_MST_EN on
-  delay(5);
-  i2c_write_byte(MPU9250_ADDR, 0x24, g_aux_slow ? 0x08 : 0x0D);  // 258 or 400 kHz
-  delay(5);
-
-  g_aux_found_count = 0;
-  g_aux_status_reads_ok = 0;
-  g_aux_status_or = 0x00;
-  for (uint8_t addr = 0x08; addr <= 0x77; ++addr) {
-    i2c_write_byte(MPU9250_ADDR, 0x25, 0x80 | addr);  // I2C_SLV0_ADDR, read bit
-    i2c_write_byte(MPU9250_ADDR, 0x26, 0x00);         // I2C_SLV0_REG
-    i2c_write_byte(MPU9250_ADDR, 0x27, 0x81);         // I2C_SLV0_CTRL: enable, 1 byte
-    delay(6);                                         // several master cycles at 1 kHz
-
-    // I2C_MST_STATUS bit 0 I2C_SLV0_NACK: set when the addressed slave did not
-    // acknowledge. This is a real presence test — reading EXT_SENS_DATA only
-    // shows a stale byte when nothing is there. The register clears on read.
-    uint8_t st = 0xFF;
-    if (i2c_read_bytes(MPU9250_ADDR, 0x36, &st, 1)) {
-      ++g_aux_status_reads_ok;
-      g_aux_status_or |= st;
-    } else {
-      st = 0x01;  // read failed: do NOT count the address as present
-    }
-    if (!(st & 0x01) && g_aux_found_count < 4) {
-      g_aux_found[g_aux_found_count] = addr;
-    }
-    if (!(st & 0x01)) ++g_aux_found_count;
-
-    // Keep the AK8963-range identity bytes for reporting.
-    if (addr >= 0x0C && addr <= 0x0F) {
-      i2c_read_bytes(MPU9250_ADDR, 0x49, &g_aux_probe[addr - 0x0C], 1);
-    }
-    i2c_write_byte(MPU9250_ADDR, 0x27, 0x00);  // disable slave 0
-  }
-
-  // Hand the bus back: master off, bypass on, so ak8963_read() still works if
-  // anything did answer.
-  i2c_write_byte(MPU9250_ADDR, 0x6A, 0x00);
-  delay(5);
-  i2c_write_byte(MPU9250_ADDR, 0x37, 0x02);
-  delay(5);
-}
-
-static bool ak8963_read(float & mx, float & my, float & mz)
-{
-  uint8_t st1 = 0;
-  if (!i2c_read_bytes(AK8963_ADDR, 0x02, &st1, 1)) return false;
-  if (!(st1 & 0x01)) {
-    mx = my = mz = 0.0f;
-    return false;
-  }  // no new data
-  uint8_t raw[6] = {0};
-  if (!i2c_read_bytes(AK8963_ADDR, 0x03, raw, 6)) return false;
-  uint8_t st2 = 0;
-  // ST2 MUST be read to complete the measurement cycle, and carries HOFL
-  // (bit 3): on overflow the sample is garbage and has to be dropped, not
-  // published as if it were a field reading.
-  if (!i2c_read_bytes(AK8963_ADDR, 0x09, &st2, 1)) return false;
-  g_mag_overflow = (st2 & 0x08) != 0;
-  if (g_mag_overflow) {
-    mx = my = mz = 0.0f;
+  if (!i2c_read_bytes(BNO055_ADDR, 0x14, gyro, 6)) {
+    qw = qx = qy = qz = gx = gy = gz = ax = ay = az = mx = my = mz = 0.0f;
     return false;
   }
-  int16_t rx = (int16_t)((raw[1] << 8) | raw[0]);
-  int16_t ry = (int16_t)((raw[3] << 8) | raw[2]);
-  int16_t rz = (int16_t)((raw[5] << 8) | raw[4]);
-  const float mRes = 0.15f;               // µT/LSB at 16-bit
-  mx = rx * mRes * g_mag_asa[0] * 1e-6f;  // Tesla, sensor_msgs/MagneticField
-  my = ry * mRes * g_mag_asa[1] * 1e-6f;
-  mz = rz * mRes * g_mag_asa[2] * 1e-6f;
+  if (!i2c_read_bytes(BNO055_ADDR, 0x08, acc, 6)) {
+    qw = qx = qy = qz = gx = gy = gz = ax = ay = az = mx = my = mz = 0.0f;
+    return false;
+  }
+  // Magnetometer is optional: NDOF reads it internally for absolute yaw,
+  // and whether the host publishes a field is its own call.
+  i2c_read_bytes(BNO055_ADDR, 0x0E, mag, 6);
+
+  // Quaternion: each component is on a 2^14 = 1.0 scale.
+  qw = ((int16_t)((quat[1] << 8) | quat[0])) / 16384.0f;
+  qx = ((int16_t)((quat[3] << 8) | quat[2])) / 16384.0f;
+  qy = ((int16_t)((quat[5] << 8) | quat[4])) / 16384.0f;
+  qz = ((int16_t)((quat[7] << 8) | quat[6])) / 16384.0f;
+
+  // Gyro scale 16 LSB = 1 dps; convert to rad/s.
+  gx = ((int16_t)((gyro[1] << 8) | gyro[0])) / 16.0f * (PI / 180.0f);
+  gy = ((int16_t)((gyro[3] << 8) | gyro[2])) / 16.0f * (PI / 180.0f);
+  gz = ((int16_t)((gyro[5] << 8) | gyro[4])) / 16.0f * (PI / 180.0f);
+
+  // Accel, m/s^2 mode: 100 LSB = 1 m/s^2. Includes gravity; the host
+  // keeps its own gravity bookkeeping (ZUPT + dead-reckon subtract 9.81).
+  ax = ((int16_t)((acc[1] << 8) | acc[0])) / 100.0f;
+  ay = ((int16_t)((acc[3] << 8) | acc[2])) / 100.0f;
+  az = ((int16_t)((acc[5] << 8) | acc[4])) / 100.0f;
+
+  // Mag scale 16 LSB = 1 uT -> Tesla for sensor_msgs/MagneticField.
+  mx = ((int16_t)((mag[1] << 8) | mag[0])) / 16.0f * 1e-6f;
+  my = ((int16_t)((mag[3] << 8) | mag[2])) / 16.0f * 1e-6f;
+  mz = ((int16_t)((mag[5] << 8) | mag[4])) / 16.0f * 1e-6f;
   return true;
+}
+
+// Re-read everything the imu_diag string depends on. Runs every 5 s so
+// calibration progress is observable without a scope: NDOF fusion
+// converges over time and the CALIB_STAT nibbles are the health readout.
+static void read_status_registers()
+{
+  i2c_read_bytes(BNO055_ADDR, 0x00, &g_bno_chip_id, 1);
+  i2c_read_bytes(BNO055_ADDR, 0x35, &g_bno_calib_stat, 1);
+  i2c_read_bytes(BNO055_ADDR, 0x39, &g_bno_sys_status, 1);
+  i2c_read_bytes(BNO055_ADDR, 0x3A, &g_bno_sys_err, 1);
+  i2c_read_bytes(BNO055_ADDR, 0x3B, &g_bno_unit_sel, 1);
+  i2c_read_bytes(BNO055_ADDR, 0x3D, &g_bno_op_mode, 1);
+  i2c_read_bytes(BNO055_ADDR, 0x41, &g_bno_axis_config, 1);
+  i2c_read_bytes(BNO055_ADDR, 0x42, &g_bno_axis_sign, 1);
 }
 
 // ── Diagnostics ───────────────────────────────────────────────────────
@@ -443,7 +324,7 @@ static int i2c_scan_devices()
   int missing = 0;
   Wire.beginTransmission(PCA9685_ADDR);
   if (Wire.endTransmission() != 0) missing |= 1;
-  Wire.beginTransmission(MPU9250_ADDR);
+  Wire.beginTransmission(BNO055_ADDR);
   if (Wire.endTransmission() != 0) missing |= 2;
   return missing;
 }
@@ -452,7 +333,7 @@ static int i2c_scan_devices()
 //   code 0: solid ON              — everything OK
 //   code 1: 100ms period          — PCA9685 missing
 //   code 2: 400ms period          — PCA9685 init fail
-//   code 3: 2000ms period         — MPU9250 missing
+//   code 3: 2000ms period         — BNO055 missing
 static void blink_update()
 {
   unsigned long now = millis();
@@ -569,30 +450,8 @@ void setup()
   Wire.setClock(50000);  // 50 kHz — STM32U585 I2C v2 driver is unreliable above this
 
   g_i2c_scan = i2c_scan_devices();
-  g_mpu9250_present = mpu9250_init();
-  // Was pinned false for an I2C isolation test and left that way, which is why
-  // the field published as a hard zero. ak8963_init() now verifies WIA before
-  // claiming the magnetometer exists, so this is safe to trust.
-  g_mag_present = ak8963_init();
-  // Bypass found nothing -- confirm on the aux bus itself before
-  // concluding the magnetometer is absent rather than unreachable.
-  if (!g_mag_present) {
-    g_aux_slow = false;
-    aux_bus_probe();
-    // Retry the whole sweep at the slower aux clock before believing an empty
-    // bus -- a marginal rise time would look exactly like an absent device.
-    const int fast_hits = g_aux_found_count;
-    g_aux_fast_stok = g_aux_status_reads_ok;
-    g_aux_fast_stor = g_aux_status_or;
-    g_aux_slow = true;
-    aux_bus_probe();
-    g_aux_found_slow = g_aux_found_count;
-    g_aux_slow_stok = g_aux_status_reads_ok;
-    g_aux_slow_stor = g_aux_status_or;
-    g_aux_found_count = fast_hits;
-    g_aux_slow = false;
-  }
-  read_config_registers();
+  g_imu_present = bno055_init();
+  read_status_registers();
   g_ai_ok = pca9685_init() && pca9685_verify_init();
 
   // Initialize Bridge RPC.  If begin() fails, started=false and the
@@ -746,13 +605,22 @@ void loop()
     }
   }
 
-  // Push IMU at 125 Hz (only if sensor was detected)
-  if (g_mpu9250_present && now - g_last_imu_push >= IMU_INTERVAL) {
+  // Push IMU at 100 Hz (only if sensor was detected).
+  // Encoded as ONE comma-separated string: Bridge RPC drops arguments past
+  // its limit (see set_servo_pwms / hw_status), and the old 11-arg notify
+  // was seen to misframe the router. Order:
+  //   qw,qx,qy,qz, gx,gy,gz, ax,ay,az, mx,my,mz, sample, ts
+  if (g_imu_present && now - g_last_imu_push >= IMU_INTERVAL) {
     g_last_imu_push = now;
-    float ax, ay, az, gx, gy, gz, mx = 0, my = 0, mz = 0;
-    if (mpu9250_read(ax, ay, az, gx, gy, gz)) {
-      if (g_mag_present) ak8963_read(mx, my, mz);
-      Bridge.notify("imu", ax, ay, az, gx, gy, gz, mx, my, mz, (float)g_imu_sample++, (float)now);
+    float qw, qx, qy, qz, gx, gy, gz, ax, ay, az, mx = 0, my = 0, mz = 0;
+    if (bno055_read(qw, qx, qy, qz, gx, gy, gz, ax, ay, az, mx, my, mz)) {
+      char imu_buf[192];
+      int off = snprintf(
+        imu_buf, sizeof(imu_buf), "%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%f,%d,%lu",
+        qw, qx, qy, qz, gx, gy, gz, ax, ay, az, mx, my, mz, g_imu_sample++, (unsigned long)now);
+      if (off >= (int)sizeof(imu_buf)) off = sizeof(imu_buf) - 1;
+      imu_buf[off] = '\0';
+      Bridge.notify("imu", (const char *)imu_buf);
     }
   }
 
@@ -760,7 +628,7 @@ void loop()
   if (now - g_last_status_push >= STATUS_INTERVAL) {
     g_last_status_push = now;
     g_i2c_scan = i2c_scan_devices();
-    g_mpu9250_present = (g_i2c_scan & 2) == 0;
+    g_imu_present = (g_i2c_scan & 2) == 0;
     bool ai = false;
     if (!(g_i2c_scan & 1)) {
       ai = pca9685_verify_init();
@@ -803,10 +671,9 @@ void loop()
     hs[hso] = '\0';
     Bridge.notify("hw_status", (const char *)hs);
 
-    // IMU diagnostics as a single string: identity, magnetometer state, the
-    // aux-bus sweep AND proof the sweep actually ran, plus the config
-    // registers the accel/gyro scaling depends on. One argument, so nothing
-    // can be silently truncated.
+    // IMU diagnostics as a single string: part identity, operation mode,
+    // system health and the per-subsystem calibration nibbles. One
+    // argument, so nothing can be silently truncated.
     //
     // Built with snprintf into a fixed stack buffer (no heap String churn)
     // and kept under 256 bytes total because the sketch tells the router
@@ -816,30 +683,24 @@ void loop()
     // boot. imu_diag is debug-only so it is also throttled to 5 s.
     if (now - g_last_imu_diag_push >= 5000) {
       g_last_imu_diag_push = now;
-      char d[224];
+      read_status_registers();
+      char d[192];
       int off = 0;
       off +=
-        snprintf(d + off, sizeof(d) - off, "whoami=0x%02x,%d", g_mpu_whoami, (int)g_mpu_whoami);
-      off += snprintf(d + off, sizeof(d) - off, ",mag_present=%d", g_mag_present ? 1 : 0);
-      off += snprintf(d + off, sizeof(d) - off, ",mag_wia=0x%02x", g_mag_wia);
-      off += snprintf(d + off, sizeof(d) - off, ",aux_n=%d", g_aux_found_count);
-      off += snprintf(d + off, sizeof(d) - off, ",aux0=0x%02x", g_aux_found[0]);
-      // Proof of life for the sweep: how many I2C_MST_STATUS reads succeeded
-      // (should be 112) and the OR of every status byte seen. status_or bit 0
-      // set means slaves were genuinely NACKing; 0x00 with reads_ok 0 would
-      // mean the probe never ran and the empty result is meaningless.
-      off += snprintf(d + off, sizeof(d) - off, ",st_ok=%d", g_aux_status_reads_ok);
-      off += snprintf(d + off, sizeof(d) - off, ",st_or=0x%02x", g_aux_status_or);
-      // Scaling registers: accel is decoded as +-2g (16384 LSB/g) and gyro as
-      // +-250 dps (131 LSB/dps). If ACCEL_CONFIG/GYRO_CONFIG are not 0x00 those
-      // divisors are wrong and every published value is mis-scaled.
-      off += snprintf(d + off, sizeof(d) - off, ",accel_cfg=0x%02x", g_reg_accel_cfg);
-      off += snprintf(d + off, sizeof(d) - off, ",accel_cfg2=0x%02x", g_reg_accel_cfg2);
-      off += snprintf(d + off, sizeof(d) - off, ",gyro_cfg=0x%02x", g_reg_gyro_cfg);
-      off += snprintf(d + off, sizeof(d) - off, ",user_ctrl=0x%02x", g_reg_user_ctrl);
-      off += snprintf(d + off, sizeof(d) - off, ",int_pin=0x%02x", g_reg_int_pin);
-      off += snprintf(d + off, sizeof(d) - off, ",pwr1=0x%02x", g_reg_pwr1);
-      off += snprintf(d + off, sizeof(d) - off, ",pwr2=0x%02x", g_reg_pwr2);
+        snprintf(d + off, sizeof(d) - off, "chip_id=0x%02x,%d", g_bno_chip_id, (int)g_bno_chip_id);
+      off += snprintf(d + off, sizeof(d) - off, ",op_mode=0x%02x", g_bno_op_mode);
+      off += snprintf(d + off, sizeof(d) - off, ",sys_status=0x%02x", g_bno_sys_status);
+      off += snprintf(d + off, sizeof(d) - off, ",sys_err=0x%02x", g_bno_sys_err);
+      // CALIB_STAT nibbles: accel[1:0] mag[3:2] gyro[5:4] sys[7:6], each 0-3.
+      // 3 = fully calibrated. sys is the minimum of the three; NDOF heading
+      // is only trustworthy once mag reaches 3 (figure-of-eight, level).
+      off += snprintf(d + off, sizeof(d) - off, ",calib_acc=%d", g_bno_calib_stat & 0x03);
+      off += snprintf(d + off, sizeof(d) - off, ",calib_mag=%d", (g_bno_calib_stat >> 2) & 0x03);
+      off += snprintf(d + off, sizeof(d) - off, ",calib_gyr=%d", (g_bno_calib_stat >> 4) & 0x03);
+      off += snprintf(d + off, sizeof(d) - off, ",calib_sys=%d", (g_bno_calib_stat >> 6) & 0x03);
+      off += snprintf(d + off, sizeof(d) - off, ",unit_sel=0x%02x", g_bno_unit_sel);
+      off += snprintf(d + off, sizeof(d) - off, ",axis_cfg=0x%02x", g_bno_axis_config);
+      off += snprintf(d + off, sizeof(d) - off, ",axis_sign=0x%02x", g_bno_axis_sign);
       if (off >= (int)sizeof(d)) off = sizeof(d) - 1;
       d[off] = '\0';
       Bridge.notify("imu_diag", (const char *)d);

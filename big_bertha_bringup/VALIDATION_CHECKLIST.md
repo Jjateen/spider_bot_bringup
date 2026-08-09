@@ -157,8 +157,8 @@ Open a second terminal for topic checks.
   ```bash
   ros2 topic hz /imu
   ```
-  ✅ **Expected:** 120-130 Hz (target 125 Hz)
-  ⚠️ **Warning if:** < 100 Hz or > 150 Hz
+  ✅ **Expected:** 95-105 Hz (target 100 Hz — BNO055 fusion ceiling)
+  ⚠️ **Warning if:** < 80 Hz or > 120 Hz
 
 - [ ] **Data looks reasonable** (at rest)
   ```bash
@@ -228,7 +228,7 @@ This will be tested in Phase 5 (servo commands).
 - [ ] **Parse response message**, verify:
   - [ ] `scan=0` (no devices missing)
   - [ ] `pca9685_ok=true` (servo controller present)
-  - [ ] `mpu9250_ok=true` (IMU present)
+  - [ ] `imu_ok=true` (BNO055 present)
   - [ ] `servo_calls >= 0` (counter initialized)
   - [ ] `pwm_write_fails=0` (no I2C errors yet)
   - [ ] `pwm_last_fail_ch=-1` (no failures)
@@ -245,13 +245,13 @@ This will be tested in Phase 5 (servo commands).
 
 - [ ] **Response message shows expected devices**
   ```
-  addrs=[64, 104]
+  addrs=[64, 40]
   ```
   - [ ] `64` (0x40) = PCA9685 servo controller
-  - [ ] `104` (0x68) = MPU9250/MPU6500 IMU
+  - [ ] `40` (0x28) = BNO055 IMU
 
   ⚠️ **If missing 64:** PCA9685 not detected, check wiring/power
-  ⚠️ **If missing 104:** IMU not detected, check wiring
+  ⚠️ **If missing 40:** BNO055 not detected, check wiring/address pin (0x29 if ADR high)
 
 ### IMU Diagnostic Service
 
@@ -263,12 +263,29 @@ This will be tested in Phase 5 (servo commands).
 - [ ] **Response success=true**
 
 - [ ] **Parse diagnostic string**, verify:
-  - [ ] `WHO_AM_I=0x70` (MPU-6500, expected for current hardware)
-  - [ ] `mag_present=false` (expected, no magnetometer)
-  - [ ] `mag_wia=0x00` (AK8963 not found, expected)
+  - [ ] `chip_id=0xA0` (BNO055 answering)
+  - [ ] `op_mode=0x0c` (NDOF fusion active)
+  - [ ] `sys_status=0x04` (fusion running) and `sys_err=0x00` (no error)
 
-  ✅ **Current hardware:** MPU-6500 (0x70), no mag
-  ℹ️ **If 0x71 or 0x73:** Genuine MPU-9250/9255, mag_present should be true
+### BNO055 Calibration Service
+
+The on-chip fusion converges on its own, but absolute yaw needs a level
+figure-of-eight mag pass before it holds. Check progress via `~/imu_diag`
+(call repeatedly; the `calib_*` nibbles update every 1 s).
+
+- [ ] **Stationary gyro calib:** place robot level and still until `calib_gyr=3`
+- [ ] **Accel calib:** tip the chassis (each face up briefly) until `calib_acc=3`
+- [ ] **Mag calib:** rotate the chassis in figure-of-eight while level until `calib_mag=3`
+- [ ] **System calib:** `calib_sys=3` (equals the minimum of the three above) —
+      heading is now absolute and stable
+
+### IMU Axis / Sign Validation (BENCH — after swap)
+
+- [ ] **Pitch:** nose-up → `/imu` roll/pitch increases in the expected sign
+- [ ] **Roll:** right-tilt → `/imu` roll increases in the expected sign
+- [ ] **Yaw:** rotate 90° clockwise → fused yaw (quaternion) turns the same way
+- [ ] If any sign is opposite, update `imu_axis_sign` (and revisit the quaternion
+      convention) in `config/hardware_bridge.yaml`, then repeat
 
 ### Servo Diagnostic Service (Deferred)
 
@@ -449,7 +466,7 @@ Now safe to run full diagnostic.
 ### No Magnetometer
 
 - [ ] **Confirmed:** `/imu/mag` does not publish (as expected)
-- [ ] **IMU diag shows:** `WHO_AM_I=0x70` (MPU-6500, not MPU-9250)
+- [ ] **IMU diag shows:** `chip_id=0xa0` (BNO055, `op_mode=0x08` NDOF) and `calib_sys=3`
 - [ ] **Understood:** Yaw will drift without absolute heading reference
 
 ### I2C Clock 50 kHz
@@ -536,7 +553,7 @@ Run this checklist:
 | Symptom | Check | Fix |
 |---------|-------|-----|
 | Node won't connect | Socket exists? | Restart arduino-router |
-| IMU not publishing | I2C scan shows 104? | Check IMU wiring |
+| IMU not publishing | I2C scan shows 40 (0x28)? | Check BNO055 wiring |
 | Servos won't move | I2C scan shows 64? | Check PCA9685 power |
 | High gyro drift | Calibration bias > 0.1? | Increase samples, ensure stationary |
 | I2C timeouts | pwm_write_fails high? | Check wiring, reseat connectors |

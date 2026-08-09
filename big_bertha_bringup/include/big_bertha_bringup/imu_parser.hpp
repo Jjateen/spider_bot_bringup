@@ -15,19 +15,70 @@
 #ifndef BIG_BERTHA_BRINGUP__IMU_PARSER_HPP_
 #define BIG_BERTHA_BRINGUP__IMU_PARSER_HPP_
 
+#include <cmath>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace big_bertha_bringup
 {
 
 struct ImuData
 {
+  double qw{1.0}, qx{0.0}, qy{0.0}, qz{0.0};
   double ax{0.0}, ay{0.0}, az{0.0};
   double gx{0.0}, gy{0.0}, gz{0.0};
   double mx{0.0}, my{0.0}, mz{0.0};
   bool mag_ok{false};
 };
+
+// Parse the BNO055 IMU notification, sent by the firmware as ONE
+// comma-separated string (a multi-arg notify would exceed the router's
+// argument limit). Field order, matching sketch.ino:
+//   qw,qx,qy,qz, gx,gy,gz, ax,ay,az, mx,my,mz, sample, ts
+//
+// The parse must not throw: it runs on the BridgeRPCClient reader thread,
+// where an escaping exception unwinds out of the thread entry point. Any
+// missing/unparseable field yields false and the caller drops the sample.
+inline bool parse_imu_csv(const std::string & line, ImuData & out)
+{
+  std::vector<double> v;
+  v.reserve(13);
+  size_t start = 0;
+  while (start <= line.size() && v.size() < 13) {
+    size_t comma = line.find(',', start);
+    std::string field =
+      comma == std::string::npos ? line.substr(start) : line.substr(start, comma - start);
+    try {
+      v.push_back(std::stod(field));
+    } catch (...) {
+      return false;
+    }
+    if (comma == std::string::npos) {
+      break;
+    }
+    start = comma + 1;
+  }
+  if (v.size() < 13) {
+    return false;
+  }
+
+  out.qw = v[0];
+  out.qx = v[1];
+  out.qy = v[2];
+  out.qz = v[3];
+  out.gx = v[4];
+  out.gy = v[5];
+  out.gz = v[6];
+  out.ax = v[7];
+  out.ay = v[8];
+  out.az = v[9];
+  out.mx = v[10];
+  out.my = v[11];
+  out.mz = v[12];
+  out.mag_ok = (std::abs(out.mx) + std::abs(out.my) + std::abs(out.mz)) > 1e-9;
+  return true;
+}
 
 inline bool parse_imu_json(const std::string & line, ImuData & out)
 {
