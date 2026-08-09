@@ -26,7 +26,7 @@ ros2 launch big_bertha_bringup hardware_bringup.launch.py
 ```
 ROS 2 Node (C++) ──MsgPack-RPC unix socket── arduino-router ──UART── STM32 sketch
   Sub: /position_controller/commands                   Providers:
-  Pub: /imu, /imu/mag, /joint_states                     set_servo_pwms(pwms)
+  Pub: /imu (fused), /imu/mag                             set_servo_pwms(pwms)
   Svc: ~/status, ~/scan_i2c, ~/servo_diag, ~/imu_diag    scan_i2c, ping, servo_diag
 ```
 
@@ -36,7 +36,7 @@ The C++ node exposes the firmware's diagnostics as ROS 2 services:
 
 | Service | Purpose |
 |---|---|
-| `~/status` | Last `hw_status` (I2C present, PCA9685/MPU health, counters) |
+| `~/status` | Last `hw_status` (I2C present, PCA9685/BNO055 IMU health, counters) |
 | `~/scan_i2c` | Triggers an I2C bus scan, returns device addresses |
 | `~/servo_diag` | Runs the on-MCU servo write/readback diagnostic |
-| `~/imu_diag` | Last IMU identity/magnetometer/aux-bus diagnostic string |
+| `~/imu_diag` | Last BNO055 identity/fusion-mode/calibration-status diagnostic string |

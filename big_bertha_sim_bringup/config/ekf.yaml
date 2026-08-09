@@ -34,8 +34,9 @@ ekf_filter_node:
     #
     # Yaw (index 5) is NOT fused from odometry in either sim or hardware:
     # - Sim: leg_odometry yaw drifts significantly even with gz ground truth
-    # - Hardware: yaw is pure gyro integration from an MPU-6500 with no
-    #   magnetometer, making it unsuitable for absolute fusion
+    # - Hardware: this sim-side config predates the BNO055; on the real robot
+    #   the IMU now carries a fused absolute heading (/imu orientation), so
+    #   orientation fusion would be viable there. Sim runs unfused.
     #
     # The EKF propagates heading internally from IMU yaw rate (imu0_config
     # index 11 = true). This is open-loop gyro integration with no absolute
@@ -53,8 +54,8 @@ ekf_filter_node:
     odom0_relative: false
 
     # --- Sensor 1: IMU (linear acceleration and angular velocity only) ---
-    # Orientation from imu_filter_madgwick is NOT fused to avoid fighting
-    # with the EKF's internal orientation estimate. IMU provides:
+    # IMU orientation is intentionally not fused here so it does not fight
+    # the EKF's internal orientation estimate. IMU provides:
     # - Linear acceleration (indices 9, 10, 11 = ax, ay, az)
     # - Angular velocity (indices 12, 13, 14 = gyro_x, gyro_y, gyro_z)
     #

@@ -15,9 +15,11 @@ Complete ROS 2 interface documentation for the `hardware_bridge_node`.
 
 ### `/imu` (sensor_msgs/msg/Imu)
 
-IMU data with bias correction and axis mapping applied.
+IMU data with bias correction and axis mapping applied. Orientation is the
+BNO055 on-chip fused quaternion (absolute heading once magnetometer
+calibration completes).
 
-**Rate:** ~125 Hz (8 ms interval in firmware)
+**Rate:** 100 Hz (10 ms interval in firmware; BNO055 fusion ceiling)
 **QoS:** `SensorDataQoS` (best effort, volatile)
 **Frame ID:** `imu_link`
 
@@ -29,8 +31,8 @@ IMU data with bias correction and axis mapping applied.
 | `header.frame_id` | string | `"imu_link"` |
 | `linear_acceleration.{x,y,z}` | float64 | m/s², bias-corrected, axis-mapped |
 | `angular_velocity.{x,y,z}` | float64 | rad/s, bias-corrected, axis-mapped |
-| `orientation.{x,y,z,w}` | float64 | **Not estimated** (all zeros) |
-| `orientation_covariance` | float64[9] | Row-major, first element -1.0 (unknown) |
+| `orientation.{x,y,z,w}` | float64 | Fused quaternion from BNO055 (NDOF) |
+| `orientation_covariance` | float64[9] | From config (diagonal, ~0.5° stddev each) |
 | `linear_acceleration_covariance` | float64[9] | From config (diagonal: 0.001) |
 | `angular_velocity_covariance` | float64[9] | From config (diagonal: 0.00001) |
 
@@ -50,7 +52,9 @@ linear_acceleration_corrected = (raw - bias + gravity_compensation) * axis_sign
 
 #### Axis Mapping
 
-Default `imu_axis_sign: [-1.0, 1.0, -1.0]` accounts for IMU mounted 180° rotated about Y-axis (chip Z points down, base_link Z points up).
+Default `imu_axis_sign: [-1.0, -1.0, 1.0]` was carried from the old MPU-6500
+mount (180° about Z). It — and the orientation quaternion convention — must be
+re-validated on the bench after the BNO055 swap before relying on it.
 
 #### Example
 
@@ -83,19 +87,19 @@ orientation:
 
 ### `/imu/mag` (sensor_msgs/msg/MagneticField)
 
-Magnetometer data (if magnetometer present).
+Raw BNO055 magnetometer field (on-die, also fused internally for absolute yaw).
 
-**Rate:** 125 Hz (if publishing)
+**Rate:** 100 Hz (with `/imu`)
 **QoS:** `SensorDataQoS`
 **Frame ID:** `imu_link`
 
 #### Status
 
-**⚠️ DOES NOT PUBLISH on current hardware.**
+Publishes whenever a non-zero reading arrives (the mag register is always
+read; NDOF uses it internally for heading). Field scale and sign follow
+`mag_axis_sign`.
 
-Current IMU (MPU-6500 die on "MPU-9265" breakout) has **no magnetometer**. Topic will not appear in `ros2 topic list`.
-
-#### Fields (if magnetometer were present)
+#### Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -175,7 +179,7 @@ Returns last `hw_status` notification from firmware.
 
 **Example response:**
 ```
-scan=0,ai_ok=true,pca9685_ok=true,mpu9250_ok=true,servo_calls=1234,
+scan=0,ai_ok=true,pca9685_ok=true,imu_ok=true,servo_calls=1234,
 ping_count=567,pwm_write_attempts=1230,pwm_write_fails=0,
 pwm_last_fail_ch=-1,pwm_last_fail_code=0,set_servo_last_len=47,
 set_servo_last_idx=12,pwm_readback_ch0=307
@@ -185,10 +189,10 @@ set_servo_last_idx=12,pwm_readback_ch0=307
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `scan` | int | I2C scan bitmask (0=all present, bit0=PCA9685 missing, bit1=MPU missing) |
+| `scan` | int | I2C scan bitmask (0=all present, bit0=PCA9685 missing, bit1=BNO055 missing) |
 | `ai_ok` | bool | arduino-app-cli health from firmware POV |
 | `pca9685_ok` | bool | `(scan & 1) == 0` (servo controller present) |
-| `mpu9250_ok` | bool | `(scan & 2) == 0` (IMU present) |
+| `imu_ok` | bool | `(scan & 2) == 0` (BNO055 IMU present) |
 | `servo_calls` | int | Total `set_servo_pwms` calls received by firmware |
 | `ping_count` | int | Total `ping` calls received |
 | `pwm_write_attempts` | int | Total PWM write cycles attempted |
@@ -221,11 +225,11 @@ Triggers I2C bus scan on firmware, returns device addresses.
 
 **Example response:**
 ```
-addrs=[64, 104]
+addrs=[64, 40]
 ```
 
 - `64` = 0x40 (PCA9685 servo controller)
-- `104` = 0x68 (MPU9250/MPU6500 IMU)
+- `40` = 0x28 (BNO055 IMU; 0x29 if ADR pin high)
 
 #### Usage
 
@@ -309,19 +313,20 @@ Returns last IMU diagnostic string from firmware.
 
 **Example response:**
 ```
-WHO_AM_I=0x70, expected 0x71 or 0x73 (got MPU-6500 instead of MPU-9250)
-mag_present=false, mag_wia=0x00 (expected 0x48 for AK8963)
-mag_bypass_scan=[64, 104] (no 0x0C found)
-aux_bus_probe=[0, 0, 0, 0] (EXT_SENS_DATA empty, auxiliary I2C master sees nothing)
+chip_id=0xA0,op_mode=0x0c,sys_status=0x04,sys_err=0x00,calib_acc=3,calib_mag=3,calib_gyr=3,calib_sys=3,unit_sel=0x00,axis_cfg=0x24,axis_sign=0x00
 ```
 
-#### IMU Identity
+#### Identity & Calibration
 
-| WHO_AM_I | Chip |
-|----------|------|
-| 0x70 | MPU-6500 (6-axis, no mag) ✅ Current hardware |
-| 0x71 | MPU-9250 (9-axis, has mag) |
-| 0x73 | MPU-9255 (9-axis, has mag) |
+| Field | Meaning |
+|-------|---------|
+| `chip_id` | 0xA0 = BNO055 answering |
+| `op_mode` | 0x00 CONFIG, 0x08 IMU (6-axis rel), 0x0C NDOF (9-axis abs) |
+| `sys_status` | Fusion system state (0x04 = running with fusion, 0x05 = running no fusion) |
+| `sys_err` | Fusion error code (0x00 = none) |
+| `calib_acc/mag/gyr/sys` | Calibration nibbles, each 0..3; `calib_sys` = min of the three |
+| `unit_sel` | Unit selection written at init |
+| `axis_cfg` / `axis_sign` | AXIS_MAP_CONFIG/SIGN (identity 0x24/0x00 = no host remap) |
 
 #### Usage
 
@@ -467,7 +472,7 @@ Orientation quaternion covariance (row-major).
 Acceleration covariance (m/s²)².
 
 **Default:** `[0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001]`
-**Diagonal:** 0.001 (based on MPU9250 datasheet + empirical margin)
+**Diagonal:** 0.001 (inherited from the MPU-6500 era, kept as a safe margin)
 
 #### `angular_velocity_covariance` (float64[9])
 
@@ -508,15 +513,16 @@ Number of IMU samples to collect for accel bias.
 
 Axis flip for chip frame → base_link.
 
-**Default:** `[-1.0, 1.0, -1.0]`
-**Explanation:** IMU mounted 180° about Y-axis (chip Z down, base_link Z up)
+**Default:** `[-1.0, -1.0, 1.0]`
+**Explanation:** Carried over from the old MPU-6500 mount (180° about Z);
+must be re-validated on the bench after the BNO055 swap.
 
 #### `mag_axis_sign` (float64[3])
 
-Magnetometer axis mapping (unused, no mag on current hardware).
+Magnetometer axis mapping (raw BNO055 mag field).
 
 **Default:** `[-1.0, 1.0, -1.0]`
-**Note:** Would need axis permutation (not just sign flip) for real MPU-9250
+**Note:** Same caveat as `imu_axis_sign` — not yet bench-validated.
 
 ---
 
@@ -578,15 +584,17 @@ Connectivity test (not used by node).
 
 ### Inbound (Firmware → Node)
 
-#### `imu` (11 floats)
+#### `imu` (string CSV, 15 fields)
 
-IMU data notification.
+IMU data notification — ONE comma-separated string (a multi-arg notify would
+exceed the router argument limit).
 
-**Format:** `[2, "imu", [ax, ay, az, gx, gy, gz, mx, my, mz, sample, timestamp]]`
+**Format:** `[2, "imu", ["qw,qx,qy,qz,gx,gy,gz,ax,ay,az,mx,my,mz,sample,timestamp"]]`
 **Params:**
-- `ax, ay, az` — Linear acceleration (m/s²)
+- `qw, qx, qy, qz` — Fused orientation quaternion (BNO055)
 - `gx, gy, gz` — Angular velocity (rad/s)
-- `mx, my, mz` — Magnetic field (µT, always 0 on current hardware)
+- `ax, ay, az` — Linear acceleration incl. gravity (m/s²)
+- `mx, my, mz` — Magnetic field (Tesla, raw BNO055)
 - `sample` — Sample counter
 - `timestamp` — Firmware timestamp (ms)
 
@@ -601,14 +609,14 @@ Hardware status notification.
 
 I2C scan result.
 
-**Format:** `[2, "i2c_scan", [64, 104, ...]]`
+**Format:** `[2, "i2c_scan", [64, 40, ...]]`
 **Params:** Device addresses found (7-bit, decimal)
 
 #### `imu_diag` (string)
 
 IMU diagnostic report.
 
-**Format:** `[2, "imu_diag", ["WHO_AM_I=0x70, ..."]]`
+**Format:** `[2, "imu_diag", ["chip_id=0xA0, op_mode=0x0c, calib_sys=3, ..."]]`
 **Params:** Single diagnostic string
 
 #### `servo_diag_result` (string)
@@ -713,5 +721,5 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for comprehensive troubleshooting guide.
 **Quick checks:**
 - No `/imu`: Check I2C scan, verify IMU present
 - Servos won't move: Check PCA9685 in scan, verify external power
-- High latency: Check `ros2 topic hz /imu`, should be ~125 Hz
+- High latency: Check `ros2 topic hz /imu`, should be ~100 Hz
 - Connection fails: Check `ls -l /run/arduino-router/rpc.sock`

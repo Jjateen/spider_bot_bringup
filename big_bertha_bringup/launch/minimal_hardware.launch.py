@@ -19,13 +19,12 @@ Launches the four pieces needed to close the locomotion loop on real hardware,
 nothing more (no EKF, Nav2, or scan-ground filter):
 
     rsp.launch.py            -> /tf (robot_state_publisher, no Gazebo)
-    hardware_bringup.launch -> hardware_bridge_node (servos + raw /imu) and
-                               imu_filter_madgwick (/filtered/imu, orientation)
+    hardware_bringup.launch -> hardware_bridge_node (servos + fused /imu)
     legged_odometry         -> /joint_states (EWMA servo feedback) + /odom
     policy_controller       -> /position_controller/commands (12 joint targets)
 
-The policy expects an orientation-bearing IMU, so imu_topic defaults to the
-Madgwick output (/filtered/imu); override to /imu for raw-only bringup.
+The BNO055 publishes a fused orientation on /imu directly, so imu_topic
+defaults to /imu (no separate /filtered/imu anymore).
 """
 
 import os
@@ -57,7 +56,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument(
-            'imu_topic', default_value='/filtered/imu',
+            'imu_topic', default_value='/imu',
             description='IMU orientation source for policy + leg_odometry'),
         DeclareLaunchArgument(
             'start_enabled', default_value='true',
@@ -72,7 +71,7 @@ def generate_launch_description():
             'publish_jsp': 'false',
             'sim_drive': 'false',
         }),
-        # 2. Bridge (servos + raw /imu) + Madgwick filter (/filtered/imu).
+        # 2. Bridge (servos + fused BNO055 /imu).
         include(bringup_pkg, os.path.join('launch', 'hardware_bringup.launch.py'), {
             'use_sim_time': use_sim_time,
         }),

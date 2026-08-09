@@ -41,7 +41,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 os.path.join(leg_pkg, 'launch', 'legged_odometry.launch.py')),
             launch_arguments={
-                'imu_topic': '/filtered/imu',
+                'imu_topic': '/imu',
                 'use_sim_time': use_sim_time,
                 # leg_odometry owns /joint_states (EWMA-simulated servo feedback);
                 # the bridge's publisher is disabled by default.

@@ -11,7 +11,7 @@ Complete guide for deploying the native C++ hardware bridge to the Arduino UNO Q
 - `arduino-router` service running
 - I2C devices connected:
   - PCA9685 @ 0x40 (servo controller)
-  - MPU9250/MPU6500 @ 0x68 (IMU)
+  - BNO055 @ 0x28 (IMU, 0x29 if ADR pin high)
 - Workspace at `~/ros2_ws/src/spider_bot_bringup`
 
 ### Host-Side (Development Machine)
@@ -119,7 +119,7 @@ ros2 topic list
 # Should include: /imu, /joint_states
 
 ros2 topic hz /imu
-# Should report: ~125 Hz
+# Should report: ~100 Hz
 
 ros2 topic echo /imu --once
 # Should show realistic IMU data
@@ -131,7 +131,7 @@ ros2 service call /hardware_bridge/status std_srvs/srv/Trigger
 # Should return: success=true, message with hardware status
 
 ros2 service call /hardware_bridge/scan_i2c std_srvs/srv/Trigger
-# Should return: addrs=[64, 104] (0x40=PCA9685, 0x68=IMU)
+# Should return: addrs=[64, 40] (0x40=PCA9685, 0x28=BNO055)
 ```
 
 **If all tests pass, proceed to Step 5. If not, see Troubleshooting section.**
@@ -229,7 +229,7 @@ sudo systemctl status hardware-bridge
 
 # 2. Verify IMU publishes
 ros2 topic hz /imu
-# Expect: ~125 Hz
+# Expect: ~100 Hz
 
 # 3. Check hardware status
 ros2 service call /hardware_bridge/status std_srvs/srv/Trigger
@@ -237,7 +237,7 @@ ros2 service call /hardware_bridge/status std_srvs/srv/Trigger
 
 # 4. Quick I2C scan
 ros2 service call /hardware_bridge/scan_i2c std_srvs/srv/Trigger
-# Expect: addrs=[64, 104]
+# Expect: addrs=[64, 40]
 ```
 
 **Full validation:** See [VALIDATION_CHECKLIST.md](VALIDATION_CHECKLIST.md) for comprehensive testing procedure.
@@ -278,16 +278,16 @@ arduino-app-cli app status
 ```bash
 # Check I2C devices present
 ros2 service call /hardware_bridge/scan_i2c std_srvs/srv/Trigger
-# Should return addrs including 104 (0x68)
+# Should return addrs including 40 (0x28)
 
 # Check IMU diagnostic
 ros2 service call /hardware_bridge/imu_diag std_srvs/srv/Trigger
-# Should show WHO_AM_I and device detection
+# Should show chip_id and device detection
 ```
 
 **Solutions:**
 1. **I2C wiring:** Verify SDA/SCL connections, pull-up resistors
-2. **I2C address conflict:** Run scan, ensure 0x68 is the only device at that address
+2. **I2C address conflict:** Run scan, ensure 0x28 is the only device at that address
 3. **Power issue:** Check IMU VCC/GND, measure with multimeter (should be 3.3V or 5V)
 4. **Firmware issue:** Re-upload firmware, check `journalctl -u arduino-app-cli -f`
 5. **Calibration timeout:** Check node logs, ensure robot is stationary during startup
@@ -354,24 +354,22 @@ Check firmware diagnostic counters via `~/status` service.
 IMU is not responding or all data is zero.
 
 **Solutions:**
-1. Check I2C scan finds IMU
-2. Verify IMU power (VCC should be 3.3V or 5V)
-3. Check WHO_AM_I register via `~/imu_diag` service
-4. If IMU is detected but returns all zeros, suspect firmware I2C read issue
+1. Check the I2C scan finds the IMU
+2. Verify IMU power (VCC should be 3.3V or 5V) and that the ~650 ms boot has elapsed
+3. Check `chip_id` (expect 0xA0) and the `calib_*` nibbles via `~/imu_diag`
+4. If IMU is detected but returns zeros, suspect the firmware BNO055 read path
 
-### High Gyro Drift
+### Heading Drift / Uncalibrated Yaw
 
-**Symptom:** `gyro accumulated drift` logs show large values (> 0.1 rad after 10s)
+**Symptom:** `gyro accumulated drift` logs show large values (> 0.1 rad after 10s), or the fused yaw does not hold still.
 
-**Cause:** No magnetometer on this hardware (MPU-6500 instead of MPU-9250), so yaw has no absolute reference.
+**Cause:** On the old MPU-6500 the yaw had no absolute reference. The BNO055 produces an absolute heading only after its magnetometer calibration completes; before that the on-chip fusion behaves like gyro-only, and nearby servo/motor fields can corrupt the heading.
 
 **Mitigation:**
-1. **Increase calibration samples:** Edit config, set `gyro_calibration_samples: 500`
-2. **Ensure stationary startup:** Robot must be perfectly still during calibration
-3. **Temperature stabilization:** Let IMU warm up for 30 seconds before starting node
-4. **Accept limitation:** Without magnetometer, some drift is inevitable
-
-**Long-term solution:** Replace IMU with genuine MPU-9250 or add external magnetometer.
+1. **Complete the mag calibration:** Rotate the chassis in a figure-of-eight while level until `~/imu_diag` reports `calib_mag=3`.
+2. **Mount the IMU clear of interference:** keep the BNO055 away from high-current wiring and servo/motor fields.
+3. **Stationary startup:** keep the robot still during the gyro/accel bias pass (200 samples).
+4. If a specific heading is ever wrong after a known-benign rotation, re-validate `imu_axis_sign` (the swap reused the old board's guess).
 
 ## Rollback Procedure
 
@@ -492,17 +490,17 @@ systemctl status ssh
 
 ### IMU Publish Rate
 
-**Default:** 125 Hz (8 ms interval in sketch)
+**Default:** 100 Hz (10 ms interval in sketch — the BNO055 fusion modes cap at 100 Hz)
 
 **To adjust:**
-Edit `firmware/hardware_bridge_app/sketch/sketch.ino`, line 85:
+Edit `firmware/hardware_bridge_app/sketch/sketch.ino`:
 ```cpp
-static const unsigned long IMU_INTERVAL = 8;  // Change to desired milliseconds
+static const unsigned long IMU_INTERVAL = 10;  // Change to desired milliseconds
 ```
 
 Then re-upload: `./scripts/upload_firmware.sh`
 
-**Recommended:** 125 Hz matches policy controller update rate.
+**Recommended:** 100 Hz is the BNO055 fusion output ceiling; do not raise it.
 
 ### Servo Rate Limiting
 

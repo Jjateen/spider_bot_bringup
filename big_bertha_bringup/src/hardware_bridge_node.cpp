@@ -71,8 +71,10 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   scp.policy_center = declare_parameter<std::vector<double>>(
     "policy_center", {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.57, 1.57, 1.57, 1.57});
 
+  // BNO055 on-chip fusion outputs a full orientation; the covariance below
+  // is a stationary-mount diagonal (~0.5 deg stddev). Fine-tune on the bench.
   orient_cov_ = declare_parameter<std::vector<double>>(
-    "orientation_covariance", {-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+    "orientation_covariance", {0.0001, 0.0, 0.0, 0.0, 0.0001, 0.0, 0.0, 0.0, 0.0001});
   accel_cov_ = declare_parameter<std::vector<double>>(
     "linear_acceleration_covariance", {0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001});
   gyro_cov_ = declare_parameter<std::vector<double>>(
@@ -142,7 +144,8 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   };
   bridge_ = std::make_unique<BridgeRPCClient>(std::move(candidates));
 
-  bridge_->provide("imu", std::bind(&HardwareBridgeNode::on_imu, this, std::placeholders::_1));
+  bridge_->provide_str(
+    "imu", std::bind(&HardwareBridgeNode::on_imu, this, std::placeholders::_1));
   bridge_->provide_str(
     "hw_status", std::bind(&HardwareBridgeNode::on_hw_status, this, std::placeholders::_1));
   bridge_->provide(
@@ -189,7 +192,7 @@ void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPt
   // policy_controller publishes at pd_rate (200 Hz) but the PCA9685 only
   // refreshes at 50 Hz, so three of every four messages are discarded by the
   // hardware anyway. Forwarding all of them costs ~15 kB/s on a 460800 baud
-  // link that the 125 Hz IMU stream already loads to roughly three quarters,
+  // link that the 100 Hz IMU stream already loads to roughly three quarters,
   // and an over-full link is what mis-frames the router. Drop them here
   // rather than at the far end.
   //
@@ -218,24 +221,16 @@ void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPt
 }
 
 // ── Inbound Bridge RPC notifications (client reader thread) ──────────
-void HardwareBridgeNode::on_imu(const std::vector<double> & params)
+void HardwareBridgeNode::on_imu(const std::string & text)
 {
-  // [ax, ay, az, gx, gy, gz, mx, my, mz, sample, ts]
-  if (params.size() < 9) {
+  // The firmware sends the BNO055 sample as ONE comma-separated string
+  // (qw,qx,qy,qz, gx,gy,gz, ax,ay,az, mx,my,mz, sample, ts). A multi-arg
+  // notify would exceed the router's argument limit, same as hw_status.
+  // The parse must not throw (see on_hw_status) — drop malformed payloads.
+  ImuData data;
+  if (!parse_imu_csv(text, data)) {
     return;
   }
-  ImuData data;
-  data.ax = params[0];
-  data.ay = params[1];
-  data.az = params[2];
-  data.gx = params[3];
-  data.gy = params[4];
-  data.gz = params[5];
-  data.mx = params[6];
-  data.my = params[7];
-  data.mz = params[8];
-  data.mag_ok = (std::abs(data.mx) + std::abs(data.my) + std::abs(data.mz)) > 1e-9;
-
   accumulate_calibration(data);
   publish_imu(data);
 }
@@ -281,7 +276,7 @@ void HardwareBridgeNode::on_hw_status(const std::string & text)
   std::string status = "scan=" + std::to_string(scan);
   status += ",ai_ok=" + std::string(params[1] > 0.5 ? "true" : "false");
   status += ",pca9685_ok=" + std::string((scan & 1) == 0 ? "true" : "false");
-  status += ",mpu9250_ok=" + std::string((scan & 2) == 0 ? "true" : "false");
+  status += ",imu_ok=" + std::string((scan & 2) == 0 ? "true" : "false");
   status += ",servo_calls=" + std::to_string(static_cast<int>(params[2]));
   status += ",ping_count=" + std::to_string(static_cast<int>(params[3]));
   status += ",pwm_write_attempts=" + std::to_string(static_cast<int>(params[4]));
@@ -443,6 +438,14 @@ void HardwareBridgeNode::publish_imu(const ImuData & data)
   msg.angular_velocity.x = gx_corr * imu_axis_sign_[0];
   msg.angular_velocity.y = gy_corr * imu_axis_sign_[1];
   msg.angular_velocity.z = gz_corr * imu_axis_sign_[2];
+
+  // Fused orientation straight from the BNO055. The physical mount rotation
+  // must keep the quaternion consistent with imu_axis_sign; validate both
+  // together on the bench (see hardware_bridge.yaml imu_axis_sign).
+  msg.orientation.w = data.qw;
+  msg.orientation.x = data.qx;
+  msg.orientation.y = data.qy;
+  msg.orientation.z = data.qz;
 
   std::copy(orient_cov_.begin(), orient_cov_.end(), msg.orientation_covariance.begin());
   std::copy(accel_cov_.begin(), accel_cov_.end(), msg.linear_acceleration_covariance.begin());

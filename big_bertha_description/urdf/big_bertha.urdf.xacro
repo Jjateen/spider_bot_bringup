@@ -12,7 +12,7 @@
     - a gz_ros2_control system plugin,
     - a 12-joint position ros2_control block,
     - a gz 2D lidar sensor on lidar_link (YDLidar X2),
-    - a gz IMU sensor on imu_link (MPU6050, identity rotation vs base_link,
+    - a gz IMU sensor on imu_link (BNO055, identity rotation vs base_link,
       matching training's ImuCfg convention),
     - gz friction/material surface properties.
 
@@ -420,14 +420,14 @@
     <visual>
       <origin xyz="0 0.018 0.012" rpy="0 0 1.57"/>
       <geometry>
-        <mesh filename="${mesh_pkg}/MPU_9265.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="${mesh_pkg}/BNO055.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
       <origin xyz="0 0.018 0.012" rpy="0 0 1.57"/>
       <geometry>
-        <mesh filename="${mesh_pkg}/MPU_9265.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="${mesh_pkg}/BNO055.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
@@ -549,9 +549,9 @@
     </collision>
   </link>
 
-  <!-- IMU frame (MPU6050 on the body; hardware BOM name). No mesh.
+  <!-- IMU frame (BNO055 on the body; hardware BOM name). No mesh.
        Identity rotation vs base_link, matching training's ImuCfg
-       convention (not the MPU_9265 mesh's own cosmetic mount rotation). -->
+       convention (not the BNO055.stl mesh's own cosmetic mount rotation). -->
   <link name="imu_link">
     <inertial>
       <origin xyz="0 0 0" rpy="0 0 0"/>
@@ -1094,8 +1094,8 @@
 
   <!-- IMU stays a direct base_link child (not chained through circuit_box)
        so its rotation is identity vs base_link, matching training's own
-       ImuCfg convention (rot=(1,0,0,0)) rather than the MPU_9265 mesh's own
-       cosmetic mount rotation inside circuit_box_link. -->
+       ImuCfg convention (rot=(1,0,0,0)) rather than the BNO055.stl mesh's
+       own cosmetic mount rotation inside circuit_box_link. -->
   <joint name="imu_joint" type="fixed">
     <origin xyz="0.0657 -0.0657 0.0614" rpy="0 0 0"/>
     <parent link="base_link"/>

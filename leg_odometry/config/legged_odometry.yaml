@@ -31,9 +31,9 @@
     publish_tf: false
     velocity_source: "imu_dead_reckon"
     drift_damping: 0.98
-    # NOTE: drift_damping is applied per IMU sample, not per second. At 125 Hz
-    # (dt=0.008s), 0.98 gives a ~0.4 s velocity time constant. At 100 Hz the
-    # same 0.98 gives ~0.5 s. The effective decay rate changes with IMU rate.
+    # NOTE: drift_damping is applied per IMU sample, not per second. At 100 Hz
+    # (dt=0.01s), 0.98 gives a ~0.5 s velocity time constant. The effective
+    # decay rate changes with IMU rate.
     # Now replaced by ZUPT (below) — kept for backwards compat only.
     # ZUPT (Zero-Velocity Update): when the robot is stationary (all joints
     # still + no linear acceleration), reset the dead-reckon velocity to zero.
