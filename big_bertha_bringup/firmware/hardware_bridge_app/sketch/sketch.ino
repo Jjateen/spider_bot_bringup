@@ -26,7 +26,10 @@
 #include <vector>
 
 // ── I2C device addresses ──────────────────────────────────────────────
-static const uint8_t BNO055_ADDR = 0x28;  // BNO055 IMU (0x29 when ADR pin high)
+// g_bno_addr is set at init to whichever of 0x28/0x29 actually answers:
+// the BNO055 answers at 0x28 by default and at 0x29 when its ADR pin is
+// high, and the two are not interchangeable on a given breakout.
+static uint8_t g_bno_addr = 0x28;
 static const uint8_t PCA9685_ADDR = 0x40;
 
 // ── PCA9685 register map ──────────────────────────────────────────────
@@ -214,14 +217,27 @@ static uint8_t g_bno_op_mode = 0x00;
 static uint8_t g_bno_axis_config = 0x00;
 static uint8_t g_bno_axis_sign = 0x00;
 
-// Boot handshake. The BNO055 needs ~650 ms after power-on before it
-// answers on I2C at all; polling keeps setup() from racing it. Register
-// writes outside CONFIG mode are silently dropped, so configuration is
-// done in CONFIG mode and only then switched to NDOF.
+// Boot handshake. Pick whichever address answers (0x28 default, 0x29 when
+// the ADR pin is high), then wait out the ~650 ms boot until CHIP_ID reads
+// 0xA0. A bare write-ACK is NOT enough: the part can ACK address
+// transactions while still booting and silently drop configuration writes,
+// which would read back as a phantom "IMU missing".
 static bool bno055_wait_ready()
 {
-  for (int i = 0; i < 20; ++i) {
-    if (i2c_write_byte(BNO055_ADDR, 0x07, 0x00)) {  // PAGE_ID -> page 0
+  static const uint8_t candidates[2] = {0x28, 0x29};
+  uint8_t chosen = 0;
+  for (int i = 0; i < 2; ++i) {
+    if (i2c_write_byte(candidates[i], 0x07, 0x00)) {  // PAGE_ID -> page 0
+      chosen = candidates[i];
+      break;
+    }
+  }
+  if (chosen == 0) return false;
+
+  g_bno_addr = chosen;
+  for (int i = 0; i < 40; ++i) {
+    uint8_t chip = 0;
+    if (i2c_read_bytes(g_bno_addr, 0x00, &chip, 1) && chip == 0xA0) {
       return true;
     }
     delay(50);
@@ -234,20 +250,20 @@ static bool bno055_init()
   if (!bno055_wait_ready()) return false;
   delay(100);  // datasheet: writes right after first ACK can be silently dropped
 
-  if (!i2c_write_byte(BNO055_ADDR, 0x3D, 0x00)) return false;  // OPR_MODE = CONFIG
+  if (!i2c_write_byte(g_bno_addr, 0x3D, 0x00)) return false;  // OPR_MODE = CONFIG
   delay(25);
-  i2c_write_byte(BNO055_ADDR, 0x3B, 0x00);  // UNIT_SEL: m/s^2 accel, dps gyro, Windows
-  i2c_write_byte(BNO055_ADDR, 0x3F, 0x00);  // SYS_TRIGGER: reset clear, no self-test
-  i2c_write_byte(BNO055_ADDR, 0x3E, 0x00);  // PWR_MODE: NORMAL
+  i2c_write_byte(g_bno_addr, 0x3B, 0x00);  // UNIT_SEL: m/s^2 accel, dps gyro, Windows
+  i2c_write_byte(g_bno_addr, 0x3F, 0x00);  // SYS_TRIGGER: reset clear, no self-test
+  i2c_write_byte(g_bno_addr, 0x3E, 0x00);  // PWR_MODE: NORMAL
   delay(20);
 
-  i2c_read_bytes(BNO055_ADDR, 0x00, &g_bno_chip_id, 1);
+  i2c_read_bytes(g_bno_addr, 0x00, &g_bno_chip_id, 1);
   if (g_bno_chip_id != 0xA0) return false;
 
   // NDOF: 9-axis absolute orientation. AXIS_MAP_CONFIG/SIGN are left at
   // their identity power-on defaults; mounting signs are applied on the
   // host (imu_axis_sign) so this board needs no part-specific trans.
-  if (!i2c_write_byte(BNO055_ADDR, 0x3D, 0x0C)) return false;  // OPR_MODE = NDOF
+  if (!i2c_write_byte(g_bno_addr, 0x3D, 0x0C)) return false;  // OPR_MODE = NDOF
   delay(30);
   return true;
 }
@@ -262,21 +278,21 @@ static bool bno055_read(
   uint8_t gyro[6] = {0};  // GYR at 0x14..0x19, 16 LSB = 1 dps
   uint8_t acc[6] = {0};   // ACC at 0x08..0x0D, 100 LSB = 1 m/s^2
   uint8_t mag[6] = {0};   // MAG at 0x0E..0x13, 16 LSB = 1 uT
-  if (!i2c_read_bytes(BNO055_ADDR, 0x20, quat, 8)) {
+  if (!i2c_read_bytes(g_bno_addr, 0x20, quat, 8)) {
     qw = qx = qy = qz = gx = gy = gz = ax = ay = az = mx = my = mz = 0.0f;
     return false;
   }
-  if (!i2c_read_bytes(BNO055_ADDR, 0x14, gyro, 6)) {
+  if (!i2c_read_bytes(g_bno_addr, 0x14, gyro, 6)) {
     qw = qx = qy = qz = gx = gy = gz = ax = ay = az = mx = my = mz = 0.0f;
     return false;
   }
-  if (!i2c_read_bytes(BNO055_ADDR, 0x08, acc, 6)) {
+  if (!i2c_read_bytes(g_bno_addr, 0x08, acc, 6)) {
     qw = qx = qy = qz = gx = gy = gz = ax = ay = az = mx = my = mz = 0.0f;
     return false;
   }
   // Magnetometer is optional: NDOF reads it internally for absolute yaw,
   // and whether the host publishes a field is its own call.
-  i2c_read_bytes(BNO055_ADDR, 0x0E, mag, 6);
+  i2c_read_bytes(g_bno_addr, 0x0E, mag, 6);
 
   // Quaternion: each component is on a 2^14 = 1.0 scale.
   qw = ((int16_t)((quat[1] << 8) | quat[0])) / 16384.0f;
@@ -307,14 +323,14 @@ static bool bno055_read(
 // converges over time and the CALIB_STAT nibbles are the health readout.
 static void read_status_registers()
 {
-  i2c_read_bytes(BNO055_ADDR, 0x00, &g_bno_chip_id, 1);
-  i2c_read_bytes(BNO055_ADDR, 0x35, &g_bno_calib_stat, 1);
-  i2c_read_bytes(BNO055_ADDR, 0x39, &g_bno_sys_status, 1);
-  i2c_read_bytes(BNO055_ADDR, 0x3A, &g_bno_sys_err, 1);
-  i2c_read_bytes(BNO055_ADDR, 0x3B, &g_bno_unit_sel, 1);
-  i2c_read_bytes(BNO055_ADDR, 0x3D, &g_bno_op_mode, 1);
-  i2c_read_bytes(BNO055_ADDR, 0x41, &g_bno_axis_config, 1);
-  i2c_read_bytes(BNO055_ADDR, 0x42, &g_bno_axis_sign, 1);
+  i2c_read_bytes(g_bno_addr, 0x00, &g_bno_chip_id, 1);
+  i2c_read_bytes(g_bno_addr, 0x35, &g_bno_calib_stat, 1);
+  i2c_read_bytes(g_bno_addr, 0x39, &g_bno_sys_status, 1);
+  i2c_read_bytes(g_bno_addr, 0x3A, &g_bno_sys_err, 1);
+  i2c_read_bytes(g_bno_addr, 0x3B, &g_bno_unit_sel, 1);
+  i2c_read_bytes(g_bno_addr, 0x3D, &g_bno_op_mode, 1);
+  i2c_read_bytes(g_bno_addr, 0x41, &g_bno_axis_config, 1);
+  i2c_read_bytes(g_bno_addr, 0x42, &g_bno_axis_sign, 1);
 }
 
 // ── Diagnostics ───────────────────────────────────────────────────────
@@ -324,7 +340,7 @@ static int i2c_scan_devices()
   int missing = 0;
   Wire.beginTransmission(PCA9685_ADDR);
   if (Wire.endTransmission() != 0) missing |= 1;
-  Wire.beginTransmission(BNO055_ADDR);
+  Wire.beginTransmission(g_bno_addr);
   if (Wire.endTransmission() != 0) missing |= 2;
   return missing;
 }
