@@ -4,7 +4,7 @@
 
   Provides:
     - a 2D lidar (YDLidar X2 class) on lidar_link  -> gz topic "scan"
-    - an IMU (BNO055 class) on imu_link           -> gz topic "imu"
+    - an IMU (MPU9250 class) on imu_link           -> gz topic "imu"
     - per-link friction/material surface properties.
 
   The ros_gz_bridge (simulation module) maps these gz topics onto the ROS 2
@@ -159,7 +159,7 @@
   </gazebo>
 
   <!-- ============================= IMU =============================== -->
-  <!-- BNO055 class IMU on imu_link. Published on gz topic "imu",
+  <!-- MPU9250 class IMU on imu_link. Published on gz topic "imu",
        frame_id = imu_link. -->
   <gazebo reference="imu_link">
     <material>Gazebo/DarkGrey</material>
