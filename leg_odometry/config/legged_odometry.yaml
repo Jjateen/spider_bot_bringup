@@ -41,7 +41,12 @@
     # damping bled steady walking velocity to zero; ZUPT only resets when the
     # robot is actually not moving, preserving velocity during walking.
     stationary_joint_vel_threshold: 0.02   # rad/s per joint
-    stationary_accel_threshold: 0.5        # m/s^2 deviation from 1g
+    # Real IMU accel magnitude at rest is 11.07 vs 9.81 (see hardware_bridge.yaml),
+    # and the boot-time bias calibration leaves a residual that varies run-to-run
+    # (measured 0.03-1.7 m/s^2), so a tight 0.5 gate blocks ZUPT and idle odom
+    # drifts. 2.0 still rejects real motion while tolerating the calibration
+    # variance. The joints_still gate (below) is the primary stationary signal.
+    stationary_accel_threshold: 2.0        # m/s^2 deviation from 1g
     stationary_samples: 10                 # consecutive IMU samples (~80 ms @125Hz)
     # Servo dynamics model: EWMA time constant (seconds) matching MG995 response.
     # tau=0.06 limits filtered position rate to ~6.5 rad/s (servo's max speed),

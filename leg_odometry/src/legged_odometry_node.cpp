@@ -90,6 +90,11 @@ public:
     // no interleaved timer stream.
     init_timer_ =
       create_wall_timer(200ms, std::bind(&LeggedOdometryNode::publish_initial_joint_states, this));
+
+    // Dense odom->base_link tf (50 Hz) so slam/Nav2 always have a fresh odom
+    // transform regardless of the IMU delivery rate (see broadcast_odom_tf).
+    odom_tf_timer_ = create_wall_timer(
+      20ms, [this]() { broadcast_odom_tf(this->now()); });
   }
 
 private:
@@ -177,7 +182,11 @@ private:
     }
 
     double dt = (now - last_imu_time_).seconds();
-    if (dt <= 0.0 || dt > 0.1) {
+    // dt <= 0 rejects reordered/stale stamps; dt > 1.0 rejects long gaps (startup
+    // or a dropped stream). Was 0.1, which silently dropped everything on real
+    // hardware: the router/bridge delivers IMU at ~3.5 Hz under load (dt ~0.29 s),
+    // so no /odom was ever published and the odom frame never appeared.
+    if (dt <= 0.0 || dt > 1.0) {
       last_imu_time_ = now;
       return;
     }
@@ -200,8 +209,21 @@ private:
     // velocity to zero and standing drift accumulates unbounded.
     if (is_robot_stationary(msg)) {
       velocity = tf2::Vector3(0.0, 0.0, 0.0);
+      // Freeze the dead-reckoned position while stationary. Zeroing only velocity
+      // is not enough: the world-frame accel still carries a small residual bias
+      // (gravity projected through the IMU orientation), so position recomputes
+      // as last_position + vel*dt every sample and creeps linearly even at rest.
+      // Anchor at the pose where the robot stopped and hold it until it moves.
+      if (!zupt_active_) {
+        zupt_anchor_ = position;
+        zupt_active_ = true;
+      } else {
+        position = zupt_anchor_;
+      }
       position.setZ(0.0);
       last_zupt_time_ = now;
+    } else {
+      zupt_active_ = false;
     }
 
     auto odom = nav_msgs::msg::Odometry();
@@ -251,25 +273,35 @@ private:
 
     odom_pub_->publish(odom);
 
-    if (publish_tf_) {
-      geometry_msgs::msg::TransformStamped tf;
-      tf.header.stamp = msg->header.stamp;
-      tf.header.frame_id = odom_frame_;
-      tf.child_frame_id = base_frame_;
-      tf.transform.translation.x = position.x();
-      tf.transform.translation.y = position.y();
-      tf.transform.translation.z = position.z();
-      tf.transform.rotation.x = orientation.x();
-      tf.transform.rotation.y = orientation.y();
-      tf.transform.rotation.z = orientation.z();
-      tf.transform.rotation.w = orientation.w();
-      tf_broadcaster_->sendTransform(tf);
-    }
-
     last_imu_time_ = now;
     last_orientation_ = orientation;
     last_velocity_ = velocity;
     last_position_ = position;
+  }
+
+  // Publish odom -> base_link at a fixed high rate, decoupled from the IMU
+  // callback. On hardware the IMU is delivered at only ~3.5 Hz effective, so a
+  // tf stamped per-IMU-sample leaves gaps that slam_toolbox's scan message
+  // filter can't cross (scans at 10 Hz fall in the future of the newest tf and
+  // get dropped — "queue is full"). Re-broadcasting the latest pose at 50 Hz
+  // gives the tf a dense timeline so every scan transforms cleanly.
+  void broadcast_odom_tf(const rclcpp::Time & stamp)
+  {
+    if (!publish_tf_ || last_imu_time_.nanoseconds() == 0) {
+      return;
+    }
+    geometry_msgs::msg::TransformStamped tf;
+    tf.header.stamp = stamp;
+    tf.header.frame_id = odom_frame_;
+    tf.child_frame_id = base_frame_;
+    tf.transform.translation.x = last_position_.x();
+    tf.transform.translation.y = last_position_.y();
+    tf.transform.translation.z = last_position_.z();
+    tf.transform.rotation.x = last_orientation_.x();
+    tf.transform.rotation.y = last_orientation_.y();
+    tf.transform.rotation.z = last_orientation_.z();
+    tf.transform.rotation.w = last_orientation_.w();
+    tf_broadcaster_->sendTransform(tf);
   }
 
   void compute_imu_dead_reckon(
@@ -326,10 +358,11 @@ private:
   bool is_robot_stationary(const sensor_msgs::msg::Imu::SharedPtr & msg)
   {
     bool joints_still = true;
+    double max_joint_vel = 0.0;
     for (size_t i = 0; i < 12; ++i) {
+      max_joint_vel = std::max(max_joint_vel, std::abs(last_joint_velocities_[i]));
       if (std::abs(last_joint_velocities_[i]) > stationary_joint_vel_threshold_) {
         joints_still = false;
-        break;
       }
     }
 
@@ -337,7 +370,15 @@ private:
     double ay = msg->linear_acceleration.y;
     double az = msg->linear_acceleration.z;
     double accel_norm = std::sqrt(ax * ax + ay * ay + az * az);
-    bool accel_still = std::abs(accel_norm - 9.81) < stationary_accel_threshold_;
+    double accel_dev = std::abs(accel_norm - 9.81);
+    bool accel_still = accel_dev < stationary_accel_threshold_;
+
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "ZUPT diag: joints=%s (max_vel=%.4f thresh=%.3f) accel=%s (dev=%.3f thresh=%.3f) "
+      "counter=%d",
+      joints_still ? "yes" : "no", max_joint_vel, stationary_joint_vel_threshold_,
+      accel_still ? "yes" : "no", accel_dev, stationary_accel_threshold_, stationary_counter_);
 
     if (joints_still && accel_still) {
       stationary_counter_++;
@@ -366,6 +407,7 @@ private:
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   rclcpp::TimerBase::SharedPtr init_timer_;
+  rclcpp::TimerBase::SharedPtr odom_tf_timer_;
   bool have_cmd_{false};
   int init_publishes_{0};
 
@@ -396,6 +438,8 @@ private:
   tf2::Quaternion last_orientation_;
   tf2::Vector3 last_velocity_{0.0, 0.0, 0.0};
   tf2::Vector3 last_position_{0.0, 0.0, 0.0};
+  bool zupt_active_{false};
+  tf2::Vector3 zupt_anchor_{0.0, 0.0, 0.0};
 };
 
 int main(int argc, char ** argv)

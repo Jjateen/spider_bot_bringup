@@ -18,12 +18,13 @@ Launch the full Big Bertha autonomy stack on real hardware.
 Data-flow order (see PLAN.md sec 3):
 
     description -> hardware_bridge -> locomotion -> leg_odometry
-                -> state_estimation -> {mapping | localization}
+                -> {mapping | localization}
                 -> perception -> planning
 
 The stack reuses the simulation sub-launches from big_bertha_sim_bringup with
 use_sim_time:=false. Only the bottom layer changes — real sensor drivers and a
-servo bridge replace the Gazebo + ros_gz_bridge simulation layer.
+servo bridge replace the Gazebo + ros_gz_bridge simulation layer. There is no
+EKF: leg_odometry (publish_tf:=true) owns ``odom -> base_link`` directly.
 
 Default mode is SLAM (live mapping) since there is no pre-saved map in the real
 world. Set slam:=false for known-map (AMCL) mode with a saved map.
@@ -128,23 +129,19 @@ def generate_launch_description():
     # leg_odometry owns /joint_states: its EWMA simulates the MG995 lag, which
     # is the policy's joint feedback on hardware (the bridge publishes raw
     # commands; feeding those back would close a positive-feedback loop).
+    # publish_tf:=true makes leg_odometry own odom -> base_link too (there is
+    # no EKF in the hardware bringup), so slam_toolbox/Nav2 get an odom frame.
     leg_odom = include(
         leg_pkg,
         os.path.join('launch', 'legged_odometry.launch.py'),
         {
             'imu_topic': imu_topic,
             'publish_joint_states': 'true',
+            'publish_tf': 'true',
         },
     )
 
-    # ── 5. State estimation: robot_localization EKF ───────────────────
-    state_estimation = include(
-        sim_pkg,
-        os.path.join('launch', 'state_estimation', 'ekf.launch.py'),
-        {'use_sim_time': use_sim_time},
-    )
-
-    # ── 6. map->odom: SLAM (live mapping, default) or AMCL ───────────
+    # ── 5. map->odom: SLAM (live mapping, default) or AMCL ───────────
     mapping = include(
         sim_pkg,
         os.path.join('launch', 'mapping', 'slam.launch.py'),
@@ -162,16 +159,25 @@ def generate_launch_description():
         condition=UnlessCondition(slam),
     )
 
-    # ── 7. Perception: IMU-gated scan ground filter ──────────────────
+    # ── 6. Perception: IMU-gated scan ground filter ──────────────────
     scan_filter = Node(
         package='big_bertha_sim_bringup',
         executable='scan_ground_filter',
         name='scan_ground_filter',
         output='screen',
-        parameters=[{'use_sim_time': use_sim_time, 'imu_topic': imu_topic}],
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'imu_topic': imu_topic,
+            # Real IMU/scan stamps are ~90 ms apart; on the loaded UNO Q the SBC
+            # starves callbacks and they spike to ~0.3-0.35 s, so a tight bound
+            # makes the filter pass scans through unfiltered. 0.45 covers the
+            # load spikes while staying under the ~0.7 s gait period (body tilt
+            # is small, so a slightly old attitude still culls floor correctly).
+            'imu_max_age': 0.45,
+        }],
     )
 
-    # ── 8. Planning: Nav2 servers ─────────────────────────────────────
+    # ── 7. Planning: Nav2 servers ─────────────────────────────────────
     planning = include(
         sim_pkg,
         os.path.join('launch', 'planning', 'nav2.launch.py'),
@@ -198,7 +204,6 @@ def generate_launch_description():
         imu_filter,
         locomotion,
         leg_odom,
-        state_estimation,
         mapping,
         localization,
         scan_filter,
