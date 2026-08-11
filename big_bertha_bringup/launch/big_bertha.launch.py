@@ -61,6 +61,9 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     map_yaml = LaunchConfiguration('map')
     imu_topic = LaunchConfiguration('imu_topic')
+    x = LaunchConfiguration('x')
+    y = LaunchConfiguration('y')
+    yaw = LaunchConfiguration('yaw')
 
     def include(pkg_dir, rel_path, args, condition=None):
         return IncludeLaunchDescription(
@@ -155,6 +158,9 @@ def generate_launch_description():
             'use_sim_time': use_sim_time,
             'map': map_yaml,
             'localization': 'amcl',
+            'x': x,
+            'y': y,
+            'yaw': yaw,
         },
         condition=UnlessCondition(slam),
     )
@@ -198,6 +204,15 @@ def generate_launch_description():
             'imu_topic', default_value='/filtered/imu',
             description='Orientation source for hardware consumers '
                         '(filtered Imu from imu_filter_madgwick)'),
+        DeclareLaunchArgument(
+            'x', default_value='0.0',
+            description='AMCL initial pose x (known-map mode)'),
+        DeclareLaunchArgument(
+            'y', default_value='0.0',
+            description='AMCL initial pose y (known-map mode)'),
+        DeclareLaunchArgument(
+            'yaw', default_value='0.0',
+            description='AMCL initial pose yaw (known-map mode)'),
 
         rsp,
         bridge,
