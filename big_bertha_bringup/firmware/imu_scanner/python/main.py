@@ -15,7 +15,7 @@
 #
 # IMU Scanner — standalone diagnostic tool for the Big Bertha UNO Q.
 #
-# Probes the BNO055 and PCA9685 on the M33's I2C bus via Bridge RPC.
+# Probes the MPU9250 and PCA9685 on the M33's I2C bus via Bridge RPC.
 # Runs in continuous polling mode — output goes to logs (no stdin).
 #
 # Run:
@@ -43,11 +43,10 @@ pca_result = None
 # ── Bridge RPC handlers ──────────────────────────────────────────────────
 
 
-def on_imu_data(found, qw, qx, qy, qz, ax, ay, az, gx, gy, gz):
+def on_imu_data(found, ax, ay, az, gx, gy, gz):
     global imu_data
     imu_data = {
         'found': bool(found),
-        'qw': qw, 'qx': qx, 'qy': qy, 'qz': qz,
         'ax': ax, 'ay': ay, 'az': az,
         'gx': gx, 'gy': gy, 'gz': gz,
     }
@@ -77,12 +76,11 @@ def log_imu():
     if r['found']:
         print(
             f'[imu] FOUND'
-            f'  qw={r["qw"]:7.4f} qx={r["qx"]:7.4f} qy={r["qy"]:7.4f} qz={r["qz"]:7.4f}'
             f'  ax={r["ax"]:7.3f}  ay={r["ay"]:7.3f}  az={r["az"]:7.3f}'
             f'  gx={r["gx"]:7.4f}  gy={r["gy"]:7.4f}  gz={r["gz"]:7.4f}'
         )
     else:
-        print('[imu] NOT FOUND  at 0x28')
+        print('[imu] NOT FOUND  at 0x68')
 
 
 def log_bus():
@@ -91,7 +89,7 @@ def log_bus():
     if not bus_scan:
         print('[bus] No I2C devices found — bus may be locked')
         return
-    names = {0x40: 'PCA9685', 0x28: 'BNO055', 0x29: 'BNO055'}
+    names = {0x40: 'PCA9685', 0x68: 'MPU9250'}
     for addr in sorted(bus_scan):
         label = names.get(addr, '')
         line = f'[bus] 0x{addr:02X}'

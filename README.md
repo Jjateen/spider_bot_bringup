@@ -79,7 +79,7 @@ ros2 launch big_bertha_sim_bringup rviz.launch.py config:=planning
 #                     control: /cmd_vel vs /odom + spider_msgs/PolicyStatus)
 ros2 launch big_bertha_sim_bringup plotjuggler.launch.py layout:=control
 
-# AHRS 3D visualizer (real hardware — orientation from /imu, fused BNO055)
+# AHRS 3D visualizer (real hardware — orientation from /filtered/imu)
 ros2 launch ahrs visualizer.launch.py use_hardware:=true
 
 # AHRS 3D visualizer (simulation — orientation from /imu directly)
@@ -88,13 +88,14 @@ ros2 run ahrs ahrs_visualizer --topic /imu
 
 Configs live under `big_bertha_sim_bringup/config/{rviz,plotjuggler}/`.
 
-> **Note:** Both hardware (fused BNO055) and simulation publish orientation directly on `/imu`.
-> The AHRS config defaults to `/imu` on hardware; no `/filtered/imu` exists anymore.
+> **Note:** In simulation the IMU publishes orientation directly on `/imu`, but the AHRS
+> config defaults to `/filtered/imu` (the Madgwick filter output used on hardware).
+> Use `--topic /imu` when running against a simulated robot.
 
 ## Hardware target
 
 Arduino UNO Q (4 GB, ROS 2 Jazzy, **arm64**) · 3D-printed frame · 12× MG995 servos ·
-1× YDLidar X2 · 1× BNO055 IMU. (Hardware bringup is future work; the arm64 CI leg
+1× YDLidar X2 · 1× MPU9250 IMU. (Hardware bringup is future work; the arm64 CI leg
 exists because the deploy target is arm64.)
 
 ### Physical Params
