@@ -549,6 +549,66 @@ accel_calibration_samples: 200
 4. **Startup calibration required:** Robot must be stationary for 2-3 seconds at node start
 5. **No runtime reconfiguration:** Parameter changes require node restart
 
+## Full-Stack Operation Flow (Autonomy Stack on Real Hardware)
+
+The full stack runs **entirely on the board** (operate via SSH). Data flow:
+
+```
+arduino-router (systemd)            -> MCU <-> bridge RPC (/var/run/arduino-router.sock)
+hardware_bridge_node                -> /imu (raw MPU-9250, 125 Hz)
+imu_filter_madgwick                 -> /filtered/imu (orientation, /imu_topic default)
+leg_odometry (publish_tf:=true)     -> /joint_states + odom->base_link (/odom)
+ydlidar_ros2_driver  [SEPARATE]     -> /scan (YDLidar X2)
+scan_ground_filter                  -> /scan_filtered (IMU-gated floor culling)
+slam_toolbox  |  AMCL (map->odom)   -> /map, map->odom
+Nav2 (nav2.launch.py)               -> /cmd_vel
+policy_controller                   -> /position_controller/commands (12 joints)
+hardware_bridge_node                -> PCA9685 servos
+```
+
+### Bringup order (each step has a readiness gate before the next)
+
+1. **Router up** — `systemctl status arduino-router` → active, socket at
+   `/var/run/arduino-router.sock`.
+2. **Firmware streaming** — `arduino-app-cli app list` shows
+   `hardware_bridge_app` running; `./scripts/upload_firmware.sh` if not.
+   Gate: `/imu` streams ~125 Hz.
+3. **Bridge + Madgwick** — `~/ros2_ws/launch_hardware_bringup.sh` (sources the
+   DDS env and starts `hardware_bringup.launch.py`: bridge + madgwick).
+   Gate: `/filtered/imu` has a non-degenerate orientation quaternion.
+4. **Lidar (SEPARATE step — not in any launch file)** —
+   `ros2 launch ydlidar_ros2_driver ydlidar_launch.py` using
+   `params/ydlidar.yaml` (`frame_id: lidar_link`, matches the URDF).
+   Gate: `ros2 topic hz /scan` ≈ 10 Hz, `frame_id: lidar_link`.
+   > **Hardware note:** a YDLidar X2 must be physically connected; verify
+   > `ls /dev/ttyUSB*` (currently **no lidar device is present on the board**).
+5. **Full stack** — `ros2 launch big_bertha_bringup big_bertha.launch.py slam:=true`
+   (SLAM default on hardware; `slam:=false` = known-map/AMCL). This launches
+   rsp, bridge, policy, leg_odometry, mapping|localization, scan_ground_filter
+   and Nav2. It does **not** start the lidar.
+   Gates: `ros2 topic hz /scan_filtered` ≈ 10 Hz; `tf` has `map -> odom ->
+   base_link`; Nav2 lifecycle nodes all `active`.
+
+### Readiness gate cheat-sheet
+
+```bash
+ros2 topic hz /imu             # ~125 Hz (raw MPU)
+ros2 topic hz /filtered/imu    # ~125 Hz (Madgwick orientation)
+ros2 topic hz /scan            # ~10 Hz (lidar)
+ros2 topic hz /scan_filtered   # ~10 Hz (ground filter)
+ros2 run tf2_ros tf2_echo map base_link   # map->odom->base_link chain
+ros2 lifecycle get /slam_toolbox get_state  # active
+ros2 node list                 # all 5 Nav2 servers present
+```
+
+### Cross-machine ROS discovery (dev machine <-> board)
+
+- Multicast discovery does **not** cross this WiFi (AP client isolation), so
+  cross-machine `ros2` topics (e.g. dev-side RViz) are **not available**.
+- Operate the stack via SSH on the board (this is the supported flow).
+- Board DDS config: `~/ros2_ws/fastdds_shm_udp.xml` (Fast DDS, UDP whitelisted
+  to `wlan0` + `tailscale0`); local same-host discovery works.
+
 ## Next Steps After Deployment
 
 1. **Run full validation:** Complete [VALIDATION_CHECKLIST.md](VALIDATION_CHECKLIST.md)
