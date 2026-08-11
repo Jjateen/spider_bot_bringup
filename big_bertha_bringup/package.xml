@@ -5,9 +5,9 @@
   <version>0.1.0</version>
   <description>
     Hardware bringup for the physical Big Bertha quadruped (Arduino UNO Q,
-    MG995 servos, YDLidar X2, BNO055). The hardware_bridge_node talks
+    MG995 servos, YDLidar X2, MPU6050). The hardware_bridge_node talks
     directly to the arduino-router MsgPack-RPC unix socket (Bridge RPC) to
-    drive the PCA9685 servos and read the fused BNO055 IMU on the STM32U585
+    drive the PCA9685 servos and read the MPU IMU on the STM32U585
     co-processor — no TCP, no Python relay, no Docker. The autonomy stack
     (state_estimation, mapping, localization, planning) is hardware-agnostic
     and reused with use_sim_time:=false.
@@ -26,6 +26,7 @@
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>big_bertha_description</exec_depend>
   <exec_depend>big_bertha_policy_controller</exec_depend>
+  <exec_depend>imu_filter_madgwick</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>leg_odometry</exec_depend>

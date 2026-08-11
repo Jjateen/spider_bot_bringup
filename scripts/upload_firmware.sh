@@ -158,5 +158,10 @@ fi
 
 echo ""
 say DONE "Firmware upload complete — sketch flashed, router healthy"
-echo "  I2C devices: PCA9685 @ 0x40 (64), BNO055 @ 0x28 (40)"
+# Report what the MCU actually found, rather than asserting it. The previous
+# version printed a hardcoded device list unconditionally, so anyone running
+# this was told the IMU was present whether or not it existed. That cost real
+# debugging time during the BNO055 investigation.
+echo "  Verify devices with:  ros2 service call /hardware_bridge/status std_srvs/srv/Trigger"
+echo "  (scan bit0 = PCA9685 missing, bit1 = IMU missing)"
 echo "  Start the bridge: ros2 launch big_bertha_bringup big_bertha.launch.py"

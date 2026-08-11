@@ -66,9 +66,8 @@ def generate_launch_description():
         DeclareLaunchArgument('steer_kp', default_value='1.8'),
         DeclareLaunchArgument('steer_max', default_value='0.26'),
         DeclareLaunchArgument('lateral_hold', default_value='true'),
-        # IMU topic the gait controller reads orientation from. On hardware the
-        # BNO055 publishes a fused orientation on /imu directly; sim supplies
-        # /imu with orientation too, so the default is shared.
+        # IMU topic the gait controller reads orientation from. On real hardware
+        # this is the filtered output (/filtered/imu); sim supplies /imu.
         DeclareLaunchArgument('imu_topic', default_value='/imu'),
 
         Node(

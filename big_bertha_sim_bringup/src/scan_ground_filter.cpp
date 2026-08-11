@@ -60,9 +60,9 @@ public:
     floor_margin_ = this->declare_parameter<double>("floor_margin", 0.04);
     // Max IMU age vs the scan (s); a stale attitude culls against the wrong tilt.
     imu_max_age_ = this->declare_parameter<double>("imu_max_age", 0.05);
-    // Orientation source. On hardware /imu carries the fused BNO055
-    // orientation directly (no separate /filtered/imu anymore); sim's /imu
-    // also carries orientation. Default /imu keeps both unchanged.
+    // Orientation source. On hardware this is the Madgwick output (/filtered/imu,
+    // has roll/pitch); sim's raw /imu already carries orientation. Default /imu
+    // keeps the sim bringup unchanged (it passes no imu_topic).
     imu_topic_ = this->declare_parameter<std::string>("imu_topic", "/imu");
     base_frame_ = this->declare_parameter<std::string>("base_frame", "base_link");
     lidar_frame_ = this->declare_parameter<std::string>("lidar_frame", "lidar_link");
