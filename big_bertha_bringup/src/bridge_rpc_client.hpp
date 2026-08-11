@@ -44,8 +44,8 @@
 // Registration: call $/register on the router to start receiving messages.
 //
 // The sketch on the STM32U585 registers providers and pushes notifications:
-//   provide_str("imu", ...) -> comma CSV "qw,qx,qy,qz,gx,gy,gz,ax,ay,az,mx,my,mz,sample,ts"
-//   provide_str("hw_status", ...) -> [scan, ai, servo_calls, ...] (11 numeric)
+//   provide("imu", ...)          -> [ax, ay, az, gx, gy, gz, mx, my, mz, sample, ts]
+//   provide("hw_status", ...)    -> [scan, ai, servo_calls, ...] (11 numeric)
 //   provide("i2c_scan", ...)     -> [addr, ...]
 //   provide_str("imu_diag", ...) -> single string
 //   provide_str("servo_diag_result", ...) -> single string

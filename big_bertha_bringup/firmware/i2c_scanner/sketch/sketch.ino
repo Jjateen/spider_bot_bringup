@@ -12,7 +12,7 @@
 #include <Wire.h>
 
 static const uint8_t PCA9685_ADDR = 0x40;
-static const uint8_t BNO055_ADDR = 0x28;  // BNO055 IMU (0x29 when ADR pin high)
+static const uint8_t MPU9250_ADDR = 0x68;
 
 static const uint8_t PCA9685_MODE1 = 0x00;
 static const uint8_t PCA9685_LED0_ON_L = 0x06;
