@@ -11,7 +11,8 @@ Complete guide for deploying the native C++ hardware bridge to the Arduino UNO Q
 - `arduino-router` service running
 - I2C devices connected:
   - PCA9685 @ 0x40 (servo controller)
-  - MPU9250/MPU6500 @ 0x68 (IMU)
+  - MPU-6500 @ 0x68 (IMU; sold as an "MPU-9265" but WHO_AM_I reads 0x70, a
+    six-axis die with no magnetometer — see Known Limitations)
 - Workspace at `~/ros2_ws/src/spider_bot_bringup`
 
 ### Host-Side (Development Machine)
@@ -509,15 +510,20 @@ Then re-upload: `./scripts/upload_firmware.sh`
 **Config:** `config/hardware_bridge.yaml`
 
 ```yaml
-command_rate_hz: 200.0              # Policy publish rate
-max_joint_rate_rad_s: 6.54          # MG995 physical limit
-# Computed: rate_limit_rad = 6.54 / 200.0 = 0.0327 rad/step
+command_rate_hz: 50.0               # PCA9685 refresh rate, not the policy rate
+max_joint_rate_rad_s: 3.0           # slew ceiling (MG995 free-running max is 6.54)
+# Computed: rate_limit_rad = 3.0 / 50.0 = 0.06 rad/step
 ```
 
 **To adjust:**
-- Increase `max_joint_rate_rad_s` for faster motion (but MG995 cannot exceed 6.54)
-- Decrease for smoother, safer motion
-- Adjust `command_rate_hz` to match actual policy rate
+- These two are a matched pair. `rate_limit_rad` is their ratio, so raising the
+  send rate without raising the ceiling (or the reverse) silently clamps every
+  joint: 50 Hz sends against a 200 Hz limiter pins all twelve at 1.635 rad/s,
+  which is what stopped the legs swinging.
+- Do not drop `max_joint_rate_rad_s` below ~2.0 to slow the robot down. That
+  clips the ankles, which are what lift the feet. Lower the commanded `vx`
+  instead, which lowers the clock boost and the required rate with it.
+- See the comments in `config/hardware_bridge.yaml` for the derivation.
 
 ### Calibration Duration
 
@@ -555,7 +561,7 @@ The full stack runs **entirely on the board** (operate via SSH). Data flow:
 
 ```
 arduino-router (systemd)            -> MCU <-> bridge RPC (/var/run/arduino-router.sock)
-hardware_bridge_node                -> /imu (raw MPU-9250, 125 Hz)
+hardware_bridge_node                -> /imu (raw MPU-6500, 125 Hz)
 imu_filter_madgwick                 -> /filtered/imu (orientation, /imu_topic default)
 leg_odometry (publish_tf:=true)     -> /joint_states + odom->base_link (/odom)
 ydlidar_ros2_driver  [SEPARATE]     -> /scan (YDLidar X2)
@@ -573,12 +579,17 @@ hardware_bridge_node                -> PCA9685 servos
 2. **Firmware streaming** — `arduino-app-cli app list` shows
    `hardware_bridge_app` running; `./scripts/upload_firmware.sh` if not.
    Gate: `/imu` streams ~125 Hz.
-3. **Bridge + Madgwick** — `~/ros2_ws/launch_hardware_bringup.sh` (sources the
-   DDS env and starts `hardware_bringup.launch.py`: bridge + madgwick).
+3. **Bridge + Madgwick** —
+   `ros2 launch big_bertha_bringup hardware_bringup.launch.py` (bridge +
+   madgwick). Source the board's DDS profile first:
+   `export FASTRTPS_DEFAULT_PROFILES_FILE=~/ros2_ws/fastdds_shm_udp.xml`.
+   The board also has a `~/ros2_ws/launch_hardware_bringup.sh` wrapper that
+   does both, but it lives only on the board and is not in this repo.
    Gate: `/filtered/imu` has a non-degenerate orientation quaternion.
 4. **Lidar (SEPARATE step — not in any launch file)** —
-   `ros2 launch ydlidar_ros2_driver ydlidar_launch.py` using
-   `params/ydlidar.yaml` (`frame_id: lidar_link`, matches the URDF).
+   `ros2 launch ydlidar_ros2_driver ydlidar_launch.py` using that driver's own
+   params file, with `frame_id: lidar_link` to match the URDF. The params live
+   with the driver, which is not vendored here.
    Gate: `ros2 topic hz /scan` ≈ 10 Hz, `frame_id: lidar_link`.
    > **Hardware note:** a YDLidar X2 must be physically connected; verify
    > `ls /dev/ttyUSB*` (currently **no lidar device is present on the board**).
