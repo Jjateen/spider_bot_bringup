@@ -20,8 +20,13 @@ if [ ! -f "$WS/install/setup.bash" ]; then
   exit 1
 fi
 
+# -u has to come off around this: colcon's generated setup.bash reads
+# COLCON_TRACE without a default, so sourcing it under `set -u` aborts with
+# "COLCON_TRACE: unbound variable" before a single node starts.
+set +u
 # shellcheck disable=SC1091
 source "$WS/install/setup.bash"
+set -u
 
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI="file://$(ros2 pkg prefix big_bertha_bringup)/share/big_bertha_bringup/config/dds/cyclonedds.xml"
