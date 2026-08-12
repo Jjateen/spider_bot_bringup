@@ -10,6 +10,7 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -111,24 +112,27 @@ message(STATUS "ONNX Runtime: ${ONNXRUNTIME_LIB}")
 
 get_filename_component(ONNXRUNTIME_LIB_DIR "${ONNXRUNTIME_LIB}" DIRECTORY)
 
-add_executable(policy_controller_node src/policy_controller_node.cpp)
-target_include_directories(policy_controller_node PRIVATE
+add_library(policy_controller_component SHARED src/policy_controller_node.cpp)
+target_include_directories(policy_controller_component PRIVATE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   ${ONNXRUNTIME_INCLUDE_DIR})
-target_link_libraries(policy_controller_node ${ONNXRUNTIME_LIB})
-ament_target_dependencies(policy_controller_node
-  rclcpp std_msgs sensor_msgs nav_msgs geometry_msgs spider_msgs)
+target_link_libraries(policy_controller_component ${ONNXRUNTIME_LIB})
+ament_target_dependencies(policy_controller_component
+  rclcpp rclcpp_components std_msgs sensor_msgs nav_msgs geometry_msgs spider_msgs)
+rclcpp_components_register_node(policy_controller_component
+  PLUGIN "big_bertha_policy_controller::PolicyControllerNode"
+  EXECUTABLE policy_controller_node)
 
 # Embed the ONNX Runtime lib directory in the binary RPATH so the shared
 # library resolves at runtime without LD_LIBRARY_PATH (the prebuilt ORT is
 # not on the system loader path).
-set_target_properties(policy_controller_node PROPERTIES
+set_target_properties(policy_controller_component PROPERTIES
   BUILD_WITH_INSTALL_RPATH FALSE
   INSTALL_RPATH "${ONNXRUNTIME_LIB_DIR}"
   INSTALL_RPATH_USE_LINK_PATH TRUE)
 
-install(TARGETS policy_controller_node
-  DESTINATION lib/${PROJECT_NAME})
+install(TARGETS policy_controller_component
+  ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
 install(DIRECTORY launch config models
   DESTINATION share/${PROJECT_NAME})
 

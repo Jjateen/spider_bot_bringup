@@ -49,7 +49,8 @@ namespace big_bertha_sim_bringup
 class ScanGroundFilter : public rclcpp::Node
 {
 public:
-  ScanGroundFilter() : rclcpp::Node("scan_ground_filter")
+  explicit ScanGroundFilter(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : rclcpp::Node("scan_ground_filter", options)
   {
     // Body height above ground (TF can't supply it: EKF two_d_mode pins z=0).
     // 0.095 measured from gz ground-truth odometry while walking.
@@ -187,10 +188,5 @@ private:
 
 }  // namespace big_bertha_sim_bringup
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<big_bertha_sim_bringup::ScanGroundFilter>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "rclcpp_components/register_node_macro.hpp"
+RCLCPP_COMPONENTS_REGISTER_NODE(big_bertha_sim_bringup::ScanGroundFilter)

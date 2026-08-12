@@ -26,8 +26,14 @@
 namespace big_bertha_bringup
 {
 
-HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
+HardwareBridgeNode::HardwareBridgeNode(const rclcpp::NodeOptions & options)
+: Node("hardware_bridge", options)
 {
+  // Belongs here rather than in main(): under composition there is no main() of
+  // ours, and a write to a closed arduino-router socket would raise SIGPIPE and
+  // take down every other node sharing the container process.
+  signal(SIGPIPE, SIG_IGN);
+
   // ── Parameters ────────────────────────────────────────────────────────
   std::string router_socket = declare_parameter<std::string>("router_socket", "");
   if (router_socket.empty()) {
@@ -564,9 +570,11 @@ void HardwareBridgeNode::handle_imu_diag(
 
 }  // namespace big_bertha_bringup
 
+#include "rclcpp_components/register_node_macro.hpp"
+RCLCPP_COMPONENTS_REGISTER_NODE(big_bertha_bringup::HardwareBridgeNode)
+
 int main(int argc, char ** argv)
 {
-  signal(SIGPIPE, SIG_IGN);
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<big_bertha_bringup::HardwareBridgeNode>());
   rclcpp::shutdown();

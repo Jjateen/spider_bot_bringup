@@ -31,10 +31,15 @@
 #include "tf2_ros/transform_broadcaster.h"
 
 using namespace std::chrono_literals;
+
+namespace leg_odometry
+{
+
 class LeggedOdometryNode : public rclcpp::Node
 {
 public:
-  LeggedOdometryNode() : Node("legged_odometry")
+  explicit LeggedOdometryNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : Node("legged_odometry", options)
   {
     joint_names_ = declare_parameter<std::vector<std::string>>("joint_names", kDefaultJointNames);
     default_joint_pos_ =
@@ -282,10 +287,13 @@ private:
 
     odom_pub_->publish(odom);
 
-    last_imu_time_ = now;
-    last_orientation_ = orientation;
-    last_velocity_ = velocity;
-    last_position_ = position;
+    {
+      std::lock_guard<std::mutex> lk(pose_mutex_);
+      last_imu_time_ = now;
+      last_orientation_ = orientation;
+      last_velocity_ = velocity;
+      last_position_ = position;
+    }
   }
 
   // Publish odom -> base_link at a fixed high rate, decoupled from the IMU
@@ -296,20 +304,32 @@ private:
   // gives the tf a dense timeline so every scan transforms cleanly.
   void broadcast_odom_tf(const rclcpp::Time & stamp)
   {
-    if (!publish_tf_ || last_imu_time_.nanoseconds() == 0) {
+    if (!publish_tf_) {
       return;
+    }
+    tf2::Vector3 position;
+    tf2::Quaternion orientation;
+    {
+      // Copy under the lock, broadcast outside it: a torn pose here would mix
+      // the position of one IMU sample with the orientation of the next.
+      std::lock_guard<std::mutex> lk(pose_mutex_);
+      if (last_imu_time_.nanoseconds() == 0) {
+        return;
+      }
+      position = last_position_;
+      orientation = last_orientation_;
     }
     geometry_msgs::msg::TransformStamped tf;
     tf.header.stamp = stamp;
     tf.header.frame_id = odom_frame_;
     tf.child_frame_id = base_frame_;
-    tf.transform.translation.x = last_position_.x();
-    tf.transform.translation.y = last_position_.y();
-    tf.transform.translation.z = last_position_.z();
-    tf.transform.rotation.x = last_orientation_.x();
-    tf.transform.rotation.y = last_orientation_.y();
-    tf.transform.rotation.z = last_orientation_.z();
-    tf.transform.rotation.w = last_orientation_.w();
+    tf.transform.translation.x = position.x();
+    tf.transform.translation.y = position.y();
+    tf.transform.translation.z = position.z();
+    tf.transform.rotation.x = orientation.x();
+    tf.transform.rotation.y = orientation.y();
+    tf.transform.rotation.z = orientation.z();
+    tf.transform.rotation.w = orientation.w();
     tf_broadcaster_->sendTransform(tf);
   }
 
@@ -461,12 +481,16 @@ private:
   tf2::Vector3 last_position_{0.0, 0.0, 0.0};
   bool zupt_active_{false};
   tf2::Vector3 zupt_anchor_{0.0, 0.0, 0.0};
+  // Guards the pose last_* fields shared between on_imu (writer) and the 50 Hz
+  // broadcast_odom_tf timer (reader). Standalone this node runs on a
+  // single-threaded executor and the two can never overlap, but inside the
+  // composed container it shares a MultiThreadedExecutor with the bridge and
+  // the policy, where they can. An unguarded read there yields a torn pose:
+  // position from one IMU sample, orientation from the next.
+  std::mutex pose_mutex_;
 };
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<LeggedOdometryNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+}  // namespace leg_odometry
+
+#include "rclcpp_components/register_node_macro.hpp"
+RCLCPP_COMPONENTS_REGISTER_NODE(leg_odometry::LeggedOdometryNode)

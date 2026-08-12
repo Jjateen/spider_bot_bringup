@@ -38,7 +38,7 @@ namespace big_bertha_bringup
 class HardwareBridgeNode : public rclcpp::Node
 {
 public:
-  HardwareBridgeNode();
+  explicit HardwareBridgeNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions());
   ~HardwareBridgeNode() override;
 
 private:
