@@ -588,6 +588,12 @@ scan_ground_filter, all intra-process) and the navigation container (slam or
 AMCL, plus the five Nav2 servers). It also exports the Cyclone profile, which
 is what makes topics visible from a dev machine.
 
+The script also starts the MCU sketch if it is not running. That matters
+after every reboot: arduino-app-cli leaves `hardware_bridge_app` in
+`uninitialized` and nothing starts it, so `/imu`, `/filtered/imu` and `/odom`
+are all silent while the ROS side looks perfectly healthy with every component
+loaded. If topics are quiet, check `arduino-app-cli app list` first.
+
 The policy starts armed. For bench work where nothing should move:
 
 ```bash
