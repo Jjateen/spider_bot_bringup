@@ -574,6 +574,67 @@ accel_calibration_samples: 200
    `with_lidar:=false` for servo work, or leave the policy disarmed for
    mapping.
 
+## Quick start: the composed stack
+
+One command, from the repo root on the board:
+
+```bash
+./scripts/run_stack.sh
+```
+
+That brings up robot_state_publisher, the lidar, the control container
+(hardware_bridge + madgwick + leg_odometry + policy_controller +
+scan_ground_filter, all intra-process) and the navigation container (slam or
+AMCL, plus the five Nav2 servers). It also exports the Cyclone profile, which
+is what makes topics visible from a dev machine.
+
+The policy starts armed. For bench work where nothing should move:
+
+```bash
+./scripts/run_stack.sh start_enabled:=false with_nav:=false
+./scripts/run_stack.sh with_lidar:=false          # servos only, no lidar
+```
+
+### What to check, and what it should read
+
+Measured on hardware 2026-08-12 with the stack running on the adapter:
+
+| check | expected |
+| --- | --- |
+| `ros2 topic hz /imu` | ~113 Hz |
+| `ros2 topic hz /filtered/imu` | ~110 Hz |
+| `ros2 topic hz /odom` | ~110 Hz |
+| `ros2 topic hz /scan` | ~11 Hz, `frame_id: lidar_link` |
+| `ros2 topic hz /scan_filtered` | ~11 Hz |
+| `ros2 topic hz /map` | 1 Hz |
+| `ros2 run tf2_ros tf2_echo map base_link` | near origin, z exactly 0 |
+| `ros2 param get /slam_toolbox map_start_pose` | `[0.0, 0.0, 0.0]` |
+| `ros2 service call /hardware_bridge/status std_srvs/srv/Trigger` | `pwm_write_fails=0` |
+| `ros2 lifecycle get /slam_toolbox` | `active [3]` |
+
+Arm or disarm the gait without restarting anything:
+
+```bash
+ros2 service call /set_policy_enabled spider_msgs/srv/SetPolicyEnabled "{enabled: true}"
+```
+
+With the gait armed and a `/cmd_vel`, `/joint_states` jumps from 5 Hz (the
+leg_odometry startup timer) to ~190 Hz, and `pwm_write_attempts` climbs at
+~44 Hz against the configured 50.
+
+### Known-good failure signatures
+
+`/joint_states` stuck at exactly 5 Hz means the policy is publishing nothing:
+either it is disarmed, or it never received an IMU. Check `/filtered/imu`
+before anything else.
+
+`/odom` silent while `/imu` streams means leg_odometry is not receiving the
+topic named by `imu_topic`. That is a remap or a topic-name problem, not an
+odometry one.
+
+The lidar failing with `Device is not open` is almost always power. See Known
+Limitations 6.
+
 ## Full-Stack Operation Flow (Autonomy Stack on Real Hardware)
 
 The full stack runs **entirely on the board** (operate via SSH). Data flow:
