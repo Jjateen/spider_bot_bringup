@@ -83,6 +83,15 @@ def generate_launch_description():
             plugin='ImuFilterMadgwickRos',
             name='imu_filter_madgwick',
             parameters=[madgwick_params, common],
+            # The filter's own topic names are imu/data_raw and imu/data. Without
+            # these it subscribes to a topic nobody publishes and publishes one
+            # nobody reads: /imu keeps streaming at its full rate, /filtered/imu
+            # never appears, and leg_odometry sits waiting for an IMU that is
+            # right there. Same remaps as hardware_bringup.launch.py.
+            remappings=[
+                ('imu/data_raw', '/imu'),
+                ('imu/data', '/filtered/imu'),
+            ],
             extra_arguments=[{'use_intra_process_comms': True}],
         ),
         ComposableNode(
