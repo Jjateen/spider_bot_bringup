@@ -554,6 +554,25 @@ accel_calibration_samples: 200
 3. **I2C 50 kHz:** Below spec, but required for STM32U585 reliability
 4. **Startup calibration required:** Robot must be stationary for 2-3 seconds at node start
 5. **No runtime reconfiguration:** Parameter changes require node restart
+6. **The lidar and the servos cannot share the battery.** Powering the servos
+   collapses the USB rail and the lidar drops off the bus. Verified 2026-08-12:
+   the moment the servos were energised the external USB hub began
+   re-enumerating (`usb 1-1: USB disconnect` cycling through device numbers
+   104 to 110 in about seven seconds, with `error -32` on suspend and
+   `error -71` on descriptor read, both signal-integrity failures), `lsusb`
+   dropped to the two root hubs, and `/dev/ttyUSB0` disappeared. The battery
+   was flat shortly after.
+
+   This presents as a software fault and is not one. The driver logs
+   `Device is not open` and `Failed to get scan`, the lifecycle manager sits
+   in `Waiting for service ydlidar_ros2_driver_node/get_state`, and the
+   pipeline looks like it is failing to start. Check `ls /dev/ttyUSB*` before
+   debugging anything above it: if the device node is gone, the problem is
+   power.
+
+   Until the lidar has its own supply or a powered hub, run one or the other:
+   `with_lidar:=false` for servo work, or leave the policy disarmed for
+   mapping.
 
 ## Full-Stack Operation Flow (Autonomy Stack on Real Hardware)
 
