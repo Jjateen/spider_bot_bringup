@@ -24,14 +24,16 @@ maps/obstacle_world.{yaml,pgm}.
 """
 
 import os
+from typing import List
 
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -49,7 +51,22 @@ def generate_launch_description():
         output='screen',
         parameters=[
             slam_config,
-            {'use_sim_time': use_sim_time},
+            {
+                'use_sim_time': use_sim_time,
+                # Where the robot sits in the map frame at startup. The yaml
+                # default is the Gazebo spawn pose, which is only correct for
+                # the simulator. On hardware the robot starts wherever you put
+                # it, and inheriting -3.5,-3.5 built the entire map that far
+                # from the real start. Callers pass their own via x/y/yaw.
+                'map_start_pose': ParameterValue(
+                    PythonExpression(
+                        ['[', LaunchConfiguration('x'), ', ',
+                         LaunchConfiguration('y'), ', ',
+                         LaunchConfiguration('yaw'), ']'],
+                    ),
+                    value_type=List[float],
+                ),
+            },
         ],
     )
 
@@ -69,6 +86,11 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         DeclareLaunchArgument('slam_config', default_value=default_slam),
+        # Defaults are the Gazebo spawn pose, so the sim bringup is unchanged.
+        # big_bertha.launch.py passes its own (0,0,0 by default) on hardware.
+        DeclareLaunchArgument('x', default_value='-3.5'),
+        DeclareLaunchArgument('y', default_value='-3.5'),
+        DeclareLaunchArgument('yaw', default_value='0.0'),
 
         slam_node,
         lifecycle_manager,
