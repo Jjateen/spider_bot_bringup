@@ -118,7 +118,14 @@ local_costmap:
       plugins: ["voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
+        # Exponential falloff rate outside the inscribed radius. At 3.0 the
+        # curve has only decayed to exp(-3.0 * (0.38 - 0.18)) = 0.55 by the
+        # outer edge, so cost is still ~138 of 252 there and the whole halo
+        # renders as one dark slab with no usable gradient for the planner to
+        # descend. 9.0 puts the edge at ~34. The solid core is the inscribed
+        # radius (= robot_radius) and is correct; do not shrink that to make
+        # the blobs look smaller.
+        cost_scaling_factor: 9.0
         inflation_radius: 0.38
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
@@ -189,7 +196,14 @@ global_costmap:
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
+        # Exponential falloff rate outside the inscribed radius. At 3.0 the
+        # curve has only decayed to exp(-3.0 * (0.38 - 0.18)) = 0.55 by the
+        # outer edge, so cost is still ~138 of 252 there and the whole halo
+        # renders as one dark slab with no usable gradient for the planner to
+        # descend. 9.0 puts the edge at ~34. The solid core is the inscribed
+        # radius (= robot_radius) and is correct; do not shrink that to make
+        # the blobs look smaller.
+        cost_scaling_factor: 9.0
         inflation_radius: 0.38
       always_send_full_costmap: True
 
