@@ -93,8 +93,7 @@ public:
 
     // Dense odom->base_link tf (50 Hz) so slam/Nav2 always have a fresh odom
     // transform regardless of the IMU delivery rate (see broadcast_odom_tf).
-    odom_tf_timer_ = create_wall_timer(
-      20ms, [this]() { broadcast_odom_tf(this->now()); });
+    odom_tf_timer_ = create_wall_timer(20ms, [this]() { broadcast_odom_tf(this->now()); });
   }
 
 private:
