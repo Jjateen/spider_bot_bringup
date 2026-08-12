@@ -34,6 +34,21 @@ export CYCLONEDDS_URI="file://$(ros2 pkg prefix big_bertha_bringup)/share/big_be
 echo "RMW:   $RMW_IMPLEMENTATION"
 echo "DDS:   $CYCLONEDDS_URI"
 
+# The MCU sketch does not survive a reboot: arduino-app-cli leaves
+# hardware_bridge_app in "uninitialized" and nothing starts it. Every topic
+# downstream is then silent while the ROS side looks perfectly healthy, all
+# eleven components loaded and /imu, /filtered/imu and /odom publishing
+# nothing. Cheaper to start it here than to rediscover that every reboot.
+if command -v arduino-app-cli >/dev/null 2>&1; then
+  if ! arduino-app-cli app list 2>/dev/null | grep -q "hardware_bridge_app.*running"; then
+    echo "FIRMWARE: hardware_bridge_app is not running, starting it"
+    arduino-app-cli app start user:hardware_bridge_app 2>&1 | tail -1
+    sleep 8
+  else
+    echo "FIRMWARE: hardware_bridge_app already running"
+  fi
+fi
+
 # The lidar is on USB and the servos brown that rail out (see DEPLOYMENT.md
 # Known Limitations 6). Say so up front rather than letting the driver fail
 # with "Device is not open" ten seconds in.
