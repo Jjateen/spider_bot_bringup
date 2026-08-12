@@ -48,10 +48,14 @@
 using namespace std::chrono_literals;
 namespace bbpc = big_bertha_policy_controller;
 
+namespace big_bertha_policy_controller
+{
+
 class PolicyControllerNode : public rclcpp::Node
 {
 public:
-  PolicyControllerNode() : Node("policy_controller")
+  explicit PolicyControllerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : Node("policy_controller", options)
   {
     // ----------------------------- Parameters ----------------------------
     model_path_ = declare_parameter<std::string>("model_path", "");
@@ -517,10 +521,7 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<PolicyControllerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+}  // namespace big_bertha_policy_controller
+
+#include "rclcpp_components/register_node_macro.hpp"
+RCLCPP_COMPONENTS_REGISTER_NODE(big_bertha_policy_controller::PolicyControllerNode)

@@ -13,19 +13,26 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(rclcpp_components REQUIRED)
 
 # Hardware bridge node: ROS 2 node that talks to the arduino-router
 # MsgPack-RPC unix socket (Bridge RPC) — no TCP/Python relay.
-add_executable(hardware_bridge_node src/hardware_bridge_node.cpp)
-target_include_directories(hardware_bridge_node PRIVATE include src)
-ament_target_dependencies(hardware_bridge_node rclcpp std_msgs sensor_msgs std_srvs)
+# Component library, so the bridge can share a process with policy_controller
+# and leg_odometry. /position_controller/commands then rides intra-process.
+add_library(hardware_bridge_component SHARED src/hardware_bridge_node.cpp)
+target_include_directories(hardware_bridge_component PRIVATE include src)
+ament_target_dependencies(hardware_bridge_component
+  rclcpp rclcpp_components std_msgs sensor_msgs std_srvs)
+rclcpp_components_register_node(hardware_bridge_component
+  PLUGIN "big_bertha_bringup::HardwareBridgeNode"
+  EXECUTABLE hardware_bridge_node)
 
 install(
   DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME}
 )
-install(TARGETS hardware_bridge_node
-  DESTINATION lib/${PROJECT_NAME})
+install(TARGETS hardware_bridge_component
+  ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
