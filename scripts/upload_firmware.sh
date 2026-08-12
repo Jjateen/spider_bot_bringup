@@ -158,5 +158,12 @@ fi
 
 echo ""
 say DONE "Firmware upload complete — sketch flashed, router healthy"
-echo "  I2C devices: PCA9685 @ 0x40 (64), MPU9250 @ 0x68 (104)"
+# Deliberately does NOT print an I2C device list. It used to print a hardcoded
+# "PCA9685 @ 0x40 (64), MPU9250 @ 0x68 (104)" regardless of what was on the
+# bus, which reads exactly like a live scan result. During the BNO055
+# investigation that line was nearly taken as evidence the IMU had been
+# detected, on a board where the real scan returns only 0x40. For an actual
+# scan, ask the running node:
+echo "  I2C scan:  ros2 service call /hardware_bridge/scan_i2c std_srvs/srv/Trigger"
+echo "  IMU check: ros2 service call /hardware_bridge/imu_diag std_srvs/srv/Trigger"
 echo "  Start the bridge: ros2 launch big_bertha_bringup big_bertha.launch.py"

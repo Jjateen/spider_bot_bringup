@@ -15,18 +15,19 @@
 """
 The hardware control chain in one process, with intra-process comms.
 
-Loads hardware_bridge, leg_odometry, policy_controller and scan_ground_filter
-into a single container. Three of the hot links then skip serialisation and
-the loopback transport entirely:
+Loads the whole control chain into a single container, so every hot link
+skips serialisation and the loopback transport entirely:
 
     policy_controller -> /position_controller/commands -> hardware_bridge
     leg_odometry      -> /joint_states                 -> policy_controller
     leg_odometry      -> /odom                         -> policy_controller
 
-imu_filter_madgwick stays a separate process for now. It is an upstream
-package and its component registration has not been verified on the board, so
-folding it in would risk a container that refuses to start. Doing so later
-would additionally save the /imu and /filtered/imu hops.
+imu_filter_madgwick is in here too (verified on the board: it registers
+ImuFilterMadgwickRos), which takes the /imu and /filtered/imu hops off the
+wire as well. That covers every link in the control loop:
+
+    hardware_bridge   -> /imu                          -> madgwick
+    madgwick          -> /filtered/imu                 -> policy, leg_odometry
 
 The win here is CPU, not latency. Same-host Fast DDS already measures ~190 us
 mean (PR #58), which is 1% of the 20 ms control period, so the loop was never
@@ -43,11 +44,9 @@ thread-safe: leg_odometry takes pose_mutex_ for exactly this reason.
 import os
 
 from ament_index_python.packages import get_package_share_directory
-
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
-
 from launch_ros.actions import ComposableNodeContainer
 from launch_ros.descriptions import ComposableNode
 from launch_ros.parameter_descriptions import ParameterValue
@@ -64,6 +63,7 @@ def generate_launch_description():
     start_enabled = LaunchConfiguration('start_enabled')
 
     bridge_params = os.path.join(bringup_pkg, 'config', 'hardware_bridge.yaml')
+    madgwick_params = os.path.join(bringup_pkg, 'config', 'imu_filter_madgwick.yaml')
     policy_params = os.path.join(policy_pkg, 'config', 'policy.yaml')
     policy_model = os.path.join(policy_pkg, 'models', 'policy.onnx')
     leg_params = os.path.join(leg_pkg, 'config', 'legged_odometry.yaml')
@@ -76,6 +76,13 @@ def generate_launch_description():
             plugin='big_bertha_bringup::HardwareBridgeNode',
             name='hardware_bridge',
             parameters=[bridge_params, common],
+            extra_arguments=[{'use_intra_process_comms': True}],
+        ),
+        ComposableNode(
+            package='imu_filter_madgwick',
+            plugin='ImuFilterMadgwickRos',
+            name='imu_filter_madgwick',
+            parameters=[madgwick_params, common],
             extra_arguments=[{'use_intra_process_comms': True}],
         ),
         ComposableNode(
