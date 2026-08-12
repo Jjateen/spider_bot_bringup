@@ -47,7 +47,12 @@
     # drifts. 2.0 still rejects real motion while tolerating the calibration
     # variance. The joints_still gate (below) is the primary stationary signal.
     stationary_accel_threshold: 2.0        # m/s^2 deviation from 1g
-    stationary_samples: 10                 # consecutive IMU samples (~80 ms @125Hz)
+    # How long everything has to stay still before ZUPT engages, in SECONDS.
+    # This used to be a sample count (10), which silently scaled with whatever
+    # rate the IMU arrived at: 80 ms at the designed 125 Hz, but 2.9 s at the
+    # ~3.5 Hz the bridge actually delivers under load, which is longer than most
+    # stops last, so ZUPT never engaged and idle odom drifted anyway.
+    stationary_hold_s: 0.4
     # Servo dynamics model: EWMA time constant (seconds) matching MG995 response.
     # tau=0.06 limits filtered position rate to ~6.5 rad/s (servo's max speed),
     # preventing the positive-feedback loop from synthetic joint states.

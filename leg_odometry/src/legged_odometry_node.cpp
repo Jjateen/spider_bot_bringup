@@ -47,7 +47,7 @@ public:
     stationary_joint_vel_threshold_ =
       declare_parameter<double>("stationary_joint_vel_threshold", 0.02);
     stationary_accel_threshold_ = declare_parameter<double>("stationary_accel_threshold", 0.5);
-    stationary_samples_ = declare_parameter<int>("stationary_samples", 10);
+    stationary_hold_s_ = declare_parameter<double>("stationary_hold_s", 0.4);
     servo_tau_ = declare_parameter<double>("servo_tau", 0.06);
     publish_joint_states_ = declare_parameter<bool>("publish_joint_states", true);
 
@@ -56,8 +56,8 @@ public:
         get_logger(), "leg_kinematics mode is a stub — velocity estimates will be inaccurate");
     }
     RCLCPP_INFO(
-      get_logger(), "velocity source: %s, servo_tau=%.3f, ZUPT samples=%d",
-      velocity_source_.c_str(), servo_tau_, stationary_samples_);
+      get_logger(), "velocity source: %s, servo_tau=%.3f, ZUPT hold=%.2fs",
+      velocity_source_.c_str(), servo_tau_, stationary_hold_s_);
 
     last_joint_positions_ = default_joint_pos_;
     filtered_positions_ = default_joint_pos_;
@@ -204,6 +204,17 @@ private:
       compute_imu_dead_reckon(msg, orientation, dt, velocity, position);
     }
 
+    // The robot is planar and every consumer of this odom (slam_toolbox, Nav2,
+    // both costmaps) is 2D, so z carries no information and integrating it only
+    // banks error. It banked a lot: compute_imu_dead_reckon subtracts a fixed
+    // 9.81 from an accelerometer that reads 11.07 at rest on this board, which
+    // leaves ~1.26 m/s^2 standing in world z. The old guard clamped position at
+    // the floor but never above it, and never clamped vz at all, so base_link
+    // climbed away from the map plane without bound. Pin both once here, for
+    // whichever velocity source ran, instead of inside each of them.
+    velocity.setZ(0.0);
+    position.setZ(0.0);
+
     // ZUPT: zero velocity when robot is stationary (all joints still, no linear
     // acceleration). Without this the leaky integrator bleeds steady walking
     // velocity to zero and standing drift accumulates unbounded.
@@ -220,7 +231,6 @@ private:
       } else {
         position = zupt_anchor_;
       }
-      position.setZ(0.0);
       last_zupt_time_ = now;
     } else {
       zupt_active_ = false;
@@ -363,6 +373,7 @@ private:
       max_joint_vel = std::max(max_joint_vel, std::abs(last_joint_velocities_[i]));
       if (std::abs(last_joint_velocities_[i]) > stationary_joint_vel_threshold_) {
         joints_still = false;
+        break;
       }
     }
 
@@ -373,20 +384,30 @@ private:
     double accel_dev = std::abs(accel_norm - 9.81);
     bool accel_still = accel_dev < stationary_accel_threshold_;
 
-    RCLCPP_INFO_THROTTLE(
+    RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 5000,
       "ZUPT diag: joints=%s (max_vel=%.4f thresh=%.3f) accel=%s (dev=%.3f thresh=%.3f) "
-      "counter=%d",
+      "still_for=%.2fs",
       joints_still ? "yes" : "no", max_joint_vel, stationary_joint_vel_threshold_,
-      accel_still ? "yes" : "no", accel_dev, stationary_accel_threshold_, stationary_counter_);
+      accel_still ? "yes" : "no", accel_dev, stationary_accel_threshold_,
+      still_since_.nanoseconds() == 0 ? 0.0 : (this->now() - still_since_).seconds());
 
-    if (joints_still && accel_still) {
-      stationary_counter_++;
-    } else {
-      stationary_counter_ = 0;
+    // Hold-off measured in SECONDS, not samples. A sample count means the
+    // hold-off scales with whatever rate the IMU happens to arrive at: the old
+    // 10 samples was written for 125 Hz (80 ms) but the bridge delivers ~3.5 Hz
+    // under load, which turned it into 2.9 s of standing perfectly still before
+    // ZUPT would engage, longer than most stops last. joints_still is the
+    // primary signal here; the accel gate only rejects the case where the body
+    // is being carried or shoved with the legs locked.
+    if (!(joints_still && accel_still)) {
+      still_since_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+      return false;
+    }
+    if (still_since_.nanoseconds() == 0) {
+      still_since_ = this->now();
     }
 
-    return stationary_counter_ >= stationary_samples_;
+    return (this->now() - still_since_).seconds() >= stationary_hold_s_;
   }
 
   // Fallback defaults — the config yaml is always loaded via launch, so these
@@ -422,8 +443,9 @@ private:
 
   double stationary_joint_vel_threshold_;
   double stationary_accel_threshold_;
-  int stationary_samples_;
-  int stationary_counter_{0};
+  double stationary_hold_s_;
+  // Start of the current unbroken still stretch; 0 means "moving right now".
+  rclcpp::Time still_since_{0, 0, RCL_ROS_TIME};
 
   double servo_tau_;
   std::vector<double> filtered_positions_{std::vector<double>(12, 0.0)};
