@@ -120,11 +120,23 @@ def generate_launch_description():
     )
 
     # ── 3. Gait controller (/cmd_vel -> 12 joint targets) ─────────────
+    # heading_hold, position_hold and lateral_hold are outer loops that read
+    # pose straight off /odom. On hardware that odom is single-source dead
+    # reckoning off an IMU with no magnetometer, so its yaw and position drift
+    # freely and the loops end up correcting error that is not there, fighting
+    # whatever Nav2 asked for. They stay off here until leg_odometry produces a
+    # pose worth closing a loop around; turn them back on one at a time.
     locomotion = GroupAction([
         include(
             policy_pkg,
             os.path.join('launch', 'policy_controller.launch.py'),
-            {'use_sim_time': use_sim_time, 'imu_topic': imu_topic},
+            {
+                'use_sim_time': use_sim_time,
+                'imu_topic': imu_topic,
+                'heading_hold': 'false',
+                'position_hold': 'false',
+                'lateral_hold': 'false',
+            },
         ),
     ], scoped=True)
 
@@ -145,10 +157,14 @@ def generate_launch_description():
     )
 
     # ── 5. map->odom: SLAM (live mapping, default) or AMCL ───────────
+    # x/y/yaw seed slam_toolbox's map_start_pose here, not just AMCL's initial
+    # pose below. Without them slam_toolbox inherits the sim spawn pose baked
+    # into slam_toolbox.yaml (-3.5, -3.5) and builds the map that far from
+    # wherever the robot really started.
     mapping = include(
         sim_pkg,
         os.path.join('launch', 'mapping', 'slam.launch.py'),
-        {'use_sim_time': use_sim_time},
+        {'use_sim_time': use_sim_time, 'x': x, 'y': y, 'yaw': yaw},
         condition=IfCondition(slam),
     )
     localization = include(
@@ -174,12 +190,16 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': use_sim_time,
             'imu_topic': imu_topic,
-            # Real IMU/scan stamps are ~90 ms apart; on the loaded UNO Q the SBC
-            # starves callbacks and they spike to ~0.3-0.35 s, so a tight bound
-            # makes the filter pass scans through unfiltered. 0.45 covers the
-            # load spikes while staying under the ~0.7 s gait period (body tilt
-            # is small, so a slightly old attitude still culls floor correctly).
-            'imu_max_age': 0.45,
+            # Real IMU/scan stamps are ~90 ms apart. 0.45 was chosen to cover
+            # the load spikes seen when the bridge was desyncing the router,
+            # but it is 43-64% of the gait period (1.04 s at cmd 0.12, 0.71 s
+            # at max clock boost), so the cached attitude could be more than a
+            # half-period old and cull with the tilt sign inverted, which is
+            # the exact case this filter exists to catch. 0.25 keeps it inside
+            # a quarter period. If the IMU is degraded and stamps go older than
+            # this the filter passes scans through unfiltered, which costs
+            # ghost walls but never deletes a real one.
+            'imu_max_age': 0.25,
         }],
     )
 
