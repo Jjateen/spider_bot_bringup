@@ -761,9 +761,8 @@ void loop()
       // brought the 11-argument form back, and with it the desync.
       char imu_buf[160];
       int off = snprintf(
-        imu_buf, sizeof(imu_buf), "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%lu,%lu",
-        ax, ay, az, gx, gy, gz, mx, my, mz,
-        (unsigned long)g_imu_sample++, (unsigned long)now);
+        imu_buf, sizeof(imu_buf), "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%lu,%lu", ax, ay,
+        az, gx, gy, gz, mx, my, mz, (unsigned long)g_imu_sample++, (unsigned long)now);
       if (off >= (int)sizeof(imu_buf)) off = sizeof(imu_buf) - 1;
       imu_buf[off] = '\0';
       Bridge.notify("imu", (const char *)imu_buf);
