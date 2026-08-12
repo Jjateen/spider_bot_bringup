@@ -752,7 +752,21 @@ void loop()
     float ax, ay, az, gx, gy, gz, mx = 0, my = 0, mz = 0;
     if (mpu9250_read(ax, ay, az, gx, gy, gz)) {
       if (g_mag_present) ak8963_read(mx, my, mz);
-      Bridge.notify("imu", ax, ay, az, gx, gy, gz, mx, my, mz, (float)g_imu_sample++, (float)now);
+      // ONE comma-separated string, not 11 arguments. Bridge RPC drops
+      // arguments past ~12 and mis-frames the serial stream when it does; at
+      // 125 Hz that desyncs the router permanently and every topic goes
+      // silent. hw_status and imu_diag were converted for this reason in
+      // ba44f50 and c52b4fc; imu was missed because the BNO055 rewrite
+      // happened to replace it with a CSV payload. Reverting that rewrite
+      // brought the 11-argument form back, and with it the desync.
+      char imu_buf[160];
+      int off = snprintf(
+        imu_buf, sizeof(imu_buf), "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%lu,%lu",
+        ax, ay, az, gx, gy, gz, mx, my, mz,
+        (unsigned long)g_imu_sample++, (unsigned long)now);
+      if (off >= (int)sizeof(imu_buf)) off = sizeof(imu_buf) - 1;
+      imu_buf[off] = '\0';
+      Bridge.notify("imu", (const char *)imu_buf);
     }
   }
 

@@ -142,7 +142,7 @@ HardwareBridgeNode::HardwareBridgeNode() : Node("hardware_bridge")
   };
   bridge_ = std::make_unique<BridgeRPCClient>(std::move(candidates));
 
-  bridge_->provide("imu", std::bind(&HardwareBridgeNode::on_imu, this, std::placeholders::_1));
+  bridge_->provide_str("imu", std::bind(&HardwareBridgeNode::on_imu, this, std::placeholders::_1));
   bridge_->provide_str(
     "hw_status", std::bind(&HardwareBridgeNode::on_hw_status, this, std::placeholders::_1));
   bridge_->provide(
@@ -218,9 +218,30 @@ void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPt
 }
 
 // ── Inbound Bridge RPC notifications (client reader thread) ──────────
-void HardwareBridgeNode::on_imu(const std::vector<double> & params)
+void HardwareBridgeNode::on_imu(const std::string & text)
 {
-  // [ax, ay, az, gx, gy, gz, mx, my, mz, sample, ts]
+  // "ax,ay,az,gx,gy,gz,mx,my,mz,sample,ts" as ONE string. Sent as 11 separate
+  // arguments until the router's ~12-argument limit mis-framed the stream at
+  // 125 Hz and silenced every topic. Parsed defensively for the same reason as
+  // on_hw_status: this runs on the reader thread and dispatch() has no
+  // try/catch, so an escaping std::stod would call std::terminate.
+  std::vector<double> params;
+  try {
+    size_t start = 0;
+    while (params.size() < 11) {
+      const size_t comma = text.find(',', start);
+      params.push_back(std::stod(
+        comma == std::string::npos ? text.substr(start) : text.substr(start, comma - start)));
+      if (comma == std::string::npos) {
+        break;
+      }
+      start = comma + 1;
+    }
+  } catch (const std::exception & e) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000, "malformed imu payload, dropped (%s)", e.what());
+    return;
+  }
   if (params.size() < 9) {
     return;
   }
