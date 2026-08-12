@@ -1,0 +1,45 @@
+# YDLidar X2 on the UNO Q.
+#
+# Based on the driver's shipped X2.yaml, with one deliberate change:
+# frame_id is lidar_link, not the driver default of laser_frame.
+#
+# That default is not a cosmetic difference. The URDF names the sensor mount
+# lidar_link, and scan_ground_filter looks up base_link -> lidar_link to work
+# out how far the beam plane has tilted with the gait. With frame_id left at
+# laser_frame there is no such transform, every scan fails to resolve, and the
+# costmaps see nothing at all while the driver still reports a healthy 10 Hz
+# on /scan. The failure looks like a Nav2 problem rather than a frame problem,
+# which is the expensive kind.
+ydlidar_ros2_driver_node:
+  ros__parameters:
+    port: /dev/ttyUSB0
+    frame_id: lidar_link
+    ignore_array: ""
+    # X2 is a single-channel 115200 unit. The G-series profiles in the driver
+    # use 230400 and isSingleChannel false; loading one of those against an X2
+    # gives a driver that opens the port and then times out on every read.
+    baudrate: 115200
+    lidar_type: 1
+    device_type: 0
+    sample_rate: 3
+    abnormal_check_count: 4
+    fixed_resolution: true
+    reversion: false
+    inverted: false
+    auto_reconnect: true
+    isSingleChannel: true
+    intensity_bit: 0
+    intensity: false
+    support_motor_dtr: true
+    angle_max: 180.0
+    angle_min: -180.0
+    range_max: 12.0
+    # 0.1 is the driver default. The robot's own legs sit inside that, so the
+    # scan contains returns off its own body; scan_ground_filter culls by
+    # geometry rather than range, and Nav2's obstacle layer has its own
+    # obstacle_min_range. Left at the driver value so raw /scan stays honest
+    # about what the sensor actually saw.
+    range_min: 0.1
+    frequency: 10.0
+    invalid_range_is_inf: false
+    debug: false

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Cyclone DDS profile for Big Bertha.
+
+  Two transports, for two different jobs.
+
+  Same host (board-internal: bridge, policy, leg_odometry, Nav2, slam):
+  loopback with multicast. Everything in the composed containers already
+  bypasses DDS via intra-process comms, so this only carries the links that
+  cross a process boundary.
+
+  Cross device (board <-> dev laptop, for RViz): tailscale0 with UNICAST
+  discovery. Multicast is not an option on either interface here and this is
+  the part that is easy to get wrong:
+
+    - wlan0 has AP client isolation, so the access point drops client-to-client
+      traffic including multicast. This is already recorded in DEPLOYMENT.md.
+    - tailscale0 does NOT carry multicast either. Tailscale is a WireGuard
+      point-to-point mesh; there is no multicast group to join. A profile that
+      sets AllowMulticast and expects Tailscale to deliver SPDP will discover
+      nothing, which looks identical to "DDS is broken".
+
+  So discovery is explicit: each peer is listed by its tailnet address and
+  found by unicast SPDP. Add a machine here and it joins; leave it out and it
+  will not be seen no matter what else is configured.
+
+  Note this is the RMW-agnostic part of the problem. Switching between Fast
+  DDS and Cyclone changes nothing about AP isolation, which is why the RViz
+  symptom survived an RMW swap.
+-->
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <General>
+      <Interfaces>
+        <!-- Same-host traffic. multicast="true" is safe on loopback. -->
+        <NetworkInterface name="lo" priority="default" multicast="true"/>
+        <!-- Cross-device. multicast="false": Tailscale cannot carry it, so
+             discovery for this interface comes from <Peers> below. -->
+        <NetworkInterface name="tailscale0" priority="default" multicast="false"
+                          presence_required="false"/>
+      </Interfaces>
+      <AllowMulticast>spdp</AllowMulticast>
+      <!-- Tailscale's default MTU is 1280. Leaving the fragment size above it
+           makes large samples (costmaps, /map, laser scans) fragment at the
+           WireGuard layer instead of the DDS layer, where a single lost
+           fragment costs the whole sample. -->
+      <MaxMessageSize>1200B</MaxMessageSize>
+    </General>
+
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <!-- Unicast peer list. These are tailnet addresses, stable across
+           network changes, which is the reason for using them rather than
+           the wlan0 DHCP addresses. -->
+      <Peers>
+        <Peer address="localhost"/>
+        <Peer address="100.106.178.114"/>  <!-- jijteen, the UNO Q board -->
+        <Peer address="100.109.79.2"/>     <!-- jjnitro, dev laptop -->
+      </Peers>
+    </Discovery>
+
+    <Internal>
+      <!-- The A35 is core-starved; a dedicated delivery thread per topic
+           costs more than it returns at these message rates. -->
+      <MinimumSocketReceiveBufferSize>1MB</MinimumSocketReceiveBufferSize>
+    </Internal>
+  </Domain>
+</CycloneDDS>
