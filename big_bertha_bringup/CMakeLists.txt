@@ -28,7 +28,7 @@ rclcpp_components_register_node(hardware_bridge_component
   EXECUTABLE hardware_bridge_node)
 
 install(
-  DIRECTORY launch config
+  DIRECTORY launch config udev
   DESTINATION share/${PROJECT_NAME}
 )
 install(TARGETS hardware_bridge_component
