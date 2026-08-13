@@ -1,18 +1,27 @@
 # YDLidar X2 on the UNO Q.
 #
-# Based on the driver's shipped X2.yaml, with one deliberate change:
-# frame_id is lidar_link, not the driver default of laser_frame.
+# Based on the driver's shipped X2.yaml, with two deliberate changes:
+#  - frame_id is lidar_link, not the driver default of laser_frame.
+#  - port is /dev/ttyLIDAR, a udev symlink, not the raw /dev/ttyUSB0.
 #
-# That default is not a cosmetic difference. The URDF names the sensor mount
-# lidar_link, and scan_ground_filter looks up base_link -> lidar_link to work
-# out how far the beam plane has tilted with the gait. With frame_id left at
-# laser_frame there is no such transform, every scan fails to resolve, and the
-# costmaps see nothing at all while the driver still reports a healthy 10 Hz
-# on /scan. The failure looks like a Nav2 problem rather than a frame problem,
-# which is the expensive kind.
+# frame_id: The URDF names the sensor mount lidar_link, and scan_ground_filter
+# looks up base_link -> lidar_link to work out how far the beam plane has
+# tilted with the gait. With frame_id left at laser_frame there is no such
+# transform, every scan fails to resolve, and the costmaps see nothing at all
+# while the driver still reports a healthy 10 Hz on /scan. The failure looks
+# like a Nav2 problem rather than a frame problem, which is the expensive kind.
+#
+# port: the CP210x caps TTL adapter re-enumerates whenever the USB rail blips
+# (servo surge browns it; see DEPLOYMENT Known Limitations 6), and Linux then
+# reassigns the tty minor, so the device alternates between /dev/ttyUSB0 and
+# /dev/ttyUSB1. The udev rule in the bringup deployment
+# (99-big-bertha-lidar.rules) symlinks it by idVendor/idProduct/serial to a
+# stable /dev/ttyLIDAR, so the driver opens the right node no matter which
+# ttyUSBn the kernel decided on. auto_reconnect below then recovers the stream
+# after each blip.
 ydlidar_ros2_driver_node:
   ros__parameters:
-    port: /dev/ttyUSB0
+    port: /dev/ttyLIDAR
     frame_id: lidar_link
     ignore_array: ""
     # X2 is a single-channel 115200 unit. The G-series profiles in the driver

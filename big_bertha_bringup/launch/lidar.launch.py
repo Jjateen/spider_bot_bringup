@@ -34,6 +34,12 @@ The driver is NOT composed into a container. It owns a serial port and does
 its own blocking reads, so it gains nothing from intra-process comms (its only
 output, /scan, goes to a different container) while a hang in it would take
 the control loop down with it.
+
+respawn is on: the driver exits cleanly whenever /dev/ttyLIDAR is absent (the
+lidar's USB rail blips and the device re-enumerates), and launch relaunches it
+so /scan comes back once the port reappears. Paired with auto_reconnect in
+config/ydlidar_x2.yaml and the udev symlink, a power blip no longer kills the
+lidar for the rest of the session.
 """
 
 import os
@@ -65,6 +71,8 @@ def generate_launch_description():
             name='ydlidar_ros2_driver_node',
             namespace='',
             output='screen',
+            respawn=True,
+            respawn_delay=3.0,
             parameters=[params_file, {'use_sim_time': use_sim_time}],
         ),
     ])
