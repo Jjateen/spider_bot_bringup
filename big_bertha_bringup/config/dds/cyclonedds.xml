@@ -62,11 +62,20 @@
       <!-- Unicast peer list. Tailnet addresses are stable across network
            changes (the reason for preferring them), but the dev host is also
            reachable on the wlan0 LAN at 10.42.0.1 since it is the AP. -->
+      <!-- ONLY list hosts that are actually on the network.
+           An unreachable peer is not merely noisy. Cyclone keeps a matched
+           reader for it, the writer retains samples it can never deliver, and
+           once the writer history fills the publish call BLOCKS. Measured on
+           this board: with an off-network peer listed, the ydlidar driver kept
+           reading the serial port at 6.9 KB/s (rchar confirmed) while /scan
+           went silent and the main thread sat in __futex_wait. It takes a few
+           minutes for history to fill, which is why it looked like the lidar
+           "dying after 4-5 minutes". Removing the peer kept /scan alive.
+
+           Add a dev machine here only while it is present, or better, set
+           CYCLONEDDS_PEERS and use a site-local copy of this file. -->
       <Peers>
         <Peer address="localhost"/>
-        <Peer address="100.106.178.114"/>  <!-- jijteen, the UNO Q board -->
-        <Peer address="100.109.79.2"/>     <!-- jjnitro, dev laptop -->
-        <Peer address="10.42.0.1"/>        <!-- dev host (jayesh), the AP -->
       </Peers>
     </Discovery>
 
