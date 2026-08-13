@@ -9,20 +9,21 @@
   bypasses DDS via intra-process comms, so this only carries the links that
   cross a process boundary.
 
-  Cross device (board <-> dev laptop, for RViz): tailscale0 with UNICAST
-  discovery. Multicast is not an option on either interface here and this is
-  the part that is easy to get wrong:
+  Cross device (board <-> dev laptop, for RViz) has two paths:
 
-    - wlan0 has AP client isolation, so the access point drops client-to-client
-      traffic including multicast. This is already recorded in DEPLOYMENT.md.
-    - tailscale0 does NOT carry multicast either. Tailscale is a WireGuard
-      point-to-point mesh; there is no multicast group to join. A profile that
-      sets AllowMulticast and expects Tailscale to deliver SPDP will discover
-      nothing, which looks identical to "DDS is broken".
+    - wlan0 LAN: the dev machine is the access point for the board
+      (10.42.0.0/24), so same-subnet discovery works. multicast="true" on
+      wlan0 is safe: client<->AP traffic is delivered, and the unicast peer
+      list below covers the client-isolation case where AP<->AP multicast is
+      dropped.
+    - tailscale0: UNICAST only. Tailscale is a WireGuard point-to-point mesh;
+      there is no multicast group to join, so a profile that sets
+      AllowMulticast and expects Tailscale to deliver SPDP discovers nothing,
+      which looks identical to "DDS is broken".
 
-  So discovery is explicit: each peer is listed by its tailnet address and
-  found by unicast SPDP. Add a machine here and it joins; leave it out and it
-  will not be seen no matter what else is configured.
+  So discovery is explicit: each peer is listed and found by unicast SPDP.
+  Add a machine here and it joins; leave it out and it will not be seen no
+  matter what else is configured.
 
   Note this is the RMW-agnostic part of the problem. Switching between Fast
   DDS and Cyclone changes nothing about AP isolation, which is why the RViz
@@ -34,8 +35,12 @@
       <Interfaces>
         <!-- Same-host traffic. multicast="true" is safe on loopback. -->
         <NetworkInterface name="lo" priority="default" multicast="true"/>
-        <!-- Cross-device. multicast="false": Tailscale cannot carry it, so
-             discovery for this interface comes from <Peers> below. -->
+        <!-- Cross-device LAN: the dev machine is the AP for this robot
+             (wlan0), so multicast and the unicast peers below carry RViz
+             traffic without Tailscale. -->
+        <NetworkInterface name="wlan0" priority="default" multicast="true"/>
+        <!-- Cross-device tailnet. multicast="false": Tailscale cannot carry
+             it, so discovery here comes from <Peers> below. -->
         <NetworkInterface name="tailscale0" priority="default" multicast="false"
                           presence_required="false"/>
       </Interfaces>
@@ -49,13 +54,14 @@
 
     <Discovery>
       <ParticipantIndex>auto</ParticipantIndex>
-      <!-- Unicast peer list. These are tailnet addresses, stable across
-           network changes, which is the reason for using them rather than
-           the wlan0 DHCP addresses. -->
+      <!-- Unicast peer list. Tailnet addresses are stable across network
+           changes (the reason for preferring them), but the dev host is also
+           reachable on the wlan0 LAN at 10.42.0.1 since it is the AP. -->
       <Peers>
         <Peer address="localhost"/>
         <Peer address="100.106.178.114"/>  <!-- jijteen, the UNO Q board -->
         <Peer address="100.109.79.2"/>     <!-- jjnitro, dev laptop -->
+        <Peer address="10.42.0.1"/>        <!-- dev host (jayesh), the AP -->
       </Peers>
     </Discovery>
 
