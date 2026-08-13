@@ -33,15 +33,20 @@
   <Domain id="any">
     <General>
       <Interfaces>
-        <!-- Same-host traffic. multicast="true" is safe on loopback. -->
-        <NetworkInterface name="lo" priority="default" multicast="true"/>
+        <!-- Same-host traffic, and it must WIN. Without an explicit priority
+             Cyclone picked tailscale0 as the sole interface and logged
+             "selected interface tailscale0 is not multicast-capable:
+             disabling multicast", which sends board-internal traffic out over
+             a WireGuard tunnel and back. Everything on this robot that crosses
+             a process boundary is same-host, so loopback ranks highest. -->
+        <NetworkInterface name="lo" priority="20" multicast="true"/>
         <!-- Cross-device LAN: the dev machine is the AP for this robot
              (wlan0), so multicast and the unicast peers below carry RViz
              traffic without Tailscale. -->
-        <NetworkInterface name="wlan0" priority="default" multicast="true"/>
+        <NetworkInterface name="wlan0" priority="10" multicast="true"/>
         <!-- Cross-device tailnet. multicast="false": Tailscale cannot carry
              it, so discovery here comes from <Peers> below. -->
-        <NetworkInterface name="tailscale0" priority="default" multicast="false"
+        <NetworkInterface name="tailscale0" priority="1" multicast="false"
                           presence_required="false"/>
       </Interfaces>
       <AllowMulticast>spdp</AllowMulticast>
@@ -65,10 +70,20 @@
       </Peers>
     </Discovery>
 
+    <Tracing>
+      <!-- Unreachable peers are retried forever and each retry logs
+           "ddsi_udp_conn_write ... failed with retcode -3". With a peer that
+           is off the network that is hundreds of lines a minute, which buries
+           the actual errors and is why boot logs looked like a wall of red.
+           The peers must stay listed (they are how discovery works when they
+           ARE present), so quiet the transport chatter instead. -->
+      <Verbosity>severe</Verbosity>
+    </Tracing>
+
     <Internal>
-      <!-- The A35 is core-starved; a dedicated delivery thread per topic
-           costs more than it returns at these message rates. -->
-      <MinimumSocketReceiveBufferSize>1MB</MinimumSocketReceiveBufferSize>
+      <!-- Cyclone renamed this; the old spelling logs a deprecation warning on
+           every single node start, which buries real errors in the boot log. -->
+      <SocketReceiveBufferSize min="1MB"/>
     </Internal>
   </Domain>
 </CycloneDDS>
