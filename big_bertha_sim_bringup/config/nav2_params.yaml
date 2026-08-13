@@ -106,7 +106,7 @@ local_costmap:
   local_costmap:
     ros__parameters:
       use_sim_time: true
-      update_frequency: 10.0  # match the 10 Hz lidar (was 4 collision checks per refresh)
+      update_frequency: 5.0  # matches the 6 Hz lidar; see ydlidar_x2.yaml
       publish_frequency: 2.0
       global_frame: odom
       robot_base_frame: base_link
@@ -159,7 +159,7 @@ global_costmap:
   global_costmap:
     ros__parameters:
       use_sim_time: true
-      update_frequency: 2.0  # cheap now the grid is map-sized, halves plan staleness
+      update_frequency: 1.0  # A35 is core-starved; 1 Hz replan is ample at 0.14 m/s
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link

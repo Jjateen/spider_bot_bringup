@@ -49,6 +49,12 @@ ydlidar_ros2_driver_node:
     # obstacle_min_range. Left at the driver value so raw /scan stays honest
     # about what the sensor actually saw.
     range_min: 0.1
-    frequency: 10.0
+    # 10.0 -> 6.0. The A35 has four cores and ran at load average 4.2 with
+    # the full stack up, which starved the scan callbacks: scans queued, the
+    # message filter dropped them, and the map stopped updating. Cutting the
+    # rate at the SOURCE is strictly better than throttling downstream, where
+    # every dropped scan has already been received, deserialised and copied.
+    # A spider walking at 0.14 m/s moves 23 mm between scans at 6 Hz.
+    frequency: 6.0
     invalid_range_is_inf: false
     debug: false

@@ -13,42 +13,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-SLAM (or AMCL) plus the five Nav2 servers.
+SLAM (or AMCL) plus the five Nav2 servers, composed.
 
-The Nav2 servers run as regular Nodes, NOT composed, and that is deliberate:
-when controller_server is loaded as a ComposableNode in a container, the
-costmap child-nodes it creates internally lose their parameter namespace. The
-controller component only receives its own ``controller_server:`` section from
-nav2_params.yaml, so the sibling ``local_costmap:``/``global_costmap:``
-sections never land where the costmaps can read them. The costmaps then build
-with Nav2 defaults (static/obstacle/inflation layers, map frame, no sensor
-source) and never publish /costmap. Running the servers as plain Nodes makes
-each process load the whole params file, and the costmaps resolve their
-sections correctly - the same layout the sim's nav2.launch.py uses.
-
-The slam / localization containers stay composed: each is a single node loading
-its own params file directly, so there is no namespace problem there.
-
-Separate processes from the control container on purpose. The control loop must
+Separate container from the control chain on purpose. The control loop must
 keep hitting 50 Hz while a planner replans or slam_toolbox closes a loop, and
-those are exactly the operations that occupy a thread for tens of
-milliseconds. Sharing one executor would let a loop closure stall a servo
-write. Two containers keeps each side's scheduling independent.
+those hold a thread for tens of milliseconds. Two containers keeps each side's
+scheduling independent, and component_container_isolated gives every component
+its own executor inside them.
 
-Intra-process comms default to FALSE here, unlike the control container, and
-that is deliberate rather than an oversight. /map is TRANSIENT_LOCAL: slam
-publishes it latched and the global costmap subscribes latched
-(map_subscribe_transient_local in nav2_params.yaml). Intra-process handling of
-transient-local durability is where PR #58 hit the rmw_cyclonedds hang
-(ros2/rmw_cyclonedds#401), and a costmap that never receives its map is a much
-worse failure than one extra copy per second. Flip intra_process:=true to
-experiment; the costmap topics and /scan_filtered would benefit.
+Getting parameters to the costmaps is the subtle part, and the first attempt
+got it wrong. A ComposableNode's `parameters` reach only that named node, so
+controller_server received its own controller_server: section and the sibling
+local_costmap:/global_costmap: sections never reached the costmap CHILD nodes.
+Those silently fell back to Nav2 defaults (static layer, no scan source) and
+never published, which reads downstream as "no costmap received". The same
+params file is therefore ALSO passed to the container process, exactly as
+upstream nav2_bringup does it, which makes it a process-level source the child
+nodes can resolve against.
 
-Verified on the board:
-    slam_toolbox::AsynchronousSlamToolbox   nav2_amcl::AmclNode
-    nav2_map_server::MapServer              nav2_controller::ControllerServer
-    nav2_planner::PlannerServer             nav2_smoother::SmootherServer
-    behavior_server::BehaviorServer         nav2_bt_navigator::BtNavigator
+Intra-process comms default to FALSE here, unlike the control container. /map
+is TRANSIENT_LOCAL: slam publishes it latched and the global costmap subscribes
+latched (map_subscribe_transient_local in nav2_params.yaml). That durability is
+where PR #58 hit the rmw_cyclonedds hang (ros2/rmw_cyclonedds#401), and a
+costmap that never receives its map is worse than one extra copy per second.
+Flip intra_process:=true to experiment.
 """
 
 import os
@@ -112,28 +100,27 @@ def generate_launch_description():
         intra_process, value_type=bool)}]
     common = {'use_sim_time': ParameterValue(use_sim_time, value_type=bool)}
 
-    # The five Nav2 servers run as REGULAR Nodes, not composed (see the module
-    # docstring): composing controller_server loses the local/global costmap
-    # parameter sections, leaving the costmaps on defaults and silent. Each
-    # process loads the full rewritten nav2_params.yaml like the sim launch.
+    # Composed again, but this time the params reach the costmaps. The earlier
+    # attempt gave the file only to each ComposableNode, so controller_server
+    # got its own controller_server: section while the sibling local_costmap:/
+    # global_costmap: sections never reached the costmap CHILD nodes. They fell
+    # back to Nav2 defaults (static layer, no scan source) and never published.
+    # The fix is on the container below: upstream nav2_bringup puts the same
+    # params file on the CONTAINER process, making it a process-level source
+    # that child nodes can resolve against.
     nav2_nodes = [
-        (pkg, exe)
-        for pkg, exe in [
-            ('nav2_controller', 'controller_server'),
-            ('nav2_smoother', 'smoother_server'),
-            ('nav2_planner', 'planner_server'),
-            ('nav2_behaviors', 'behavior_server'),
-            ('nav2_bt_navigator', 'bt_navigator'),
-        ]
-    ]
-
-    nav2_server_nodes = [
-        Node(
-            package=pkg, executable=exe, name=exe, output='screen',
-            respawn=False,
+        ComposableNode(
+            package=pkg, plugin=plugin, name=name,
             parameters=[configured_nav2, common],
+            extra_arguments=ipc,
         )
-        for pkg, exe in nav2_nodes
+        for pkg, plugin, name in [
+            ('nav2_controller', 'nav2_controller::ControllerServer', 'controller_server'),
+            ('nav2_smoother', 'nav2_smoother::SmootherServer', 'smoother_server'),
+            ('nav2_planner', 'nav2_planner::PlannerServer', 'planner_server'),
+            ('nav2_behaviors', 'behavior_server::BehaviorServer', 'behavior_server'),
+            ('nav2_bt_navigator', 'nav2_bt_navigator::BtNavigator', 'bt_navigator'),
+        ]
     ]
 
     # ── map -> odom, one of two ways ──────────────────────────────────
@@ -178,11 +165,21 @@ def generate_launch_description():
         ),
     ]
 
-    def container(name, nodes, condition=None):
+    def container(name, nodes, condition=None, params=None):
+        # component_container_isolated, not _mt: each component gets its own
+        # executor, so a planner replan or a slam loop closure cannot stall a
+        # sibling. Upstream nav2_bringup uses it for the same reason.
+        #
+        # `params` is the part that was missing before. Passing the params file
+        # here makes it a PROCESS-level parameter source, so nodes created
+        # INSIDE a component (Costmap2DROS under controller_server) can resolve
+        # their own local_costmap:/global_costmap: sections. A ComposableNode's
+        # own `parameters` only ever reach that one named node.
         return ComposableNodeContainer(
             name=name, namespace='', package='rclcpp_components',
-            executable='component_container_mt',
+            executable='component_container_isolated',
             composable_node_descriptions=nodes,
+            parameters=params,
             output='screen', condition=condition,
         )
 
@@ -223,7 +220,8 @@ def generate_launch_description():
         lifecycle('lifecycle_manager_localization', ['map_server', 'amcl'],
                   condition=UnlessCondition(slam)),
 
-        *nav2_server_nodes,
+        container('big_bertha_nav_container', nav2_nodes,
+                  params=[configured_nav2]),
         lifecycle('lifecycle_manager_navigation', [
             'controller_server', 'smoother_server', 'planner_server',
             'behavior_server', 'bt_navigator']),
