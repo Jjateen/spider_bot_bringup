@@ -60,10 +60,15 @@ def generate_launch_description():
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     params_file = LaunchConfiguration('params_file')
+    port = LaunchConfiguration('port')
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('params_file', default_value=default_params),
+        # Overridable so a missing udev rule is a one-word workaround rather
+        # than a config edit: port:=/dev/ttyUSB0. If /dev/ttyLIDAR does not
+        # exist the driver cannot open anything and dies in a respawn loop.
+        DeclareLaunchArgument('port', default_value='/dev/ttyLIDAR'),
 
         Node(
             package='ydlidar_ros2_driver',
@@ -73,6 +78,7 @@ def generate_launch_description():
             output='screen',
             respawn=True,
             respawn_delay=3.0,
-            parameters=[params_file, {'use_sim_time': use_sim_time}],
+            parameters=[params_file, {'use_sim_time': use_sim_time,
+                                      'port': port}],
         ),
     ])
