@@ -574,6 +574,59 @@ accel_calibration_samples: 200
    `with_lidar:=false` for servo work, or leave the policy disarmed for
    mapping.
 
+## Waypoint navigation demo (localization on a saved map)
+
+This is the SLAM demo's counterpart and does not touch it: `run_stack.sh` still
+runs SLAM exactly as before. The waypoint demo is a separate launch that loads a
+saved map, localises against it with AMCL, and lets you click waypoints in RViz
+for the robot to follow.
+
+Order of operations:
+
+1. **Record a map first**, with the SLAM demo. Drive the robot around the space
+   (teleop `/cmd_vel`, or send a few goals) until the map in RViz covers the
+   area, then save it:
+   ```bash
+   ros2 run nav2_map_server map_saver_cli -f ~/my_map
+   ```
+   A stationary robot gives one viewpoint, not a survey, so actually drive it.
+
+2. **Launch the demo on the board**, pointing at that map:
+   ```bash
+   ./scripts/run_localization.sh map:=/home/arduino/my_map.yaml
+   ```
+   Optionally seed the start pose with `x:= y:= yaw:=` (rough is fine, RViz
+   corrects it). Same board-side setup as `run_stack.sh`; only the launch file
+   differs, so nothing about the SLAM path changes.
+
+3. **Launch RViz on the dev laptop** (the board has no display):
+   ```bash
+   export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+   ros2 launch big_bertha_bringup nav_rviz.launch.py
+   ```
+   Run this on the LAN where the laptop is the access point. `/map` and the
+   costmaps are large and cross the network; the LAN handles that, Tailscale is
+   the fragile path. If the displays stay empty it is DDS discovery, not RViz.
+
+4. **Localise.** Click the **2D Pose Estimate** tool, then click-drag on the map
+   where the robot actually is, pointing the arrow the way it faces. The AMCL
+   Particles cloud should tighten around the robot. Nudge it a little (a short
+   goal) if it does not converge; with no magnetometer, yaw needs some motion to
+   settle.
+
+5. **Send waypoints.** In the **Navigation 2** panel switch to **Nav Through
+   Poses** mode, then use the **Nav2 Goal** tool to click each waypoint in
+   order (click for position, drag for heading). Press **Start**. The robot
+   plans through them; the green global plan and the local costmap update live.
+
+Notes:
+- The robot only moves once the servos are powered and the policy is armed
+  (`start_enabled:=true`, the default here). Power the servos when ready.
+- Nav Through Poses flows through the points without stopping. For stop-at-each
+  behaviour you would add `nav2_waypoint_follower`; not included yet.
+- The scripted alternative is `send_patrol.sh x1,y1 x2,y2 ...`, useful for a
+  repeatable demo without clicking.
+
 ## Quick start: the composed stack
 
 One command, from the repo root on the board:
