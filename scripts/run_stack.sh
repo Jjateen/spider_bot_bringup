@@ -31,6 +31,21 @@ set -u
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI="file://$(ros2 pkg prefix big_bertha_bringup)/share/big_bertha_bringup/config/dds/cyclonedds.xml"
 
+# Optional unicast peer, for a network where multicast discovery does not
+# cross to the dev machine. Only set this while that host is actually up: an
+# unreachable peer makes Cyclone retain samples for a reader that will never
+# read them, and once writer history fills the publish call blocks, which
+# silently kills /scan a few minutes in.
+#   BB_DDS_PEER=10.42.0.1 ./scripts/run_stack.sh
+if [ -n "${BB_DDS_PEER:-}" ]; then
+  _base="${CYCLONEDDS_URI#file://}"
+  _tmp="$(mktemp /tmp/cyclonedds_peer_XXXX.xml)"
+  sed "s|</Discovery>|  <Peers><Peer address=\"${BB_DDS_PEER}\"/></Peers>\n    </Discovery>|" \
+    "$_base" > "$_tmp"
+  export CYCLONEDDS_URI="file://$_tmp"
+  echo "PEER:  ${BB_DDS_PEER} (unicast; unset BB_DDS_PEER when that host goes away)"
+fi
+
 echo "RMW:   $RMW_IMPLEMENTATION"
 echo "DDS:   $CYCLONEDDS_URI"
 

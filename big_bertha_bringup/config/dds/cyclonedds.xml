@@ -59,24 +59,29 @@
 
     <Discovery>
       <ParticipantIndex>auto</ParticipantIndex>
-      <!-- Unicast peer list. Tailnet addresses are stable across network
-           changes (the reason for preferring them), but the dev host is also
-           reachable on the wlan0 LAN at 10.42.0.1 since it is the AP. -->
-      <!-- ONLY list hosts that are actually on the network.
-           An unreachable peer is not merely noisy. Cyclone keeps a matched
-           reader for it, the writer retains samples it can never deliver, and
-           once the writer history fills the publish call BLOCKS. Measured on
-           this board: with an off-network peer listed, the ydlidar driver kept
-           reading the serial port at 6.9 KB/s (rchar confirmed) while /scan
-           went silent and the main thread sat in __futex_wait. It takes a few
-           minutes for history to fill, which is why it looked like the lidar
-           "dying after 4-5 minutes". Removing the peer kept /scan alive.
+      <!-- NO unicast <Peers> here, deliberately, and this is the third design
+           in two days so the reasoning matters.
 
-           Add a dev machine here only while it is present, or better, set
-           CYCLONEDDS_PEERS and use a site-local copy of this file. -->
-      <Peers>
-        <Peer address="localhost"/>
-      </Peers>
+           Peers were added to make cross-machine RViz work. That listed the
+           dev laptop, which then went off the robot's network. Cyclone keeps a
+           matched reader for a listed peer, the writer retains samples it can
+           never deliver, and once history fills the publish call BLOCKS. That
+           is what made /scan die "after a few minutes" while the driver was
+           still reading the port at full rate.
+
+           The obvious fix, deleting every peer, broke the other direction: the
+           dev machine could no longer discover the board at all, so RViz saw
+           no topics and no /map.
+
+           So neither a fixed peer list nor an empty one is right. Discovery is
+           multicast here: same host over lo, cross-machine over wlan0 where the
+           dev machine is the access point and client<->AP multicast is
+           delivered. Nothing is retained for a host that is not there, so a
+           laptop going away can never stall the robot.
+
+           If multicast is genuinely blocked on some future network, add the
+           peer at RUNTIME with BB_DDS_PEER=<ip> (see scripts/run_stack.sh)
+           rather than editing this file, and only while that host is up. -->
     </Discovery>
 
     <Tracing>
