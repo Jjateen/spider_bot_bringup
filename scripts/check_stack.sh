@@ -74,7 +74,13 @@ fi
 echo "=== lifecycle ==="
 for n in slam_toolbox controller_server planner_server bt_navigator; do
   s=$(timeout 10 ros2 lifecycle get "/$n" 2>/dev/null)
-  case "$s" in *active*) ok "$n" "$s";; *) bad "$n" "${s:-no response}";; esac
+  # Match "active [3]" only. A plain *active* glob also matches "inactive [2]"
+  # and "unconfigured", so a server that never activated read as PASS.
+  case "$s" in
+    active\ *) ok "$n" "$s";;
+    "") bad "$n" "no response";;
+    *) bad "$n" "$s";;
+  esac
 done
 
 echo
