@@ -92,4 +92,8 @@ if [ ! -e /dev/ttyUSB0 ] && [[ " $* " != *"with_lidar:=false"* ]]; then
   echo "         or pass with_lidar:=false." >&2
 fi
 
-exec ros2 launch big_bertha_bringup composed_stack.launch.py "$@"
+# Default is the SLAM demo (composed_stack.launch.py); unchanged. run_localization.sh
+# sets BB_LAUNCH_FILE to reuse this exact board-side setup (DDS env, firmware
+# start, stale-process sweep) for the localization demo, without a second copy
+# of it and without touching the SLAM path.
+exec ros2 launch big_bertha_bringup "${BB_LAUNCH_FILE:-composed_stack.launch.py}" "$@"

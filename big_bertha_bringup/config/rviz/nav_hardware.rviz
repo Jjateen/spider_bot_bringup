@@ -1,0 +1,157 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+  # The Navigation 2 panel carries the waypoint workflow: its "Nav Through
+  # Poses" mode plus the Nav2 Goal tool is how you click a sequence of goals
+  # and start the run. No extra node is needed; bt_navigator serves it.
+  - Class: nav2_rviz_plugins/Navigation 2
+    Name: Navigation 2
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Plane Cell Count: 20
+      Reference Frame: map
+    - Class: rviz_default_plugins/Map
+      Name: Map
+      Enabled: true
+      Topic:
+        Value: /map
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Color Scheme: map
+      Draw Behind: true
+    - Class: rviz_default_plugins/Map
+      Name: Global Costmap
+      Enabled: true
+      Topic:
+        Value: /global_costmap/costmap
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Color Scheme: costmap
+      Alpha: 0.5
+    - Class: rviz_default_plugins/Map
+      Name: Local Costmap
+      Enabled: false
+      Topic:
+        Value: /local_costmap/costmap
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+      Color Scheme: costmap
+      Alpha: 0.6
+    - Class: rviz_default_plugins/RobotModel
+      Name: RobotModel
+      Enabled: true
+      Description Topic:
+        Value: /robot_description
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: false
+    # AMCL's particle cloud. This is the "state estimation" made visible: a
+    # tight cluster means AMCL is confident where the robot is on the map, a
+    # spread-out one means it has not converged yet (seed it with the 2D Pose
+    # Estimate tool and drive a little). Jazzy amcl publishes /particle_cloud.
+    - Class: nav2_rviz_plugins/ParticleCloud
+      Name: AMCL Particles
+      Enabled: true
+      Topic:
+        Value: /particle_cloud
+        Durability Policy: Volatile
+        Reliability Policy: Best Effort
+      Color: 0; 180; 255
+    - Class: rviz_default_plugins/LaserScan
+      Name: LaserScan
+      Enabled: true
+      Topic:
+        Value: /scan_filtered
+        Reliability Policy: Best Effort
+      Size (m): 0.03
+      Style: Points
+      Color: 255; 255; 0
+    - Class: rviz_default_plugins/LaserScan
+      Name: LaserScan (raw, unfiltered)
+      Enabled: false
+      Topic:
+        Value: /scan
+        Reliability Policy: Best Effort
+      Size (m): 0.03
+      Style: Points
+      Color: 255; 0; 0
+    # /odom, not /odometry/filtered: there is no EKF on hardware, leg_odometry
+    # owns odom->base_link and publishes /odom directly. The sim config points
+    # at the EKF output, which does not exist here.
+    - Class: rviz_default_plugins/Odometry
+      Name: Odometry
+      Enabled: true
+      Topic:
+        Value: /odom
+      Keep: 100
+      Covariance:
+        Value: false
+    - Class: rviz_default_plugins/Path
+      Name: Global Plan
+      Enabled: true
+      Topic:
+        Value: /plan
+        Reliability Policy: Reliable
+      Color: 0; 255; 0
+      Line Style: Lines
+    - Class: rviz_default_plugins/Path
+      Name: Local Plan
+      Enabled: true
+      Topic:
+        Value: /local_plan
+        Reliability Policy: Reliable
+      Color: 0; 12; 255
+      Line Style: Lines
+    - Class: rviz_default_plugins/Polygon
+      Name: Robot Footprint
+      Enabled: true
+      Topic:
+        Value: /local_costmap/published_footprint
+        Reliability Policy: Reliable
+      Color: 25; 255; 255
+    - Class: rviz_default_plugins/Pose
+      Name: Goal Pose
+      Enabled: true
+      Topic:
+        Value: /goal_pose
+        Reliability Policy: Reliable
+      Color: 255; 25; 0
+  Global Options:
+    Fixed Frame: map
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    # GoalTool drops navigation goals by click-drag (click = position, drag =
+    # heading). In Nav Through Poses mode each click adds a waypoint.
+    - Class: nav2_rviz_plugins/GoalTool
+    # 2D Pose Estimate: click-drag the robot's real pose to seed AMCL. This is
+    # the first thing to do after launch, before sending any goal.
+    - Class: rviz_default_plugins/SetInitialPose
+      Topic:
+        Value: /initialpose
+    - Class: rviz_default_plugins/PublishPoint
+      Topic:
+        Value: /clicked_point
+  Views:
+    Current:
+      # Higher and steeper than the gait-demo view: you need to see the whole
+      # map to click waypoints across it, not a close-up of the legs.
+      Class: rviz_default_plugins/Orbit
+      Target Frame: map
+      Distance: 9.0
+      Pitch: 1.0
+      Yaw: 0.785
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+Window Geometry:
+  Height: 850
+  Width: 1300
