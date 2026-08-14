@@ -33,8 +33,18 @@ ydlidar_ros2_driver_node:
     sample_rate: 3
     abnormal_check_count: 4
     fixed_resolution: true
-    reversion: false
-    inverted: false
+    # Both true because the unit is mounted UPSIDE DOWN on this robot.
+    #
+    # These are the driver's X2 defaults and they are wrong here. With the
+    # sensor inverted, an unflipped scan is mirrored about the x axis: angles
+    # increase the wrong way, so the map builds as a mirror image and every
+    # obstacle bearing Nav2 plans against is reflected. Nothing errors, the
+    # scan looks plausible at 11 Hz, and the fault only shows up as a map that
+    # does not match the room.
+    #
+    # reversion flips the scan direction, inverted flips the angle sign.
+    reversion: true
+    inverted: true
     auto_reconnect: true
     isSingleChannel: true
     intensity_bit: 0
