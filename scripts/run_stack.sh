@@ -46,6 +46,25 @@ if [ -n "${BB_DDS_PEER:-}" ]; then
   echo "PEER:  ${BB_DDS_PEER} (unicast; unset BB_DDS_PEER when that host goes away)"
 fi
 
+# Clear any survivors from a previous run before starting. run_stack uses
+# exec + ros2 launch, so Ctrl+C goes straight to launch and shuts its nodes
+# down cleanly -- but the lidar driver does BLOCKING serial reads, so if it is
+# wedged when SIGINT arrives it can outlive the shutdown and keep /dev/ttyLIDAR
+# open. The next run then fails with "port busy". This is not the 5-minute USB
+# drop (that is the hub power-cycling in dmesg, which no process can cause), it
+# is only the re-run conflict. Sweeping here makes a stale driver harmless.
+_stale=$(pgrep -f "ydlidar_ros2_driver_node|component_container" || true)
+if [ -n "$_stale" ]; then
+  echo "CLEANUP: killing leftover stack processes from a previous run"
+  # shellcheck disable=SC2086
+  kill $_stale 2>/dev/null || true
+  sleep 2
+  _stale=$(pgrep -f "ydlidar_ros2_driver_node|component_container" || true)
+  # shellcheck disable=SC2086
+  [ -n "$_stale" ] && kill -9 $_stale 2>/dev/null || true
+  sleep 1
+fi
+
 echo "RMW:   $RMW_IMPLEMENTATION"
 echo "DDS:   $CYCLONEDDS_URI"
 
