@@ -50,18 +50,23 @@ ros2 launch big_bertha_sim_bringup bringup.launch.py rviz:=true
 
 ## Demos
 
-Straight 1:1 walk (real-time), commanded at 0.29 m/s like the training gif:
+All three are RViz captures of the v2.0.0 policy driving the Gazebo sim. The
+playback speed is noted per clip; the straight walk is the only one at real
+time, because the two autonomy runs take minutes.
 
-![straight walk](verification_artifacts/demo_straight_v1.1.0.gif)
+Straight 1:1 walk (real time), commanded at 0.29 m/s like the training gif:
 
-3-goal patrol planning through the obstacle field:
+![straight walk](assets/gifs/demo_straight_v2.0.0.gif)
 
-![patrol](verification_artifacts/demo_patrol_v1.1.0.gif)
+SLAM explores the arena frontier by frontier, builds the map with no preset
+waypoints, and returns to its start (20x; the run itself takes ~12 min):
 
-SLAM explores the arena frontier-by-frontier to build the map and returns to
-its start, then AMCL patrols on the map it just built:
+![slam map generation](assets/gifs/demo_slam_map_v2.0.0.gif)
 
-![slam then patrol](verification_artifacts/demo_slam_patrol_v1.1.0.gif)
+3-goal patrol through the obstacle field, planned against the map built in the
+run above, with AMCL localizing on it (10x):
+
+![patrol on the built map](assets/gifs/demo_patrol_v2.0.0.gif)
 
 ## Autonomy stack (functional modules)
 
