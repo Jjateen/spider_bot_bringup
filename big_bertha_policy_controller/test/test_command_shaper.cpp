@@ -32,7 +32,7 @@ bbpc::CommandShaper make_shaper()
   return s;
 }
 
-TEST(CommandShaper, EnvelopeClampsAndNoReverse)
+TEST(CommandShaper, EnvelopeClampsAndReverseSurvives)
 {
   auto s = make_shaper();
   s.heading_hold = false;  // isolate the clamps
@@ -40,8 +40,11 @@ TEST(CommandShaper, EnvelopeClampsAndNoReverse)
   EXPECT_DOUBLE_EQ(c.vx, 0.3);
   EXPECT_DOUBLE_EQ(c.vy, -0.06);
   EXPECT_DOUBLE_EQ(c.yaw, 0.5);
-  // The gait has no reverse: negative vx clamps to zero.
-  EXPECT_DOUBLE_EQ(s.shape(-0.2, 0, 0, false, false, 0, 0, 0, 0.02).vx, 0.0);
+  // v2.0.0 trains reverse, so a BackUp command must reach the policy instead
+  // of being clamped to zero. Nav2 backs up at -0.15, the trained magnitude.
+  EXPECT_DOUBLE_EQ(s.shape(-0.15, 0, 0, false, false, 0, 0, 0, 0.02).vx, -0.15);
+  // Beyond the trained reverse envelope it saturates, it does not pass through.
+  EXPECT_DOUBLE_EQ(s.shape(-0.9, 0, 0, false, false, 0, 0, 0, 0.02).vx, -0.15);
 }
 
 TEST(CommandShaper, StaleCommandSafeStops)

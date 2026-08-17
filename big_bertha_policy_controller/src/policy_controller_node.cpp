@@ -65,6 +65,7 @@ public:
     // hold, PI hip-bias steering) lives in CommandShaper -- header-only and
     // unit-tested; this block only maps ROS params onto it.
     shaper_.max_lin_vel_x = declare_parameter<double>("max_lin_vel_x", 0.3);
+    shaper_.max_reverse_vel_x = declare_parameter<double>("max_reverse_vel_x", 0.15);
     shaper_.max_lin_vel_y = declare_parameter<double>("max_lin_vel_y", 0.05);
     shaper_.max_yaw_rate = declare_parameter<double>("max_yaw_rate", 0.15);
     shaper_.heading_hold = declare_parameter<bool>("heading_hold", true);
@@ -346,7 +347,10 @@ private:
         // Gate the gait when neither forward nor turn is commanded (the policy
         // cannot stand still). The |wz| half matters: gating on vx alone would
         // swallow the trained turn-in-place commands.
-        moving = obs_.commands[0] > shaper_.stand_vx_thresh ||
+        // Magnitude on vx: a reverse command is motion too. Testing vx > thresh
+        // gated the gait off for every negative command, so even once the
+        // clamp allowed reverse through, the robot stood still in stance.
+        moving = std::abs(obs_.commands[0]) > shaper_.stand_vx_thresh ||
                  std::abs(obs_.commands[2]) > stand_yaw_thresh_;
         if (!moving) {
           // Hold the default stance; with station_keep the hip-bias steering

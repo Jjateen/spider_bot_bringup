@@ -29,6 +29,11 @@ struct CommandShaper
 {
   // Envelope + loop gains; runtime values come from policy.yaml.
   double max_lin_vel_x{0.3};
+  // Reverse envelope. v2.0.0 trains a dedicated reverse cell (20% of episodes,
+  // vx in [-0.15, -0.05]) precisely because Nav2's BackUp recovery is the only
+  // thing that commands reverse. Clamping vx at 0 threw that command away, so
+  // the robot could never back out of a wall. Magnitude, applied as -value.
+  double max_reverse_vel_x{0.15};
   double max_lin_vel_y{0.05};
   double max_yaw_rate{0.15};
   bool heading_hold{true};
@@ -82,7 +87,7 @@ struct CommandShaper
     double vx = stale ? 0.0 : cmd_vx;
     double vy = stale ? 0.0 : cmd_vy;
     double wz = stale ? 0.0 : cmd_wz;
-    vx = std::clamp(vx, 0.0, max_lin_vel_x);
+    vx = std::clamp(vx, -max_reverse_vel_x, max_lin_vel_x);
     vy = std::clamp(vy, -max_lin_vel_y, max_lin_vel_y);
     wz = std::clamp(wz, -max_yaw_rate, max_yaw_rate);
 
