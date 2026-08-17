@@ -173,12 +173,14 @@ class FrontierExplorer(Node):
 
         deadline = time.time() + self.args.budget
         visited = 0
+        complete = False
         while rclpy.ok() and time.time() < deadline:
             self.spin_for(2.0)  # let /map catch up with the last leg
             robot = self.robot_xy() or start
             pick = self.pick_goal(robot)
             if pick is None:
                 print('=== map complete: no frontiers left ===', flush=True)
+                complete = True
                 break
             _, x, y, size = pick
             if self.goto(x, y, robot, f'frontier ({size} cells) ->'):
@@ -191,15 +193,24 @@ class FrontierExplorer(Node):
         robot = self.robot_xy() or start
         print('=== returning to start ===', flush=True)
         returned = self.goto(start[0], start[1], robot, 'return to start ->')
-        print(f'=== explore complete: {visited} frontiers visited, '
+        # Say WHICH ending this was. The old line printed the same "explore
+        # complete" whether the map was finished or the budget simply ran out,
+        # so a truncated map read as a successful run.
+        print(f'=== explore {"complete" if complete else "TRUNCATED (budget spent)"}: '
+              f'{visited} frontiers visited, '
               f'returned={"yes" if returned else "no"} ===', flush=True)
-        return 0
+        return 0 if complete else 2
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--budget', type=float, default=600.0,
-                        help='wall-clock seconds before giving up (default 600)')
+    # 600 s was sized when the plant was faster. Big Bertha crawls the arena at
+    # ~0.075 m/s, so 600 s ran out with 13% of the interior still unknown and
+    # the run still reported success, which is how a truncated map reached the
+    # demo gif. 1800 s covers the 8x8 m arena with margin; exploration exits as
+    # soon as no frontier is left, so a finished map still stops early.
+    parser.add_argument('--budget', type=float, default=1800.0,
+                        help='wall-clock seconds before giving up (default 1800)')
     parser.add_argument('--min-frontier', type=int, default=12,
                         help='ignore clusters smaller than this many cells')
     parser.add_argument('--goal-timeout', type=float, default=90.0,
