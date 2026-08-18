@@ -58,10 +58,16 @@ Straight 1:1 walk (real time), commanded at 0.29 m/s like the training gif:
 
 ![straight walk](assets/gifs/demo_straight_v2.0.0.gif)
 
-The same walk close up, for checking the gait itself (real time). One foot
-swings at a time: the clock offsets are 0.25 apart in the order
-`arm_c_1_1 -> arm_c_3_1 -> arm_c_2_1 -> arm_c_4_1`, so the two diagonal pairs
-are half a cycle apart, never in phase:
+The same manoeuvres as the Isaac verification gif, close up and at real time:
+forward, turn right, forward, reverse, turn left, stop. Run it with
+`demo_straight.launch.py sequence:=true`, which replays the training repo's
+`DEMO_SEQ` via `scripts/demo_seq.py`.
+
+Recorded at 25 fps rather than 10. The gait runs at 1.4 Hz, so at 10 fps a leg
+swing gets 1.8 frames and the crawl aliases into what looks like hopping; 25 fps
+gives 4.4 and is still exact on the GIF 10 ms frame-delay grid. Measured foot
+contact says one foot is airborne 62% of the time and three or four are
+airborne 0.0% of it, so it is a crawl:
 
 ![gait closeup](assets/gifs/demo_gait_closeup_v2.0.0.gif)
 
