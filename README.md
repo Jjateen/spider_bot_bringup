@@ -51,17 +51,19 @@ ros2 launch big_bertha_sim_bringup bringup.launch.py rviz:=true
 ## Demos
 
 All three are RViz captures of the v2.0.0 policy driving the Gazebo sim. The
-playback speed is noted per clip; the straight walk is the only one at real
+playback speed is noted per clip; the locomotion demo is the only one at real
 time, because the two autonomy runs take minutes.
 
-Straight 1:1 walk (real time), commanded at 0.29 m/s like the training gif:
-
-![straight walk](assets/gifs/demo_straight_v2.0.0.gif)
-
-The same manoeuvres as the Isaac verification gif, close up and at real time:
-forward, turn right, forward, reverse, turn left, stop. Run it with
+The same manoeuvres as the Isaac verification gif, at real time: forward, turn
+right, forward, reverse, turn left, stop. Run it with
 `demo_straight.launch.py sequence:=true`, which replays the training repo's
 `DEMO_SEQ` via `scripts/demo_seq.py`.
+
+The camera is pinned to the fixed frame rather than following base_link. A
+follow cam keeps the robot centred, so the 0.4 m it covers is invisible and
+only the turns read as motion, which makes the clip look like it is walking on
+the spot. The forward and reverse legs are also longer than Isaac's, because
+this plant crawls at ~0.075 m/s against Isaac's ~0.146.
 
 Recorded at 25 fps rather than 10. The gait runs at 1.4 Hz, so at 10 fps a leg
 swing gets 1.8 frames and the crawl aliases into what looks like hopping; 25 fps

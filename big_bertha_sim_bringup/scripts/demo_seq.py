@@ -50,13 +50,18 @@ ISAAC_SEQ = (
 # Measure with the yaw log taken DURING the recorded run. An earlier log whose
 # clock was not aligned to the segment transitions reported an undershoot that
 # did not exist, and sizing against it overshot badly.
+# Forward and reverse legs are much longer than Isaac's. Gazebo crawls at
+# ~0.075 m/s against Isaac's ~0.146, so Isaac's 3 s legs move this plant barely
+# 0.2 m; with the turns cancelling direction the whole script netted 0.05 m and
+# the robot looked stuck on the spot. These legs give ~0.75 m each, which reads
+# as travel on screen.
 DEFAULT_SEQ = (
-    "0.30,0,0:150;"    # forward        3.00 s
+    "0.30,0,0:500;"    # forward       10.00 s  ~0.75 m
     "0,0,-0.5:275;"    # turn right 90  5.50 s
-    "0.30,0,0:150;"    # forward        3.00 s
-    "-0.15,0,0:125;"   # reverse        2.50 s
+    "0.30,0,0:500;"    # forward       10.00 s  ~0.75 m
+    "-0.15,0,0:300;"   # reverse        6.00 s  ~0.45 m back
     "0,0,0.5:525;"     # turn left 180 10.50 s
-    "0,0,0:135"        # stop           2.70 s
+    "0,0,0:100"        # stop           2.00 s
 )
 
 
