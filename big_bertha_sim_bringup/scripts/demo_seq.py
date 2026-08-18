@@ -94,6 +94,8 @@ def parse(seq):
 
 
 class SeqDriver(Node):
+    """Publishes the scripted command sequence on /cmd_vel at a fixed rate."""
+
     def __init__(self, segments, rate):
         super().__init__('demo_seq')
         self.pub = self.create_publisher(Twist, '/cmd_vel', 10)
