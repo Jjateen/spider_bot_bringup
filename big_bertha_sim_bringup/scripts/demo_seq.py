@@ -1,5 +1,20 @@
 #!/usr/bin/env python3
-"""Replay the Isaac demo command sequence on /cmd_vel.
+# Copyright 2026 Jjateen Gundesha
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+Replay the Isaac demo command sequence on /cmd_vel.
 
 The training repo records its verification gif by driving the policy through a
 fixed script (``DEMO_SEQ`` in ``scripts/rsl_rl/play_fixed_vel.py``): forward,
@@ -16,19 +31,20 @@ Usage: demo_seq.py [--seq "..."] [--rate 50]
 """
 import argparse
 
-import rclpy
 from geometry_msgs.msg import Twist
+
+import rclpy
 from rclpy.node import Node
 
 # The Isaac script, verbatim from play_fixed_vel.py. Kept for reference: its
 # turn durations are derived from Isaac's measured 0.4326 rad/s.
 ISAAC_SEQ = (
-    "0.30,0,0:150;"    # forward        3.00 s
-    "0,0,-0.5:182;"    # turn right 90  3.64 s (negative wz = clockwise)
-    "0.30,0,0:150;"    # forward        3.00 s
-    "-0.15,0,0:125;"   # reverse        2.50 s
-    "0,0,0.5:363;"     # turn left 180  7.26 s
-    "0,0,0:135"        # stop           2.70 s
+    '0.30,0,0:150;'    # forward        3.00 s
+    '0,0,-0.5:182;'    # turn right 90  3.64 s (negative wz = clockwise)
+    '0.30,0,0:150;'    # forward        3.00 s
+    '-0.15,0,0:125;'   # reverse        2.50 s
+    '0,0,0.5:363;'     # turn left 180  7.26 s
+    '0,0,0:135'        # stop           2.70 s
 )
 
 # Same manoeuvres, durations re-derived for the Gazebo plant, which yaws
@@ -59,42 +75,42 @@ ISAAC_SEQ = (
 # The second forward leg is capped at 8 s on purpose: after the right turn the
 # robot heads south from the spawn at y=-3.5, and the arena wall is near -4.5.
 DEFAULT_SEQ = (
-    "0.30,0,0:1000;"   # forward       20.00 s  ~1.5 m
-    "0,0,-0.5:275;"    # turn right 90  5.50 s
-    "0.30,0,0:400;"    # forward        8.00 s  ~0.6 m
-    "-0.15,0,0:400;"   # reverse        8.00 s  ~0.6 m back
-    "0,0,0.5:525;"     # turn left 180 10.50 s
-    "0,0,0:100"        # stop           2.00 s
+    '0.30,0,0:1000;'   # forward       20.00 s  ~1.5 m
+    '0,0,-0.5:275;'    # turn right 90  5.50 s
+    '0.30,0,0:400;'    # forward        8.00 s  ~0.6 m
+    '-0.15,0,0:400;'   # reverse        8.00 s  ~0.6 m back
+    '0,0,0.5:525;'     # turn left 180 10.50 s
+    '0,0,0:100'        # stop           2.00 s
 )
 
 
 def parse(seq):
     out = []
-    for part in seq.split(";"):
-        cmd, steps = part.split(":")
-        vx, vy, wz = (float(v) for v in cmd.split(","))
+    for part in seq.split(';'):
+        cmd, steps = part.split(':')
+        vx, vy, wz = (float(v) for v in cmd.split(','))
         out.append((vx, vy, wz, int(steps)))
     return out
 
 
 class SeqDriver(Node):
     def __init__(self, segments, rate):
-        super().__init__("demo_seq")
-        self.pub = self.create_publisher(Twist, "/cmd_vel", 10)
+        super().__init__('demo_seq')
+        self.pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self.segments = segments
         self.i = 0
         self.done = False
         self.left = segments[0][3]
         total = sum(s[3] for s in segments)
         self.get_logger().info(
-            "demo sequence: %d segments, %d steps, %.2f s at %g Hz"
+            'demo sequence: %d segments, %d steps, %.2f s at %g Hz'
             % (len(segments), total, total / rate, rate))
         self.timer = self.create_timer(1.0 / rate, self.tick)
 
     def tick(self):
         if self.i >= len(self.segments):
             self.pub.publish(Twist())      # leave the robot commanded to stop
-            self.get_logger().info("demo sequence complete")
+            self.get_logger().info('demo sequence complete')
             self.done = True
             self.timer.cancel()
             return
@@ -109,14 +125,14 @@ class SeqDriver(Node):
                 self.left = self.segments[self.i][3]
                 nvx, nvy, nwz, n = self.segments[self.i]
                 self.get_logger().info(
-                    "segment %d: vx=%.2f vy=%.2f wz=%.2f for %d steps"
+                    'segment %d: vx=%.2f vy=%.2f wz=%.2f for %d steps'
                     % (self.i, nvx, nvy, nwz, n))
 
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--seq", default=DEFAULT_SEQ)
-    p.add_argument("--rate", type=float, default=50.0)
+    p.add_argument('--seq', default=DEFAULT_SEQ)
+    p.add_argument('--rate', type=float, default=50.0)
     args, _ = p.parse_known_args()
     rclpy.init()
     n = SeqDriver(parse(args.seq), args.rate)
@@ -129,5 +145,5 @@ def main():
     rclpy.shutdown()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
