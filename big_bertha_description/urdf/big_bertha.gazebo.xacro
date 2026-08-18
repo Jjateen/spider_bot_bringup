@@ -85,6 +85,16 @@
            unresponsive to a 12.5x joint PD kd increase). kp/kd here are ODE
            contact spring stiffness/damping (N/m, Ns/m), not the joint PD gains.
       -->
+      <!-- REGRESSION WARNING: the feet were set soft="true" again at some
+           point after this was first fixed, and it cost ~18% of forward speed
+           (0.084 down to 0.071 m/s, measured on the straight walk). Isaac
+           trains on RIGID foot ground contact; a compliant foot yields under
+           load exactly when push off needs normal force, so the legs cycle on
+           schedule but the body barely moves, which looks like the robot is
+           walking on the spot. Keep soft="false" unless the velocity limit
+           resonance returns, and note the 1000 Hz world physics already holds
+           that at bay: p99 joint velocity measured 3.78 of 7.2 rad/s with
+           rigid contact. -->
       <xacro:if value="${soft}">
         <kp>1.0e5</kp>
         <kd>10.0</kd>
@@ -98,16 +108,16 @@
   <xacro:bb_surface link="base_link"  mu="0.6"/>
   <xacro:bb_surface link="arm_a_1_1"  mu="0.6"/>
   <xacro:bb_surface link="arm_b_1_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_1_1"  mu="1.5" soft="true"/>
+  <xacro:bb_surface link="arm_c_1_1"  mu="1.5" soft="false"/>
   <xacro:bb_surface link="arm_a_2_1"  mu="0.6"/>
   <xacro:bb_surface link="arm_b_2_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_2_1"  mu="1.5" soft="true"/>
+  <xacro:bb_surface link="arm_c_2_1"  mu="1.5" soft="false"/>
   <xacro:bb_surface link="arm_a_3_1"  mu="0.6"/>
   <xacro:bb_surface link="arm_b_3_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_3_1"  mu="1.5" soft="true"/>
+  <xacro:bb_surface link="arm_c_3_1"  mu="1.5" soft="false"/>
   <xacro:bb_surface link="arm_a_4_1"  mu="0.6"/>
   <xacro:bb_surface link="arm_b_4_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_4_1"  mu="1.5" soft="true"/>
+  <xacro:bb_surface link="arm_c_4_1"  mu="1.5" soft="false"/>
   <xacro:bb_surface link="battery_link"          mu="0.6"/>
   <xacro:bb_surface link="circuit_box_base_link" mu="0.6"/>
   <xacro:bb_surface link="circuit_box_link"      mu="0.6"/>
