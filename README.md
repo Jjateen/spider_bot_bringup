@@ -60,10 +60,13 @@ right, forward, reverse, turn left, stop. Run it with
 `DEMO_SEQ` via `scripts/demo_seq.py`.
 
 The camera is pinned to the fixed frame rather than following base_link. A
-follow cam keeps the robot centred, so the 0.4 m it covers is invisible and
-only the turns read as motion, which makes the clip look like it is walking on
-the spot. The forward and reverse legs are also longer than Isaac's, because
-this plant crawls at ~0.075 m/s against Isaac's ~0.146.
+follow cam keeps the robot centred, so translation is invisible and only the
+turns read as motion, which makes the clip look like it is walking on the spot.
+The forward and reverse legs are also far longer than Isaac's, because this
+plant crawls at ~0.075 m/s against Isaac's ~0.146: the 20 s opening leg covers
+~1.5 m, where Isaac's 3 s leg would move it barely 0.2 m. Measured on the
+recorded take: 1.49 m net displacement, 1.74 m maximum excursion, net heading
++85.8 deg against +90 commanded.
 
 Recorded at 25 fps rather than 10. The gait runs at 1.4 Hz, so at 10 fps a leg
 swing gets 1.8 frames and the crawl aliases into what looks like hopping; 25 fps

@@ -72,15 +72,16 @@ Visualization Manager:
       # Camera pinned to the FIXED frame, not base_link. A follow cam keeps the
       # robot centred, so translation is invisible and only the turns read as
       # motion -- the clip looks like the robot is walking on the spot. Pinned
-      # here, the robot visibly crosses the view. Focal point sits near the
-      # spawn (-3.5, -3.5) with the distance sized to keep the whole run framed.
+      # here, the robot visibly crosses the view. Focal point is the centroid
+      # of the actual path (spawn -3.5,-3.5, then ~1.5 m east and ~0.6 m south),
+      # not the spawn, so the travel fills the frame instead of leaving it.
       Target Frame: <Fixed Frame>
       Distance: 3.0
       Pitch: 0.32
       Yaw: 0.785
       Focal Point:
-        X: -3.3
-        Y: -3.3
+        X: -2.75
+        Y: -3.8
         Z: 0.1
 Window Geometry:
   Height: 800
