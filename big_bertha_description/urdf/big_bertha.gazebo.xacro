@@ -102,22 +102,29 @@
     </gazebo>
   </xacro:macro>
 
-  <!-- Feet (arm_c_*) get high friction to match the training ground
+  <!-- Feet mu 3.0, NOT Isaac's effective 1.5. DART needs roughly double to
+       reach the same grip: measured on the straight walk, 1.5 gives 0.072 m/s
+       with feet sliding 7.4 m per metre of body advance, 3.0 gives 0.099 m/s
+       at 4.9, and 6.0 only reaches 0.106 while pitching worse (18.7 vs 17.4
+       deg) and sagging lower. 3.0 is the knee of that curve. Raising it
+       further does not help because what still slides are feet dragging under
+       near-zero load, which no friction coefficient fixes.
+       Feet (arm_c_*) get high friction to match the training ground
        (static/dynamic 1.0) and softened contact for the lighter foot mass;
        body + upper links a touch lower friction, default (rigid) contact. -->
   <xacro:bb_surface link="base_link"  mu="0.6"/>
   <xacro:bb_surface link="arm_a_1_1"  mu="0.6"/>
   <xacro:bb_surface link="arm_b_1_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_1_1"  mu="1.5" soft="false"/>
+  <xacro:bb_surface link="arm_c_1_1"  mu="3.0" soft="false"/>
   <xacro:bb_surface link="arm_a_2_1"  mu="0.6"/>
   <xacro:bb_surface link="arm_b_2_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_2_1"  mu="1.5" soft="false"/>
+  <xacro:bb_surface link="arm_c_2_1"  mu="3.0" soft="false"/>
   <xacro:bb_surface link="arm_a_3_1"  mu="0.6"/>
   <xacro:bb_surface link="arm_b_3_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_3_1"  mu="1.5" soft="false"/>
+  <xacro:bb_surface link="arm_c_3_1"  mu="3.0" soft="false"/>
   <xacro:bb_surface link="arm_a_4_1"  mu="0.6"/>
   <xacro:bb_surface link="arm_b_4_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_4_1"  mu="1.5" soft="false"/>
+  <xacro:bb_surface link="arm_c_4_1"  mu="3.0" soft="false"/>
   <xacro:bb_surface link="battery_link"          mu="0.6"/>
   <xacro:bb_surface link="circuit_box_base_link" mu="0.6"/>
   <xacro:bb_surface link="circuit_box_link"      mu="0.6"/>
