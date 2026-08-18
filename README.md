@@ -58,13 +58,21 @@ Straight 1:1 walk (real time), commanded at 0.29 m/s like the training gif:
 
 ![straight walk](assets/gifs/demo_straight_v2.0.0.gif)
 
+The same walk close up, for checking the gait itself (real time). One foot
+swings at a time: the clock offsets are 0.25 apart in the order
+`arm_c_1_1 -> arm_c_3_1 -> arm_c_2_1 -> arm_c_4_1`, so the two diagonal pairs
+are half a cycle apart, never in phase:
+
+![gait closeup](assets/gifs/demo_gait_closeup_v2.0.0.gif)
+
 SLAM explores the arena frontier by frontier, builds the map with no preset
-waypoints, and returns to its start (20x; the run itself takes ~12 min):
+waypoints, and returns to its start (30x; the run itself takes ~15 min):
 
 ![slam map generation](assets/gifs/demo_slam_map_v2.0.0.gif)
 
 3-goal patrol through the obstacle field, planned against the map built in the
-run above, with AMCL localizing on it (10x):
+run above, with AMCL localizing on it. 3/3 goals, no planner failures and no
+recoveries (12x):
 
 ![patrol on the built map](assets/gifs/demo_patrol_v2.0.0.gif)
 
