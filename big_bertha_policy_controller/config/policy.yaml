@@ -19,6 +19,15 @@
     joint_limit: 3.14159     # rad; full ±180deg for MG995, raised from 1.57 to not clip training ankle default (2.00 rad)
     # PD lives in JointEffortPdController (ros2_control.yaml): synchronous,
     # zero-latency q/qd. PD here over a topic damps stale velocity -> jitter.
+    #
+    # Keep this false on hardware and do not add a PID here. MG995 is a POSITION
+    # servo: it closes its own loop inside the case, you hand it a pulse width
+    # and its electronics drive the horn to that angle and hold it. No torque or
+    # current input is exposed, so an effort loop here has nothing to act on --
+    # it would compute a torque and then throw it away at the PWM conversion.
+    # JointEffortPdController is sim-only on purpose: the Gazebo joint has no
+    # internal controller, so it has to fake the one the real servo already has.
+    # Running it on hardware means two loops fighting each other.
     use_effort: false        # publish position targets, controller does the PD
     pd_rate: 200.0           # Hz; target publish rate (policy decimated to 50)
     action_clip: 1.0         # raw policy action clamp (matches env)
