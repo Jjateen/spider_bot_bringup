@@ -48,7 +48,10 @@ public:
     base_frame_ = declare_parameter<std::string>("base_frame", "base_link");
     publish_tf_ = declare_parameter<bool>("publish_tf", false);
     velocity_source_ = declare_parameter<std::string>("velocity_source", "imu_dead_reckon");
-    drift_damping_ = declare_parameter<double>("drift_damping", 0.98);
+    // Replaces drift_damping, which was declared but never applied, so the
+    // config advertised a drift control that did not exist. ZUPT owns drift;
+    // this bounds the single bad sample ZUPT cannot catch (see the integrator).
+    max_dead_reckon_speed_ = declare_parameter<double>("max_dead_reckon_speed", 0.45);
     stationary_joint_vel_threshold_ =
       declare_parameter<double>("stationary_joint_vel_threshold", 0.02);
     stationary_accel_threshold_ = declare_parameter<double>("stationary_accel_threshold", 0.5);
@@ -345,6 +348,17 @@ private:
     accel_world.setZ(accel_world.z() - 9.81);
 
     velocity = last_velocity_ + accel_world * dt;
+
+    // Bound the estimate to something the robot can physically do. The bridge
+    // delivers IMU at ~3.5 Hz under load (dt ~0.29 s) and the bias calibration
+    // leaves ~1.7 m/s^2 standing, so ONE accepted sample injects ~0.5 m/s of
+    // pure error. ZUPT only clears that once the robot stops, so without a
+    // bound the estimate runs away for the whole walk.
+    const double speed = velocity.length();
+    if (speed > max_dead_reckon_speed_ && speed > 1e-9) {
+      velocity *= max_dead_reckon_speed_ / speed;
+    }
+
     position = last_position_ + velocity * dt;
 
     if (position.z() < 0.0) position.setZ(0.0);
@@ -458,7 +472,7 @@ private:
   std::string odom_frame_;
   std::string base_frame_;
   std::string velocity_source_;
-  double drift_damping_;
+  double max_dead_reckon_speed_;
 
   double stationary_joint_vel_threshold_;
   double stationary_accel_threshold_;
