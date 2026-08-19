@@ -143,7 +143,8 @@ def generate_launch_description():
     mapping = include(
         sim_pkg,
         os.path.join('launch', 'mapping', 'slam.launch.py'),
-        {'use_sim_time': use_sim_time},
+        {'use_sim_time': use_sim_time,
+         'start_delay': LaunchConfiguration('map_start_delay')},
         condition=IfCondition(slam),
     )
     localization = include(
@@ -177,6 +178,15 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'slam', default_value='true',
             description='true: SLAM (live mapping); false: known-map (AMCL)'),
+        # Powering the servos means someone walks to the buck-converter switch.
+        # slam_toolbox freezes its first scan in permanently while the robot is
+        # standing still (it needs 0.1 m of travel to integrate another), so
+        # that person becomes an obstacle overlapping the footprint and Nav2
+        # refuses to plan. 25 s covers the walk back out of the lidar's view.
+        DeclareLaunchArgument(
+            'map_start_delay', default_value='25.0',
+            description='seconds to hold mapping off so the operator can step '
+                        'clear before the first scan is frozen into the map'),
         DeclareLaunchArgument(
             'use_sim_time', default_value='false',
             description='Use /clock time (false for real hardware)'),

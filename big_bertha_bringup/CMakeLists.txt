@@ -25,6 +25,9 @@ install(PROGRAMS firmware/web_control/server.py
   DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY firmware/web_control/static/
   DESTINATION share/${PROJECT_NAME}/web_control/static)
+install(PROGRAMS scripts/reset_map.sh
+  DESTINATION lib/${PROJECT_NAME})
+
 install(DIRECTORY launch config
   DESTINATION share/${PROJECT_NAME})
 
