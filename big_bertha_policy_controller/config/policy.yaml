@@ -13,6 +13,32 @@
     # Absolute path is supplied by the launch file (package share /models).
     model_path: ""
     action_scale: 0.25
+    # Swing amplitude for the knees and ankles. The hips stay at action_scale.
+    #
+    # Why this exists: the exported policy SATURATES action_clip on all twelve
+    # joints, 100% of samples, at every command in the envelope (checked again
+    # on this onnx at vx 0.12/0.29, wz 0.5, and vx+wz together). The network
+    # therefore carries phase only, never amplitude, so the joint target is a
+    # fixed-size square wave and this scale IS the gait amplitude. Nothing
+    # downstream can add it back: measured through the bridge, smoothing_alpha
+    # is worth ~8% and max_joint_rate_rad_s above 3.0 is worth nothing, because
+    # the limiter already runs saturated.
+    #
+    # Why only knees and ankles: at the default stance the hips give 0.0 mm of
+    # foot lift per rad (pure sweep), knees -50 mm/rad, ankles +26 mm/rad. The
+    # hips are also the joints with the least servo range left, since they
+    # carry steer_cmd (up to steer_max 0.26) on top of the swing.
+    #
+    # Delivered foot clearance above the plane the other three feet define,
+    # through the full chain (EWMA 0.2, rate limit 3.0 rad/s, servo slew):
+    #   lift  forward   fwd+turn   tightest servo margin
+    #   0.25   24.3 mm   24.9 mm    10.8 deg
+    #   0.32   34.0 mm   33.4 mm     7.0 deg   <- here
+    #   0.38   44.0 mm   42.9 mm     3.6 deg
+    # 0.32 buys ~40% more clearance for ~10% more stride. Do not go past ~0.35:
+    # the margin is worst-case (full swing plus full steer bias) and past that
+    # the converter starts flattening the peaks against Revolute_112's limit.
+    lift_action_scale: 0.32
     control_rate: 50.0       # Hz
     start_enabled: true
     cmd_vel_timeout: 0.5     # s; stale /cmd_vel -> command zeroed (safe stop)
