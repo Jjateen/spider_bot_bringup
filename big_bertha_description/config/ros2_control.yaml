@@ -22,7 +22,15 @@ joint_state_broadcaster:
 position_controller:
   ros__parameters:
     # MUST match the deployed policy's Isaac actuator (stiffness=20, damping=2).
-    kp: 20.0
+    # kp 45, not Isaac's 20. Isaac's number assumes its solver; DART's explicit
+    # effort-PD sags further under the same gain, and the sag ate the swing
+    # clearance: measured foot lift apex was 38/22/6/15 mm, so one foot lifted
+    # 6 mm and simply dragged, which is the leg that looked like it was kicking.
+    # At 45 the apexes are 38/35/34/27 mm against Isaac's 32/35/16/18, i.e. all
+    # four feet clear. It costs forward speed (0.107 -> 0.072 m/s) because
+    # stiffer legs slip more (ratio 5.4 -> 8.4); the clearance is worth more
+    # than the speed here, since a dragging foot is what reads as broken.
+    kp: 45.0
     kd: 2.0
     # 1.18 (MG995 @6.6V stall) > the trained 1.0 Nm is DELIBERATE: A/B on the
     # straight walk measured 1.18 faster at both speeds (0.138 vs 0.132 m/s at
