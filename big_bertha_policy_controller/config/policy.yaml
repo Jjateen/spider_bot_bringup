@@ -1,6 +1,6 @@
 # Big Bertha policy controller (C++ ONNX gait node).
 #
-# Trained contract (big_bertha_v1.1.0): obs = 52 floats, action = 12,
+# Trained contract (big_bertha_v2.0.0): obs = 52 floats, action = 12,
 # joint_target = action_scale * action + default_joint_pos.
 # Joint ORDER is Isaac tree-depth (hips, knees, ankles), NOT numeric:
 #   [110,113,116,119, 111,114,117,120, 112,115,118,121]
@@ -26,6 +26,11 @@
     # 0.35 was tested and FAILED (turn fell 0.279 -> 0.114 rad/s) -- the plant,
     # not the command, is binding.
     max_lin_vel_x: 0.3
+    # v2.0.0 trains reverse as its own command cell, vx in [-0.15, -0.05],
+    # sized to Nav2's BackUp recovery speed. vx used to be clamped at 0, which
+    # discarded every BackUp command, so the robot could not reverse out of a
+    # wall and SLAM exploration stalled against it. Magnitude; -0.15 applied.
+    max_reverse_vel_x: 0.15
     max_lin_vel_y: 0.06
     max_yaw_rate: 0.5
     # Heading-hold: yaw = wz + heading_kp*(desired_yaw - odom_yaw); rejects the

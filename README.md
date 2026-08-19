@@ -50,18 +50,22 @@ ros2 launch big_bertha_sim_bringup bringup.launch.py rviz:=true
 
 ## Demos
 
-Straight 1:1 walk (real-time), commanded at 0.29 m/s like the training gif:
+Locomotion: forward, turn right, forward, reverse, turn left, stop, the same
+script as the Isaac verification gif. Run it with
+`demo_straight.launch.py sequence:=true`.
 
-![straight walk](verification_artifacts/demo_straight_v1.1.0.gif)
+![gait closeup](assets/gifs/demo_gait_closeup_v2.0.0.gif)
 
-3-goal patrol planning through the obstacle field:
+SLAM explores the arena frontier by frontier, builds the map with no preset
+waypoints, and returns to its start (30x; the run itself takes ~15 min):
 
-![patrol](verification_artifacts/demo_patrol_v1.1.0.gif)
+![slam map generation](assets/gifs/demo_slam_map_v2.0.0.gif)
 
-SLAM explores the arena frontier-by-frontier to build the map and returns to
-its start, then AMCL patrols on the map it just built:
+3-goal patrol through the obstacle field, planned against the map built in the
+run above, with AMCL localizing on it. 3/3 goals, no planner failures and no
+recoveries (12x):
 
-![slam then patrol](verification_artifacts/demo_slam_patrol_v1.1.0.gif)
+![patrol on the built map](assets/gifs/demo_patrol_v2.0.0.gif)
 
 ## Autonomy stack (functional modules)
 

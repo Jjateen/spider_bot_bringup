@@ -51,9 +51,13 @@ from launch.actions import (
     IncludeLaunchDescription,
     TimerAction,
 )
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import (
+    LaunchConfiguration,
+    PathJoinSubstitution,
+    PythonExpression,
+)
 
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -111,7 +115,11 @@ def generate_launch_description():
             # warmup drop.
             launch_arguments={
                 'use_sim_time': use_sim_time,
-                'heading_lock': LaunchConfiguration('heading_lock'),
+                'heading_lock': PythonExpression([
+                    "'false' if '", LaunchConfiguration('sequence'),
+                    "'.lower() in ('true', '1') else '",
+                    LaunchConfiguration('heading_lock'), "'",
+                ]),
                 'heading_lock_yaw': LaunchConfiguration('yaw'),
                 'heading_hold': heading_hold,
                 'steer_kp': steer_kp,
@@ -188,6 +196,30 @@ def generate_launch_description():
                      'angular: {x: 0.0, y: 0.0, z: 0.0}}'],
                 ],
                 output='screen',
+                condition=UnlessCondition(LaunchConfiguration('sequence')),
+            ),
+        ],
+    )
+
+    # Scripted alternative: replay the training repo's DEMO_SEQ (forward, turn
+    # right, forward, reverse, turn left, stop) so the sim gif shows the same
+    # manoeuvres as the Isaac verification gif and the two can be compared.
+    drive_sequence = TimerAction(
+        period=cmd_delay,
+        actions=[
+            ExecuteProcess(
+                cmd=[
+                    'python3',
+                    PathJoinSubstitution([
+                        FindPackageShare('big_bertha_sim_bringup'),
+                        'scripts', 'demo_seq.py',
+                    ]),
+                    # Sim time, so the script keeps step with the sim rather
+                    # than wall clock if the real-time factor drops.
+                    '--ros-args', '-p', 'use_sim_time:=true',
+                ],
+                output='screen',
+                condition=IfCondition(LaunchConfiguration('sequence')),
             ),
         ],
     )
@@ -251,6 +283,9 @@ def generate_launch_description():
         # Lock heading to the spawn yaw for a true straight line (default). Set
         # false to let a commanded angular.z through (e.g. a turn-in-place test).
         DeclareLaunchArgument('heading_lock', default_value='true'),
+        DeclareLaunchArgument(
+            'sequence', default_value='false',
+            description='replay the Isaac DEMO_SEQ instead of driving straight'),
         DeclareLaunchArgument('x', default_value='-3.5'),
         DeclareLaunchArgument('y', default_value='-3.5'),
         DeclareLaunchArgument('z', default_value='0.12'),
@@ -265,5 +300,6 @@ def generate_launch_description():
         map_to_odom,
         rviz,
         drive_straight,
+        drive_sequence,
         drift_trim,
     ])

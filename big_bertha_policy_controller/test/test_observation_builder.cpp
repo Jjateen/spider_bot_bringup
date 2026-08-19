@@ -69,6 +69,23 @@ TEST(ObservationBuilder, ClockBoostClampsAtMax)
   EXPECT_NEAR(ob.gait_phase, ob.gait_frequency * 1.95 * dt, 1e-9);
 }
 
+TEST(ObservationBuilder, ClockBoostUsesSpeedMagnitude)
+{
+  // Reverse must advance the clock at the same rate as the equivalent forward
+  // speed: _clock_boost takes |vx|. With a signed vx the boost went BELOW 1
+  // and, past -0.3, negative, which stops the robot stepping while Nav2 is
+  // trying to back it out of an obstacle.
+  bbpc::ObservationBuilder fwd;
+  bbpc::ObservationBuilder rev;
+  const double dt = 0.02;
+  fwd.gait_phase = 0.0;
+  rev.gait_phase = 0.0;
+  fwd.advance_clock(0.15, 0.0, dt);
+  rev.advance_clock(-0.15, 0.0, dt);
+  EXPECT_NEAR(fwd.gait_phase, rev.gait_phase, 1e-12);
+  EXPECT_GT(rev.gait_phase, 0.0);
+}
+
 TEST(ObservationBuilder, GravityProjection)
 {
   bbpc::ObservationBuilder ob;

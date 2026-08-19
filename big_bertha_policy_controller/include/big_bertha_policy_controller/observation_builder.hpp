@@ -72,11 +72,16 @@ struct ObservationBuilder
 
   /// Advance the clock once per control period with the CURRENT commanded
   /// vx/yaw: boost = min(1 + turn_clock_boost*clamp(|yaw|/0.4, max=1)
-  /// + speed_clock_boost*clamp(vx/0.3, max=1), gait_boost_max).
+  /// + speed_clock_boost*clamp(|vx|/0.3, max=1), gait_boost_max).
+  ///
+  /// BOTH terms take a magnitude, matching big_bertha_env.py's _clock_boost:
+  /// cadence scales with how fast the robot is asked to go, not which way. A
+  /// signed vx throttles the clock on a reverse command and stops the robot
+  /// stepping, which is the failure the env docstring warns about.
   void advance_clock(double vx_cmd, double yaw_cmd, double dt)
   {
     const double turn_term = turn_clock_boost * std::min(std::abs(yaw_cmd) / 0.4, 1.0);
-    const double speed_term = speed_clock_boost * std::min(vx_cmd / 0.3, 1.0);
+    const double speed_term = speed_clock_boost * std::min(std::abs(vx_cmd) / 0.3, 1.0);
     const double boost = std::min(1.0 + turn_term + speed_term, gait_boost_max);
     gait_phase = std::fmod(gait_phase + gait_frequency * boost * dt, 1.0);
     if (gait_phase < 0.0) {
