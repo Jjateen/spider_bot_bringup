@@ -165,7 +165,7 @@ def generate_launch_description():
         sim_pkg,
         os.path.join('launch', 'mapping', 'slam.launch.py'),
         {'use_sim_time': use_sim_time, 'x': x, 'y': y, 'yaw': yaw,
-         'start_delay': LaunchConfiguration('map_start_delay')},
+         'autostart': LaunchConfiguration('mapping_autostart')},
         condition=IfCondition(slam),
     )
     localization = include(
@@ -216,10 +216,14 @@ def generate_launch_description():
         # switch. slam_toolbox freezes its first scan in permanently while the
         # robot stands still (it needs 0.1 m of travel to integrate another),
         # so that person becomes an obstacle overlapping the footprint and
-        # Nav2 refuses to plan. 25 s covers the walk back out of lidar view.
+        # Nav2 refuses to plan. Default OFF here: mapping waits for
+        # scripts/start_mapping.sh, which the operator runs once they are back
+        # from the switch and clear of the lidar. The simulator keeps the
+        # autostart default, since nobody walks into a Gazebo world.
         DeclareLaunchArgument(
-            'map_start_delay', default_value='25.0',
-            description='seconds to hold mapping off so the operator can step '
+            'mapping_autostart', default_value='false',
+            description='true: map from launch; false: wait for '
+                        'scripts/start_mapping.sh so the operator can step '
                         'clear before the first scan is frozen into the map'),
         DeclareLaunchArgument(
             'slam', default_value='true',
