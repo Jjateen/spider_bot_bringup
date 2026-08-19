@@ -29,7 +29,7 @@ from typing import List
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, TimerAction
 from launch.substitutions import LaunchConfiguration, PythonExpression
 
 from launch_ros.actions import Node
@@ -44,6 +44,19 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     slam_config = LaunchConfiguration('slam_config')
 
+    # start_delay: hold mapping off for N seconds after launch.
+    #
+    # slam_toolbox only integrates a scan once the robot has moved
+    # minimum_travel_distance (0.1 m) or turned minimum_travel_heading
+    # (0.1 rad). A robot standing still therefore NEVER updates its map: the
+    # very first scan is frozen in for good. On hardware someone has to walk
+    # over and flip the servo buck-converter switch, so that person is stood
+    # next to the robot when the first scan lands, gets mapped as an obstacle
+    # overlapping the footprint, and Nav2 reports a collision before it will
+    # plan anything. Waiting does not clear it, which is what was observed.
+    # Delaying the first scan past the power-up ritual is the fix;
+    # big_bertha_bringup/scripts/reset_map.sh recovers a map that already
+    # caught someone.
     slam_node = Node(
         package='slam_toolbox',
         executable='async_slam_toolbox_node',
@@ -83,8 +96,17 @@ def generate_launch_description():
         }],
     )
 
+    delayed_slam = TimerAction(
+        period=LaunchConfiguration('start_delay'),
+        actions=[slam_node],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='true'),
+        DeclareLaunchArgument(
+            'start_delay', default_value='0.0',
+            description='seconds to hold mapping off so the operator can step '
+                        'clear before the first scan is frozen into the map'),
         DeclareLaunchArgument('slam_config', default_value=default_slam),
         # Defaults are the Gazebo spawn pose, so the sim bringup is unchanged.
         # big_bertha.launch.py passes its own (0,0,0 by default) on hardware.
@@ -92,6 +114,6 @@ def generate_launch_description():
         DeclareLaunchArgument('y', default_value='-3.5'),
         DeclareLaunchArgument('yaw', default_value='0.0'),
 
-        slam_node,
+        delayed_slam,
         lifecycle_manager,
     ])

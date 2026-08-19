@@ -33,6 +33,8 @@ install(
 )
 install(TARGETS hardware_bridge_component
   ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin)
+install(PROGRAMS scripts/reset_map.sh
+  DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
