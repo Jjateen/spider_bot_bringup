@@ -20,12 +20,13 @@
 # bridge is the native C++ hardware_bridge_node (ROS 2), which talks to the
 # arduino-router MsgPack-RPC unix socket directly. This process intentionally
 # does nothing: no TCP relay, no ports, no Bridge RPC.
-import time
+import threading
 
 
 def main():
-    while True:
-        time.sleep(3600)
+    # Block forever without waking. Polling round an hourly sleep achieved the
+    # same thing while looking like it was meant to do something on each pass.
+    threading.Event().wait()
 
 
 if __name__ == '__main__':
