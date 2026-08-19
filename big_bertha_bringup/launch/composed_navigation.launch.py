@@ -184,13 +184,13 @@ def generate_launch_description():
         )
 
     # Lifecycle managers stay ordinary nodes: they only transition others.
-    def lifecycle(name, node_names, condition=None):
+    def lifecycle(name, node_names, condition=None, autostart=True):
         return Node(
             package='nav2_lifecycle_manager', executable='lifecycle_manager',
             name=name, output='screen', condition=condition,
             parameters=[{
                 'use_sim_time': ParameterValue(use_sim_time, value_type=bool),
-                'autostart': True,
+                'autostart': autostart,
                 'bond_timeout': 0.0,
                 'node_names': node_names,
             }],
@@ -209,11 +209,27 @@ def generate_launch_description():
         DeclareLaunchArgument('x', default_value='0.0'),
         DeclareLaunchArgument('y', default_value='0.0'),
         DeclareLaunchArgument('yaw', default_value='0.0'),
+        DeclareLaunchArgument(
+            'mapping_autostart', default_value='false',
+            description='true: map from launch; false: wait for '
+                        'scripts/start_mapping.sh so the operator can step '
+                        'clear before the first scan is frozen into the map'),
 
         container('big_bertha_slam_container', [slam_node],
                   condition=IfCondition(slam)),
+        # mapping_autostart:=false parks slam_toolbox unconfigured, so it holds
+        # no /scan subscription and maps nothing until the operator runs
+        # scripts/start_mapping.sh. Powering the servos means someone walks to
+        # the buck-converter switch, and slam_toolbox freezes its first scan in
+        # permanently while the robot stands still (it needs 0.1 m of travel
+        # before it integrates another), so that person becomes an obstacle
+        # overlapping the footprint and Nav2 refuses to plan. Only this manager
+        # is gated; Nav2 itself still comes up and waits for a map.
         lifecycle('lifecycle_manager_slam', ['slam_toolbox'],
-                  condition=IfCondition(slam)),
+                  condition=IfCondition(slam),
+                  autostart=ParameterValue(
+                      LaunchConfiguration('mapping_autostart'),
+                      value_type=bool)),
 
         container('big_bertha_localization_container', localization_nodes,
                   condition=UnlessCondition(slam)),
