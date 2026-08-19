@@ -609,6 +609,9 @@ private:
   {
     std::vector<uint8_t> buf;
     buf.reserve(8192);
+    // Reads that produced no complete message. Only a peer sending garbage can
+    // stall for long; a large valid message clears as soon as its tail lands.
+    int stalled_reads = 0;
 
     while (running_) {
       uint8_t tmp[4096];
@@ -676,6 +679,13 @@ private:
         off += consumed;
 
         if (!msg.method.empty()) {
+          // NOTE: notifications only. dispatch() runs the handler and returns
+          // nothing to the peer, and this file has no response packer, which
+          // is deliberate: the sketch only ever uses Bridge.notify. If someone
+          // adds a Bridge.call on the MCU side it will block until its own
+          // timeout, and the symptom will look like a stalled or dead sensor
+          // rather than a missing reply. Add a response path here before
+          // adding any call on the sketch.
           dispatch(msg);
         }
       }
@@ -684,8 +694,23 @@ private:
         buf.erase(buf.begin(), buf.begin() + off);
       }
 
-      // Prevent unbounded buffer growth
-      if (buf.size() > 65536) buf.clear();
+      // Prevent unbounded buffer growth WITHOUT truncating a live message.
+      // Everything parseable has already been erased above, so what remains is
+      // a partial frame. Clearing it mid-message desyncs the parser onto
+      // whatever byte happens to be next, and that desync outlives the message
+      // that caused it. imu_diag carries a long string and is the realistic
+      // candidate for approaching the cap. So only drop the buffer once the
+      // peer has gone many reads without completing anything, which means
+      // garbage rather than a big frame still arriving.
+      if (off > 0) {
+        stalled_reads = 0;
+      } else if (!buf.empty()) {
+        ++stalled_reads;
+      }
+      if (buf.size() > 65536 && stalled_reads > 64) {
+        buf.clear();
+        stalled_reads = 0;
+      }
     }
   }
 
