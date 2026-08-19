@@ -30,11 +30,13 @@
     base_frame: "base_link"
     publish_tf: false
     velocity_source: "imu_dead_reckon"
-    drift_damping: 0.98
-    # NOTE: drift_damping is applied per IMU sample, not per second. At 125 Hz
-    # (dt=0.008s), 0.98 gives a ~0.4 s velocity time constant. At 100 Hz the
-    # same 0.98 gives ~0.5 s. The effective decay rate changes with IMU rate.
-    # Now replaced by ZUPT (below) — kept for backwards compat only.
+    # Cap on the dead-reckoned speed. One IMU sample at dt ~0.29 s with the
+    # ~1.7 m/s^2 residual bias injects ~0.5 m/s of pure error, and ZUPT only
+    # clears that once the robot stops. The policy tops out near 0.3 m/s.
+    # Replaces drift_damping, which sat here but was never applied in
+    # compute_imu_dead_reckon; switching it on instead would bleed steady
+    # walking velocity, which is why ZUPT replaced it in the first place.
+    max_dead_reckon_speed: 0.45
     # ZUPT (Zero-Velocity Update): when the robot is stationary (all joints
     # still + no linear acceleration), reset the dead-reckon velocity to zero.
     # This replaces the old leaky-damping mechanism for drift control —
