@@ -91,6 +91,14 @@ def generate_launch_description():
             'imu_topic', default_value='/filtered/imu',
             description='Orientation source; Madgwick output on hardware'),
         DeclareLaunchArgument('start_enabled', default_value='true'),
+        # Default OFF on hardware: mapping waits for scripts/start_mapping.sh,
+        # which the operator runs once they are back from the servo buck switch
+        # and clear of the lidar. See composed_navigation.launch.py.
+        DeclareLaunchArgument(
+            'mapping_autostart', default_value='false',
+            description='true: map from launch; false: wait for '
+                        'scripts/start_mapping.sh so the operator can step '
+                        'clear before the first scan is frozen into the map'),
         DeclareLaunchArgument(
             'slam', default_value='true',
             description='true = live mapping, false = known map via AMCL'),
@@ -136,6 +144,7 @@ def generate_launch_description():
                 'slam': slam,
                 'map': map_yaml,
                 'nav_speed': nav_speed,
+                'mapping_autostart': LaunchConfiguration('mapping_autostart'),
                 'x': x, 'y': y, 'yaw': yaw,
             },
             condition=IfCondition(with_nav),
