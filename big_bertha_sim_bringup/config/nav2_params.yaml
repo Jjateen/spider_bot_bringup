@@ -56,9 +56,17 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      # 0.6 m: honest arrival for a ~0.36 m crawler; stops the under-damped
-      # approach before it overshoots. (1.2 masked an AMCL false-success.)
-      xy_goal_tolerance: 0.6
+      # 0.6 was too generous and is what "the robot stops before it reaches
+      # the goal" actually was: the body is ~0.36 m across, so the checker
+      # declared SUCCESS up to 1.7 body lengths short and the controller
+      # stopped there. Nothing cancelled the path, Nav2 believed it had
+      # arrived. 0.30 is under one body length, which reads as arrival, and
+      # still leaves ~1.7x robot_radius of slack for the under-damped
+      # approach. stateful latches success on first entry, so the robot does
+      # not have to hold the tolerance. Tighten further only if the approach
+      # stops circling; too tight and an under-damped crawler orbits the goal
+      # without ever latching.
+      xy_goal_tolerance: 0.30
       # Don't gate success on final heading (0.25 left the robot failing the
       # yaw check forever on the goal point).
       yaw_goal_tolerance: 3.15
@@ -81,8 +89,22 @@ controller_server:
       rotate_to_heading_angular_vel: 0.27
       transform_tolerance: 0.2
       use_velocity_scaled_lookahead_dist: false
-      min_approach_linear_velocity: 0.05
-      approach_velocity_scaling_dist: 0.6
+      # These two have to move with xy_goal_tolerance or the fix to it just
+      # trades stopping short for stalling short.
+      #
+      # scaling_dist was 0.6, exactly the old tolerance, so the goal checker
+      # fired at the same distance the deceleration ramp began and the slow
+      # approach never actually ran. With the tolerance now 0.30 the robot
+      # would have had to cover 0.6 -> 0.30 m on the ramp. 0.35 starts the
+      # ramp just outside the tolerance instead.
+      #
+      # The floor was 0.05 m/s, which this plant cannot walk at: v1.1.0 needs
+      # about a 0.12 command to move at all (it tracks 0.135 m/s there), and
+      # the policy gates its gait below stand_vx_thresh 0.02 anyway. A 0.05
+      # command is a crawl the servos will not deliver, so the last stretch
+      # before the goal would creep or stop outright.
+      min_approach_linear_velocity: 0.12
+      approach_velocity_scaling_dist: 0.35
       use_collision_detection: true
       # 1.0 s (0.4 clipped obstacles); ghost walls were the real over-freeze
       # cause, now removed by scan_ground_filter.
@@ -125,8 +147,16 @@ local_costmap:
         # descend. 9.0 puts the edge at ~34. The solid core is the inscribed
         # radius (= robot_radius) and is correct; do not shrink that to make
         # the blobs look smaller.
+        #
+        # 0.38 -> 0.22 from a hardware run in a cluttered room. inflation_radius
+        # is the outer edge of the DECAYING halo, not the lethal core (that is
+        # robot_radius, unchanged at 0.18), but with clutter every few tens of
+        # cm the 0.38 halos merged into one high-cost field and the planner
+        # kept failing, which is what left the robot standing still. 0.22 keeps
+        # the 0.18 core plus a thin gradient. Trade-off: the robot now plans
+        # closer to obstacles, so raise it again for open spaces.
         cost_scaling_factor: 9.0
-        inflation_radius: 0.38
+        inflation_radius: 0.22
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -203,8 +233,16 @@ global_costmap:
         # descend. 9.0 puts the edge at ~34. The solid core is the inscribed
         # radius (= robot_radius) and is correct; do not shrink that to make
         # the blobs look smaller.
+        #
+        # 0.38 -> 0.22 from a hardware run in a cluttered room. inflation_radius
+        # is the outer edge of the DECAYING halo, not the lethal core (that is
+        # robot_radius, unchanged at 0.18), but with clutter every few tens of
+        # cm the 0.38 halos merged into one high-cost field and the planner
+        # kept failing, which is what left the robot standing still. 0.22 keeps
+        # the 0.18 core plus a thin gradient. Trade-off: the robot now plans
+        # closer to obstacles, so raise it again for open spaces.
         cost_scaling_factor: 9.0
-        inflation_radius: 0.38
+        inflation_radius: 0.22
       always_send_full_costmap: True
 
 planner_server:
