@@ -136,7 +136,24 @@ local_costmap:
       width: 5
       height: 5
       resolution: 0.05
-      robot_radius: 0.18
+      # Polygon, not robot_radius. base_link sits 9.2 cm off the foot
+      # centroid, so no circle about it fits: at the default stance the four
+      # feet are at radii 0.112, 0.219, 0.229 and 0.293 m, and over a gait
+      # cycle they sweep to 0.373 m. robot_radius 0.18 was therefore under
+      # half the robot on one side while wasting 6.8 cm of margin on the
+      # other, and Nav2 planned through gaps the legs then clipped.
+      #
+      # This is the convex hull of every foot tip over full cycles of
+      # forward, slow, left turn, right turn and pivot, grown 2 cm, then
+      # reduced to 8 vertices. An honest CIRCLE would be r=0.373, i.e. a
+      # 0.75 m corridor and 0.437 m^2; the polygon is the same robot in
+      # 0.225 m^2 and about 0.53 m, which is what makes a cramped gallery
+      # navigable at all. Nav2 derives inscribed 0.165 and circumscribed
+      # 0.393 from it, and base_link is inside the polygon as required.
+      #
+      # Regenerate if the stance defaults or action scales change: the
+      # sweep is a function of default_joint_pos and lift_action_scale.
+      footprint: "[[-0.197, -0.179], [-0.156, -0.270], [0.176, -0.325], [0.301, -0.253], [0.327, 0.052], [0.311, 0.101], [0.206, 0.202], [-0.141, 0.156]]"
       plugins: ["voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -145,8 +162,8 @@ local_costmap:
         # outer edge, so cost is still ~138 of 252 there and the whole halo
         # renders as one dark slab with no usable gradient for the planner to
         # descend. 9.0 puts the edge at ~34. The solid core is the inscribed
-        # radius (= robot_radius) and is correct; do not shrink that to make
-        # the blobs look smaller.
+        # radius, now 0.165 derived from the footprint polygon rather than
+        # robot_radius; do not shrink that to make the blobs look smaller.
         #
         # 0.38 -> 0.22 from a hardware run in a cluttered room. inflation_radius
         # is the outer edge of the DECAYING halo, not the lethal core (that is
@@ -202,7 +219,8 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      robot_radius: 0.18
+      # See the local_costmap footprint note.
+      footprint: "[[-0.197, -0.179], [-0.156, -0.270], [0.176, -0.325], [0.301, -0.253], [0.327, 0.052], [0.311, 0.101], [0.206, 0.202], [-0.141, 0.156]]"
       resolution: 0.05
       # Non-rolling grid sized from /map by the static layer, so the planner
       # plans around mapped obstacles instead of discovering them at lidar
@@ -240,8 +258,8 @@ global_costmap:
         # outer edge, so cost is still ~138 of 252 there and the whole halo
         # renders as one dark slab with no usable gradient for the planner to
         # descend. 9.0 puts the edge at ~34. The solid core is the inscribed
-        # radius (= robot_radius) and is correct; do not shrink that to make
-        # the blobs look smaller.
+        # radius, now 0.165 derived from the footprint polygon rather than
+        # robot_radius; do not shrink that to make the blobs look smaller.
         #
         # 0.38 -> 0.22 from a hardware run in a cluttered room. inflation_radius
         # is the outer edge of the DECAYING halo, not the lethal core (that is
