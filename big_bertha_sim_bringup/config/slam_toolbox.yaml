@@ -35,7 +35,13 @@ slam_toolbox:
     map_update_interval: 1.0
     resolution: 0.05
     min_laser_range: 0.12
-    max_laser_range: 8.0
+    # 5.0, not 8.0: Nav2 only ever consumes 3.0 (raytrace_max_range), so
+    # mapping to 8 extended the map with returns no planner reads, and each
+    # extension re-initialised the global costmap static layer -- the repeating
+    # "Trying to create a map of size X x Y". 5.0 keeps 1.67x margin over Nav2
+    # and drops the far soft-target returns that are least reliable indoors.
+    # Raise toward 6-7 if a room wider than 5 m stops closing its walls.
+    max_laser_range: 5.0
     minimum_time_interval: 0.2
     transform_timeout: 0.2
     tf_buffer_duration: 30.0
