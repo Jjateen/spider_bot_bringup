@@ -157,16 +157,18 @@ local_costmap:
       # other, and Nav2 planned through gaps the legs then clipped.
       #
       # This is the convex hull of every foot tip over full cycles of
-      # forward, slow, left turn, right turn and pivot, grown 2 cm, then
-      # reduced to 8 vertices. An honest CIRCLE would be r=0.373, i.e. a
-      # 0.75 m corridor and 0.437 m^2; the polygon is the same robot in
-      # 0.225 m^2 and about 0.53 m, which is what makes a cramped gallery
-      # navigable at all. Nav2 derives inscribed 0.165 and circumscribed
-      # 0.393 from it, and base_link is inside the polygon as required.
+      # forward, slow, left turn, right turn, pivot and stand, grown 2 cm,
+      # then reduced to 8 vertices. An honest CIRCLE about base_link would be
+      # r=0.403, i.e. a 0.81 m corridor and 0.510 m^2; the polygon is the same
+      # robot in 0.244 m^2 and about 0.55 m, which is what makes a cramped
+      # indoor space navigable at all. Nav2 derives inscribed 0.169 and
+      # circumscribed 0.403 from it, and base_link is inside it as required.
       #
-      # Regenerate if the stance defaults or action scales change: the
-      # sweep is a function of default_joint_pos and lift_action_scale.
-      footprint: "[[-0.197, -0.179], [-0.156, -0.270], [0.176, -0.325], [0.301, -0.253], [0.327, 0.052], [0.311, 0.101], [0.206, 0.202], [-0.141, 0.156]]"
+      # REGENERATE THIS whenever default_joint_pos, action_scale,
+      # thigh_action_scale, shin_action_scale or steer_max change: the sweep
+      # is a function of all of them. Generated at coxa 0.25, thigh 0.45,
+      # shin 0.32, steer_max 0.32.
+      footprint: "[[-0.207, -0.169], [-0.155, -0.286], [0.167, -0.336], [0.309, -0.258], [0.338, 0.042], [0.301, 0.138], [0.197, 0.216], [-0.137, 0.170]]"
       plugins: ["voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -233,7 +235,7 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       # See the local_costmap footprint note.
-      footprint: "[[-0.197, -0.179], [-0.156, -0.270], [0.176, -0.325], [0.301, -0.253], [0.327, 0.052], [0.311, 0.101], [0.206, 0.202], [-0.141, 0.156]]"
+      footprint: "[[-0.207, -0.169], [-0.155, -0.286], [0.167, -0.336], [0.309, -0.258], [0.338, 0.042], [0.301, 0.138], [0.197, 0.216], [-0.137, 0.170]]"
       resolution: 0.05
       # Non-rolling grid sized from /map by the static layer, so the planner
       # plans around mapped obstacles instead of discovering them at lidar
