@@ -98,14 +98,24 @@ HardwareBridgeNode::HardwareBridgeNode(const rclcpp::NodeOptions & options)
   scp.single_joint_mode = declare_parameter<bool>("single_joint_mode", false);
   scp.single_joint_index = declare_parameter<int>("single_joint_index", 10);
   // command_rate_hz is the rate this node forwards to the servos, NOT the rate
-  // policy_controller publishes at. It drives both the outbound throttle in
-  // on_cmd and the converter's per-message slew allowance, from this one value,
-  // so the two cannot drift apart and silently cap joint speed.
+  // policy_controller publishes at. It sets the outbound throttle in on_cmd,
+  // and it is the rate the smoothing_alpha figure in the config was measured
+  // at. It is no longer the converter's slew divisor: the converter now scales
+  // both the slew limit and the smoothing by the MEASURED dt, so a send rate
+  // below command_rate_hz no longer silently caps joint speed.
   double command_rate = declare_parameter<double>("command_rate_hz", 50.0);
-  double max_joint_rate = declare_parameter<double>("max_joint_rate_rad_s", 6.54);
-  scp.rate_limit_rad = max_joint_rate / command_rate;
+  scp.max_joint_rate_rad_s = declare_parameter<double>("max_joint_rate_rad_s", 6.54);
   servo_tx_period_ = rclcpp::Duration::from_seconds(1.0 / command_rate);
-  scp.smoothing_alpha = declare_parameter<double>("smoothing_alpha", 1.0);
+
+  // smoothing_alpha stays the configured quantity because that is what was
+  // measured and documented, but it only defines a filter together with the
+  // rate it was measured at. Convert it once to the equivalent time constant:
+  // alpha = 1 - exp(-dt/tau), so tau = -dt_nominal / ln(1 - alpha).
+  const double alpha_nominal = declare_parameter<double>("smoothing_alpha", 1.0);
+  const double dt_nominal = 1.0 / command_rate;
+  scp.smoothing_tau_s = (alpha_nominal >= 1.0 || alpha_nominal <= 0.0)
+    ? 0.0
+    : -dt_nominal / std::log(1.0 - alpha_nominal);
 
   servo_converter_ = ServoConverter(std::move(scp));
 
@@ -199,17 +209,21 @@ void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPt
   // and an over-full link is what mis-frames the router. Drop them here
   // rather than at the far end.
   //
-  // servo_tx_period_ must stay in lockstep with the command_rate_hz parameter:
-  // ServoConverter's rate limit is max_joint_rate_rad_s / command_rate_hz, a
-  // per-message allowance, so a send rate below command_rate_hz silently caps
-  // joint speed by the ratio between them.
+  // The throttle is an upper bound only. The real send rate drops below
+  // command_rate_hz whenever the link is congested or the callback is starved,
+  // which used to cap every joint's speed by the ratio between the two, worst
+  // on the joints with the most travel. convert() now takes the measured dt,
+  // so the shaping is the same at 50 Hz and at 20 Hz.
   const rclcpp::Time stamp = now();
   if (last_servo_tx_.nanoseconds() > 0 && (stamp - last_servo_tx_) < servo_tx_period_) {
     return;
   }
+  const double dt = (last_servo_tx_.nanoseconds() > 0)
+    ? (stamp - last_servo_tx_).seconds()
+    : ServoConverter::kNominalDt;
   last_servo_tx_ = stamp;
 
-  auto pwms = servo_converter_.convert(msg->data);
+  auto pwms = servo_converter_.convert(msg->data, dt);
 
   // The firmware's set_servo_pwms takes ONE comma-separated string (a
   // 12-argument Bridge RPC call would exceed the router's arg limit).
