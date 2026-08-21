@@ -38,44 +38,70 @@ public:
     std::vector<double> policy_center;
     std::vector<int> servo_channel;
     std::vector<int> servo_direction;
-    double rate_limit_rad{0.03};
-    double smoothing_alpha{0.3};
+    // Both shaping stages are per SECOND, not per message. They used to be a
+    // per-message allowance sized as max_joint_rate_rad_s / command_rate_hz,
+    // which is only correct while the real send rate equals command_rate_hz.
+    // Nothing enforced that: the throttle in hardware_bridge_node only sets an
+    // upper bound, so a congested link or a starved callback silently capped
+    // every joint's speed by the ratio between the two rates, and the joints
+    // with the most travel (the thighs) lost the most. Driving both from the
+    // measured dt makes the shaping independent of the send rate.
+    double max_joint_rate_rad_s{3.0};
+    double smoothing_tau_s{0.0896};
     bool single_joint_mode{false};
     int single_joint_index{10};
   };
+
+  /// Fallback dt for the first call and for a bad stamp: the design point.
+  static constexpr double kNominalDt = 0.02;
+  /// One late message must not authorise an unbounded jump.
+  static constexpr double kMaxDt = 0.10;
 
   explicit ServoConverter(Params params) : params_(std::move(params)) {}
 
   ServoConverter() = default;
 
-  std::vector<int> convert(const std::vector<double> & targets)
+  /// dt is the time since the previous call, in seconds. Both the smoothing
+  /// and the slew limit scale with it, so the delivered waveform is the same
+  /// whether this runs at 50 Hz or at 20 Hz.
+  std::vector<int> convert(const std::vector<double> & targets, double dt)
   {
     if (targets.size() != 12) {
       return {};
     }
 
-    // EWMA smoothing
+    // A stalled link can hand back a huge dt. Cap it so one late message
+    // cannot authorise an unbounded jump, and reject non-positive stamps.
+    if (!(dt > 0.0)) {
+      dt = kNominalDt;
+    }
+    dt = std::min(dt, kMaxDt);
+
+    // EWMA smoothing, time-based: alpha = 1 - exp(-dt/tau) is the same filter
+    // at any call rate, where a fixed alpha is not.
+    const double alpha = (params_.smoothing_tau_s > 1e-9)
+      ? 1.0 - std::exp(-dt / params_.smoothing_tau_s)
+      : 1.0;
     std::vector<double> smoothed(12);
     if (first_cmd_) {
       smoothed = targets;
     } else {
       for (size_t i = 0; i < 12; ++i) {
-        smoothed[i] = params_.smoothing_alpha * targets[i] +
-                      (1.0 - params_.smoothing_alpha) * smoothed_targets_[i];
+        smoothed[i] = alpha * targets[i] + (1.0 - alpha) * smoothed_targets_[i];
       }
     }
     smoothed_targets_ = smoothed;
 
-    // Rate limiting
+    // Slew limit, time-based: rad/s * dt, so a slower send rate buys a
+    // proportionally larger step instead of throttling the joint.
+    const double step = params_.max_joint_rate_rad_s * dt;
     std::vector<double> limited(12);
     if (first_cmd_) {
       limited = smoothed;
       first_cmd_ = false;
     } else {
       for (size_t i = 0; i < 12; ++i) {
-        limited[i] = std::clamp(
-          smoothed[i], last_targets_[i] - params_.rate_limit_rad,
-          last_targets_[i] + params_.rate_limit_rad);
+        limited[i] = std::clamp(smoothed[i], last_targets_[i] - step, last_targets_[i] + step);
       }
     }
     last_targets_ = limited;
