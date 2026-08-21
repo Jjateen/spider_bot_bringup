@@ -83,10 +83,23 @@ controller_server:
       # A slow, weak-yaw platform needs a LONGER carrot for stability, not a
       # shorter one.
       lookahead_dist: 0.7
-      # 0.27 = the MEASURED in-place yaw rate of the deployed v1.1.0 policy
-      # on the torque-speed plant. Commanding the 0.5 clamp ceiling kept the
-      # command saturated and made RPP's pivot timing a lie.
-      rotate_to_heading_angular_vel: 0.27
+      # Back to the trained ceiling 0.5. The old 0.27 was the MEASURED in-place
+      # yaw rate, set so RPP's pivot timing matched reality, and that reasoning
+      # was wrong twice over.
+      #
+      # First, this is a COMMAND, not an observation. The plant delivers about
+      # 0.27 when asked for 0.5, so asking for 0.27 delivers roughly 0.15.
+      # Second, it also throttles the gait: the clock boost uses
+      # turn_clock_boost * min(|wz|/0.4, 1), which only saturates at 0.4, so
+      # 0.27 ran the cadence at 1.54 instead of 1.80. The two compound to about
+      # 46% of the platform's turn authority, which is the "yaw is too little"
+      # report from the hardware run.
+      #
+      # Anything below 0.4 pays that second penalty, so there is no useful
+      # setting between 0.4 and 0.5. The pivot-timing concern it was traded for
+      # is cosmetic: RPP rotates until the heading error closes, it does not
+      # time the pivot open-loop, so over-commanding just turns faster.
+      rotate_to_heading_angular_vel: 0.5
       transform_tolerance: 0.2
       use_velocity_scaled_lookahead_dist: false
       # These two have to move with xy_goal_tolerance or the fix to it just
