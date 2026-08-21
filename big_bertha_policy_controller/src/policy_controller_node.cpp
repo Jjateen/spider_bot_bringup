@@ -60,14 +60,21 @@ public:
     // ----------------------------- Parameters ----------------------------
     model_path_ = declare_parameter<std::string>("model_path", "");
     action_scale_ = declare_parameter<double>("action_scale", 0.25);
-    // Knees and ankles get their own amplitude. Measured on the URDF at the
-    // default stance, the hips produce 0.0 mm of foot lift per rad (their axis
-    // is vertical there, so they only sweep), while the knees give -50 mm/rad
-    // and the ankles +26 mm/rad. Raising all twelve equally therefore spends
-    // the servo range on the joints that cannot lift, and the hips are the
-    // joints with the least range left because they also carry steer_cmd.
-    // Defaults to action_scale, so leaving it unset changes nothing.
-    lift_action_scale_ = declare_parameter<double>("lift_action_scale", action_scale_);
+    // Three physical groups, three amplitudes, because they differ in both
+    // what they can do and how much range they have left.
+    //
+    // Measured on the URDF at the default stance, per radian of foot lift:
+    //   idx 0-3  arm_a  coxa   0.0 mm  (axis is exactly vertical: pure sweep)
+    //   idx 4-7  arm_b  THIGH -50.3 mm (the lifter)
+    //   idx 8-11 arm_c  shin  +25.6 mm
+    // and worst-case servo margin per group at the shipped values:
+    //   coxa 10.8 deg (also carries steer_cmd), THIGH 43.3 deg, shin 7.0 deg.
+    //
+    // So the thigh both does the lifting and has by far the most room, while a
+    // uniform raise is blocked by the shin at 7 deg. Both default to
+    // action_scale, so leaving them unset changes nothing.
+    thigh_action_scale_ = declare_parameter<double>("thigh_action_scale", action_scale_);
+    shin_action_scale_ = declare_parameter<double>("shin_action_scale", action_scale_);
     control_rate_ = declare_parameter<double>("control_rate", 50.0);
     enabled_ = declare_parameter<bool>("start_enabled", true);
     cmd_timeout_ = declare_parameter<double>("cmd_vel_timeout", 0.5);
@@ -430,9 +437,10 @@ private:
             double a_raw = std::isfinite(action[i]) ? action[i] : 0.0;
             // Env clamps the raw action to [-1, 1] before scaling.
             double a = std::clamp(a_raw, -action_clip_, action_clip_);
-            // i < 4 are the hips; 4..11 the knees and ankles, which do all
-            // the lifting. See lift_action_scale_ above.
-            const double scale = (i < 4) ? action_scale_ : lift_action_scale_;
+            // 0-3 coxa, 4-7 thigh, 8-11 shin. See the scales above.
+            const double scale = (i < 4) ? action_scale_
+              : (i < 8) ? thigh_action_scale_
+              : shin_action_scale_;
             double t = scale * a + obs_.default_joint_pos[i];
             if (i < 4) {  // hips: inject differential-stride steering + debug bias
               t += debug_hip_bias_[i] + shaper_.steer_cmd * hip_steer_sign_[i];
@@ -484,7 +492,8 @@ private:
   // Params
   std::string model_path_;
   double action_scale_{0.25};
-  double lift_action_scale_{0.25};
+  double thigh_action_scale_{0.25};
+  double shin_action_scale_{0.25};
   double control_rate_{50.0};
   double cmd_timeout_{0.5};
   double joint_limit_{3.14159};
