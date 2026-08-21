@@ -75,7 +75,17 @@
     # (calibrated: b=-0.25 took yaw -0.086 -> +0.002), hence all signs -1.
     steer_kp: 1.8            # rad of hip bias per rad of heading error
     steer_ki: 0.8            # removes the steady heading offset vs drift
-    steer_max: 0.26          # max |hip bias|
+    # max |hip bias|. This saturates during any sustained turn: err pins at
+    # heading_err_clamp 0.4 and steer_i winds to steer_max/steer_ki = 0.325, so
+    # the PI demands 1.8*0.4 + 0.8*0.325 = 0.98 rad and gets 0.26, i.e. 27% of
+    # demand. It is therefore the next knob if turning is still weak after
+    # rotate_to_heading_angular_vel went back to 0.5. Servo margin on the worst
+    # hip (Revolute_116, lower limit 50 deg), including a full +-action_scale
+    # swing on top of the bias:
+    #   0.26 -> 10.8 deg   0.30 -> 8.5   0.35 -> 5.6   0.40 -> 2.8   0.45 clips
+    # Raise it alone, one step at a time: more hip bias also distorts the
+    # stance, so a gain in yaw is not guaranteed and has to be measured.
+    steer_max: 0.26
     steer_rate_limit: 0.01   # rad/step at 50 Hz (0.5 rad/s) — prevents sudden hip jerks
     hip_steer_sign: [-1.0, -1.0, -1.0, -1.0]
     # Lateral-hold: vy = clamp(-lateral_kp*line_offset); holds the LINE, not
