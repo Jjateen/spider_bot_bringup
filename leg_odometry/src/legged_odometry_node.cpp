@@ -57,6 +57,7 @@ public:
     stationary_accel_threshold_ = declare_parameter<double>("stationary_accel_threshold", 0.5);
     stationary_hold_s_ = declare_parameter<double>("stationary_hold_s", 0.4);
     servo_tau_ = declare_parameter<double>("servo_tau", 0.06);
+    gravity_magnitude_ = declare_parameter<double>("gravity_magnitude", 9.81);
     publish_joint_states_ = declare_parameter<bool>("publish_joint_states", true);
 
     if (velocity_source_ == "leg_kinematics") {
@@ -345,7 +346,8 @@ private:
 
     tf2::Matrix3x3 rot(orientation);
     tf2::Vector3 accel_world = rot * accel_body;
-    accel_world.setZ(accel_world.z() - 9.81);
+    // Bridge now publishes specific force (gravity removed at calibration), so no
+    // further gravity subtraction here.
 
     velocity = last_velocity_ + accel_world * dt;
 
@@ -414,7 +416,8 @@ private:
     double ay = msg->linear_acceleration.y;
     double az = msg->linear_acceleration.z;
     double accel_norm = std::sqrt(ax * ax + ay * ay + az * az);
-    double accel_dev = std::abs(accel_norm - 9.81);
+    // Bridge now publishes specific force (gravity removed), so at rest norm ≈ 0.
+    double accel_dev = accel_norm;
     bool accel_still = accel_dev < stationary_accel_threshold_;
 
     RCLCPP_DEBUG_THROTTLE(
@@ -481,6 +484,7 @@ private:
   rclcpp::Time still_since_{0, 0, RCL_ROS_TIME};
 
   double servo_tau_;
+  double gravity_magnitude_;
   std::vector<double> filtered_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_joint_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_joint_velocities_{std::vector<double>(12, 0.0)};

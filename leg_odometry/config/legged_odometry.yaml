@@ -36,7 +36,7 @@
     # Replaces drift_damping, which sat here but was never applied in
     # compute_imu_dead_reckon; switching it on instead would bleed steady
     # walking velocity, which is why ZUPT replaced it in the first place.
-    max_dead_reckon_speed: 0.45
+    max_dead_reckon_speed: 0.32
     # ZUPT (Zero-Velocity Update): when the robot is stationary (all joints
     # still + no linear acceleration), reset the dead-reckon velocity to zero.
     # This replaces the old leaky-damping mechanism for drift control —
@@ -59,3 +59,4 @@
     # tau=0.06 limits filtered position rate to ~6.5 rad/s (servo's max speed),
     # preventing the positive-feedback loop from synthetic joint states.
     servo_tau: 0.06
+    gravity_magnitude: 9.81
