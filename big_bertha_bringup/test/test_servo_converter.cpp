@@ -37,7 +37,7 @@ bbb::ServoConverter::Params make_params()
     p.servo_channel[i] = i;
   }
   p.max_joint_rate_rad_s = 3.0;
-  p.smoothing_tau_s = 0.0;   // isolate the slew limit
+  p.smoothing_tau_s = 0.0;  // isolate the slew limit
   return p;
 }
 
@@ -47,8 +47,8 @@ double travel_at_rate(double rate, double seconds)
   bbb::ServoConverter c(make_params());
   const double dt = 1.0 / rate;
   const std::vector<double> zero(12, 0.0);
-  const std::vector<double> step(12, 1.0);   // 1 rad away, far past any slew
-  c.convert(zero, dt);                        // first call latches the origin
+  const std::vector<double> step(12, 1.0);  // 1 rad away, far past any slew
+  c.convert(zero, dt);                      // first call latches the origin
   const int n = static_cast<int>(std::lround(seconds * rate));
   for (int k = 0; k < n; ++k) {
     c.convert(step, dt);
@@ -83,7 +83,7 @@ TEST(ServoConverter, LateMessageCannotAuthoriseAnUnboundedJump)
   const std::vector<double> zero(12, 0.0);
   const std::vector<double> step(12, 10.0);
   c.convert(zero, 0.02);
-  c.convert(step, 5.0);   // five seconds of silence
+  c.convert(step, 5.0);  // five seconds of silence
   EXPECT_LE(c.last_targets()[0], bbb::ServoConverter::kMaxDt * 3.0 + 1e-9);
 }
 

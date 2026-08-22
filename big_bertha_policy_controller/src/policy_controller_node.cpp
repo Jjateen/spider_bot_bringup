@@ -438,9 +438,9 @@ private:
             // Env clamps the raw action to [-1, 1] before scaling.
             double a = std::clamp(a_raw, -action_clip_, action_clip_);
             // 0-3 coxa, 4-7 thigh, 8-11 shin. See the scales above.
-            const double scale = (i < 4) ? action_scale_
-              : (i < 8) ? thigh_action_scale_
-              : shin_action_scale_;
+            const double scale = (i < 4)   ? action_scale_
+                                 : (i < 8) ? thigh_action_scale_
+                                           : shin_action_scale_;
             double t = scale * a + obs_.default_joint_pos[i];
             if (i < 4) {  // hips: inject differential-stride steering + debug bias
               t += debug_hip_bias_[i] + shaper_.steer_cmd * hip_steer_sign_[i];

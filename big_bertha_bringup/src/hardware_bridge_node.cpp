@@ -114,8 +114,8 @@ HardwareBridgeNode::HardwareBridgeNode(const rclcpp::NodeOptions & options)
   const double alpha_nominal = declare_parameter<double>("smoothing_alpha", 1.0);
   const double dt_nominal = 1.0 / command_rate;
   scp.smoothing_tau_s = (alpha_nominal >= 1.0 || alpha_nominal <= 0.0)
-    ? 0.0
-    : -dt_nominal / std::log(1.0 - alpha_nominal);
+                          ? 0.0
+                          : -dt_nominal / std::log(1.0 - alpha_nominal);
 
   servo_converter_ = ServoConverter(std::move(scp));
 
@@ -147,10 +147,11 @@ HardwareBridgeNode::HardwareBridgeNode(const rclcpp::NodeOptions & options)
       const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
       std::shared_ptr<std_srvs::srv::Trigger::Response> resp) { handle_imu_diag(req, resp); });
   recalibrate_imu_srv_ = create_service<std_srvs::srv::Trigger>(
-    "~/recalibrate_imu",
-    [this](
-      const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
-      std::shared_ptr<std_srvs::srv::Trigger::Response> resp) { handle_recalibrate_imu(req, resp); });
+    "~/recalibrate_imu", [this](
+                           const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
+                           std::shared_ptr<std_srvs::srv::Trigger::Response> resp) {
+      handle_recalibrate_imu(req, resp);
+    });
 
   // ── Bridge RPC ───────────────────────────────────────────────────────
   // Candidate socket paths: the running arduino-router may expose either of
@@ -223,9 +224,8 @@ void HardwareBridgeNode::on_cmd(const std_msgs::msg::Float64MultiArray::SharedPt
   if (last_servo_tx_.nanoseconds() > 0 && (stamp - last_servo_tx_) < servo_tx_period_) {
     return;
   }
-  const double dt = (last_servo_tx_.nanoseconds() > 0)
-    ? (stamp - last_servo_tx_).seconds()
-    : ServoConverter::kNominalDt;
+  const double dt = (last_servo_tx_.nanoseconds() > 0) ? (stamp - last_servo_tx_).seconds()
+                                                       : ServoConverter::kNominalDt;
   last_servo_tx_ = stamp;
 
   auto pwms = servo_converter_.convert(msg->data, dt);
@@ -612,8 +612,9 @@ void HardwareBridgeNode::handle_recalibrate_imu(
   std::lock_guard<std::mutex> lk(cal_mutex_);
   if (!(gyro_calibration_enabled_ || accel_calibration_enabled_)) {
     resp->success = false;
-    resp->message = "calibration disabled (gyro_calibration_enabled / "
-                    "accel_calibration_enabled are false)";
+    resp->message =
+      "calibration disabled (gyro_calibration_enabled / "
+      "accel_calibration_enabled are false)";
     return;
   }
   // Reset the accumulator so accumulate_calibration() starts a fresh window.
@@ -624,8 +625,9 @@ void HardwareBridgeNode::handle_recalibrate_imu(
   cal_collected_ = 0;
   calibration_done_ = false;
   resp->success = true;
-  resp->message = "IMU recalibration started — keep the robot level and still for the "
-                  "next calibration window";
+  resp->message =
+    "IMU recalibration started — keep the robot level and still for the "
+    "next calibration window";
   RCLCPP_INFO(get_logger(), "IMU recalibration (re)started by service call");
 }
 

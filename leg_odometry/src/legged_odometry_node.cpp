@@ -285,7 +285,7 @@ private:
     {
       std::lock_guard<std::mutex> lk(pose_mutex_);
       uncommanded = last_twist_cmd_time_.nanoseconds() == 0 ||
-        (now - last_twist_cmd_time_).seconds() > cmd_vel_stale_s_;
+                    (now - last_twist_cmd_time_).seconds() > cmd_vel_stale_s_;
     }
 
     // ZUPT: zero velocity when robot is stationary (all joints still, no linear
@@ -433,8 +433,8 @@ private:
       // lookupTransform(target_frame, source_frame, stamp) returns
       // T_target_source. We want map→odom, so target=map, source=odom.
       // Using tf2::TimePointZero asks for the latest available transform.
-      map_to_odom = tf_buffer_->lookupTransform(
-        "map", odom_frame_, tf2::TimePointZero, tf2::Duration(0));
+      map_to_odom =
+        tf_buffer_->lookupTransform("map", odom_frame_, tf2::TimePointZero, tf2::Duration(0));
     } catch (const tf2::TransformException & ex) {
       // Nav container not running or TF not yet available — correction
       // silently inactive. Common during bench work (with_nav:=false) and
@@ -445,14 +445,11 @@ private:
 
     tf2::Transform T_map_odom;
     T_map_odom.setOrigin(tf2::Vector3(
-      map_to_odom.transform.translation.x,
-      map_to_odom.transform.translation.y,
+      map_to_odom.transform.translation.x, map_to_odom.transform.translation.y,
       map_to_odom.transform.translation.z));
     T_map_odom.setRotation(tf2::Quaternion(
-      map_to_odom.transform.rotation.x,
-      map_to_odom.transform.rotation.y,
-      map_to_odom.transform.rotation.z,
-      map_to_odom.transform.rotation.w));
+      map_to_odom.transform.rotation.x, map_to_odom.transform.rotation.y,
+      map_to_odom.transform.rotation.z, map_to_odom.transform.rotation.w));
 
     if (!have_last_map_odom_) {
       // First TF received — store baseline, no correction yet.
@@ -521,8 +518,8 @@ private:
       get_logger(), *get_clock(), 5000,
       "lidar correction: err_xy=(%.4f, %.4f) m err_yaw=%.4f rad "
       "applied xy=%.4f yaw=%.4f",
-      err_pos.x(), err_pos.y(), err_yaw,
-      lidar_gain_xy_ * err_pos.length(), lidar_gain_yaw_ * err_yaw);
+      err_pos.x(), err_pos.y(), err_yaw, lidar_gain_xy_ * err_pos.length(),
+      lidar_gain_yaw_ * err_yaw);
   }
 
   void compute_imu_dead_reckon(
