@@ -446,15 +446,16 @@ void HardwareBridgeNode::finish_calibration()
     double az_mean = az_sum / collected;
     accel_bias_x_ = ax_mean;
     accel_bias_y_ = ay_mean;
-    accel_bias_z_ = az_mean - imu_axis_sign_[2] * 9.81;
+    double g = std::sqrt(ax_mean * ax_mean + ay_mean * ay_mean + az_mean * az_mean);
+    accel_bias_z_ = az_mean - imu_axis_sign_[2] * g;
 
     double ax_var = ax_sq_sum / collected - ax_mean * ax_mean;
     double ay_var = ay_sq_sum / collected - ay_mean * ay_mean;
     double az_var = az_sq_sum / collected - az_mean * az_mean;
 
     RCLCPP_INFO(
-      get_logger(), "accel bias: ax=%.6f ay=%.6f az=%.6f m/s²", accel_bias_x_, accel_bias_y_,
-      accel_bias_z_);
+      get_logger(), "accel bias: ax=%.6f ay=%.6f az=%.6f m/s² (g=%.3f)", accel_bias_x_,
+      accel_bias_y_, accel_bias_z_, g);
     RCLCPP_INFO(
       get_logger(), "accel var:  ax=%.6e ay=%.6e az=%.6e (m/s²)²", ax_var, ay_var, az_var);
   }
