@@ -59,4 +59,7 @@
     # tau=0.06 limits filtered position rate to ~6.5 rad/s (servo's max speed),
     # preventing the positive-feedback loop from synthetic joint states.
     servo_tau: 0.06
-    gravity_magnitude: 9.81
+    # High-pass leak on the specific force (s): rejects a slow DC bias (e.g. from
+    # a tilted IMU calibration) so it cannot integrate into runaway /odom drift.
+    # 0 disables. 10 s is slow enough that gait acceleration (period ~1.5 s) passes.
+    bias_leak_tau: 10.0

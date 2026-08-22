@@ -70,6 +70,9 @@ private:
   void handle_imu_diag(
     const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
     std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
+  void handle_recalibrate_imu(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> resp);
 
   // Bridge RPC client.
   std::unique_ptr<BridgeRPCClient> bridge_;
@@ -90,6 +93,7 @@ private:
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr scan_i2c_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr servo_diag_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr imu_diag_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr recalibrate_imu_srv_;
   std::vector<double> orient_cov_;
   std::vector<double> accel_cov_;
   std::vector<double> gyro_cov_;

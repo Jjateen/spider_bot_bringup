@@ -155,6 +155,13 @@
     # gyro bias (mean offsets subtracted from angular_velocity) and accel bias
     # (mean offsets with gravity removed, assuming IMU is level at startup).
     # Set to false or 0 to disable.
+    #
+    # The assumption above is load-bearing: if the robot is tilted when this
+    # runs, the x/y accel means capture a gravity projection that becomes a
+    # phantom constant acceleration downstream (leg_odometry integrates it into
+    # a runaway /odom velocity). If you cannot guarantee a level robot at boot,
+    # call the ~/recalibrate_imu service after placing it level — it re-opens
+    # the calibration window for the next N samples without a restart.
     gyro_calibration_enabled: true
 
     # Testing mode: drive only one joint (FR calf, idx 10).
