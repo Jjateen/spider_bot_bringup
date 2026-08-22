@@ -30,8 +30,34 @@
 # Usage: start_mapping.sh [timeout_s]
 set -uo pipefail
 
+# run_stack.sh ends in `exec ros2 launch`, so the shell that brought the stack
+# up is gone by the time anyone has walked back from the servo switch. This
+# script therefore sets up its own ROS environment, or `ros2` is not even on
+# PATH and discovery sees nothing, and the timeout below reads as a broken
+# launch instead of missing env vars. The CycloneDDS profile is not optional
+# here either -- see run_stack.sh for why plain multicast finds nothing.
+WS="${BB_WS:-$HOME/ros2_ws}"
+if [ ! -f "$WS/install/setup.bash" ]; then
+  echo "[start_mapping] no ROS workspace at $WS (override with BB_WS=/path)" >&2
+  exit 1
+fi
+# -u has to come off around sourcing: colcon's generated setup.bash reads
+# COLCON_TRACE without a default and aborts under `set -u`.
+set +u
+# shellcheck disable=SC1091
+source "$WS/install/setup.bash"
+set -u
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI="file://$(ros2 pkg prefix big_bertha_bringup)/share/big_bertha_bringup/config/dds/cyclonedds.xml"
+
 MGR=/lifecycle_manager_slam/manage_nodes
 TIMEOUT=${1:-30}
+
+state="$(ros2 lifecycle get /slam_toolbox 2>/dev/null || true)"
+if [ "$state" = "active [3]" ]; then
+  echo "[start_mapping] mapping was already live."
+  exit 0
+fi
 
 # Wait for the manager rather than failing on a stack that is still coming up.
 echo "[start_mapping] waiting for ${MGR}"
@@ -47,11 +73,21 @@ done
 
 # command 0 is STARTUP in nav2_msgs/srv/ManageLifecycleNodes: configure then
 # activate every node the manager owns, which here is slam_toolbox alone.
+#
+# The manager advertises manage_nodes as soon as it spins up, long before the
+# slam_toolbox component has been discovered inside its container, and an
+# early call is refused outright. That window is real on this board (the A35
+# brings everything up under load), so retry until the deadline instead of
+# making the operator rerun the script by hand.
 echo "[start_mapping] starting slam_toolbox"
-if ros2 service call "$MGR" nav2_msgs/srv/ManageLifecycleNodes \
-    "{command: 0}" | grep -q 'success=True'; then
-  echo "[start_mapping] mapping is live. Drive the robot to build the map."
-else
-  echo "[start_mapping] STARTUP was refused. Check the stack console." >&2
-  exit 1
-fi
+deadline=$((SECONDS + TIMEOUT))
+until ros2 service call "$MGR" nav2_msgs/srv/ManageLifecycleNodes \
+    "{command: 0}" 2>/dev/null | grep -q 'success=True'; do
+  if [ "$SECONDS" -ge "$deadline" ]; then
+    echo "[start_mapping] STARTUP kept being refused for ${TIMEOUT}s." >&2
+    echo "[start_mapping] Check the stack console for the transition error." >&2
+    exit 1
+  fi
+  sleep 3
+done
+echo "[start_mapping] mapping is live. Drive the robot to build the map."

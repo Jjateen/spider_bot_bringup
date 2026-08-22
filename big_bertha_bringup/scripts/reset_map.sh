@@ -28,6 +28,21 @@
 # Usage: reset_map.sh
 set -uo pipefail
 
+# Same reasoning as start_mapping.sh: run_stack.sh `exec`'d away its own
+# shell, so this runs from a fresh SSH session with no ROS environment. Set
+# one up or every ros2 call below fails and the map looks unfixable instead.
+WS="${BB_WS:-$HOME/ros2_ws}"
+if [ ! -f "$WS/install/setup.bash" ]; then
+  echo "[reset_map] no ROS workspace at $WS (override with BB_WS=/path)" >&2
+  exit 1
+fi
+set +u
+# shellcheck disable=SC1091
+source "$WS/install/setup.bash"
+set -u
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI="file://$(ros2 pkg prefix big_bertha_bringup)/share/big_bertha_bringup/config/dds/cyclonedds.xml"
+
 echo "[reset_map] clearing the slam_toolbox map"
 if ros2 service list 2>/dev/null | grep -q '/slam_toolbox/reset'; then
   ros2 service call /slam_toolbox/reset slam_toolbox/srv/Reset "{}" >/dev/null \
