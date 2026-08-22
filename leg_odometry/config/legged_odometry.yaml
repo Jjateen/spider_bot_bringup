@@ -71,3 +71,43 @@
     # position anchored — regardless of what the biased IMU reads. Must stay
     # above the policy's cmd_vel_timeout so packet gaps don't read as idle.
     cmd_vel_stale_s: 1.0
+    # ── IMU scaling ────────────────────────────────────────────────────────
+    # Multiplier on world-frame accel before dead-reckon integration.
+    # <1.0 reduces IMU contribution (dial down when IMU over-reports).
+    # >1.0 if IMU under-reports. Set to 0.0 to zero out accel entirely.
+    imu_accel_scale: 1.0
+    # Multiplier on angular velocity in odom twist (gyro passthrough to
+    # consumers of odom.twist.angular.z).
+    imu_gyro_scale: 1.0
+    # ── Lidar-aided correction (complementary filter) ─────────────────────
+    # Monitors map→odom TF changes from slam_toolbox / AMCL and pulls the
+    # dead-reckoned pose toward the scan-matched estimate. Gain = 0: pure
+    # IMU dead-reckon. Gain = 1: full lidar trust (not recommended — noisy
+    # per-scan, better as correction than primary).
+    #
+    # Works in both SLAM (mapping) and known-map (AMCL) modes — both
+    # publish map→odom TF. Inactive when nav is not running (TF absent).
+    #
+    # Non-circular: map→odom changes originate from lidar scan-matching
+    # against the environment; converting back into odom frame isolates
+    # the drift error without feeding back through our own TF.
+    lidar_correction_enabled: true
+    # Fraction of position error removed per update (0..1). 0.15 is
+    # conservative: ~6 updates to absorb 50% error, avoids oscillation
+    # from scan noise and slam's own lag. Raise toward 0.3 for faster
+    # convergence; 0 = no lidar feedback.
+    lidar_gain_xy: 0.15
+    # Fraction of yaw error removed per update (0..1). Slightly higher
+    # than xy because yaw drift is unbounded (no magnetometer reference)
+    # and lidar heading is the only absolute source.
+    lidar_gain_yaw: 0.20
+    # Max position correction per TF update (m). Rejects slam_toolbox
+    # loop-closure jumps (> 0.5 m in one update) — those belong in
+    # map→odom, not our odom frame. Also bounds per-cycle noise from
+    # individual scan matches.
+    max_correction_step_m: 0.05
+    # Max yaw correction per TF update (rad) ≈ 2.9°.
+    max_correction_step_yaw_rad: 0.05
+    # If no TF update for this long, correction goes inactive (pure
+    # dead-reckon). Matches stall behavior if nav dies.
+    correction_timeout_s: 1.0

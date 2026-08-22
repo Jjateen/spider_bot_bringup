@@ -29,7 +29,9 @@
 #include "tf2/LinearMath/Matrix3x3.h"
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2/LinearMath/Vector3.h"
+#include "tf2_ros/buffer.h"
 #include "tf2_ros/transform_broadcaster.h"
+#include "tf2_ros/transform_listener.h"
 
 using namespace std::chrono_literals;
 
@@ -79,6 +81,21 @@ public:
     cmd_vel_stale_s_ = declare_parameter<double>("cmd_vel_stale_s", 1.0);
     publish_joint_states_ = declare_parameter<bool>("publish_joint_states", true);
 
+    // IMU scaling: multiplier on world-frame accel before dead-reckon integration.
+    // <1.0 reduces IMU contribution; >1.0 if IMU under-reports; 0 zeros accel.
+    imu_accel_scale_ = declare_parameter<double>("imu_accel_scale", 1.0);
+    imu_gyro_scale_ = declare_parameter<double>("imu_gyro_scale", 1.0);
+
+    // Lidar-aided correction: monitor map→odom TF changes from slam_toolbox / AMCL
+    // and pull the dead-reckoned pose toward the scan-matched estimate.
+    // Gain = 0: pure IMU dead-reckon. Gain = 1: full lidar trust.
+    lidar_correction_enabled_ = declare_parameter<bool>("lidar_correction_enabled", true);
+    lidar_gain_xy_ = declare_parameter<double>("lidar_gain_xy", 0.15);
+    lidar_gain_yaw_ = declare_parameter<double>("lidar_gain_yaw", 0.20);
+    max_correction_step_m_ = declare_parameter<double>("max_correction_step_m", 0.05);
+    max_correction_step_yaw_rad_ = declare_parameter<double>("max_correction_step_yaw_rad", 0.05);
+    correction_timeout_s_ = declare_parameter<double>("correction_timeout_s", 1.0);
+
     if (velocity_source_ == "leg_kinematics") {
       RCLCPP_WARN(
         get_logger(), "leg_kinematics mode is a stub — velocity estimates will be inaccurate");
@@ -111,6 +128,8 @@ public:
     odom_pub_ = create_publisher<nav_msgs::msg::Odometry>("/odom", rclcpp::QoS(1));
 
     tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(this);
+    tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
+    tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_);
 
     // Initial /joint_states publish breaks the policy<->leg_odometry deadlock:
     // policy_controller gates /position_controller/commands on having seen a
@@ -291,6 +310,14 @@ private:
       zupt_active_ = false;
     }
 
+    // Lidar-aided correction: pull the dead-reckoned pose toward the
+    // scan-matched estimate (from slam_toolbox/AMCL map→odom TF).
+    // Runs at TF publish rate (50 Hz) but only applies nonzero deltas
+    // when slam processes a new scan (≥0.2 s apart, ≥0.1 m travel),
+    // so it's cheap and non-circular: the delta originates from lidar
+    // scan-matching against the environment, not from our own TF.
+    apply_lidar_correction(now);
+
     auto odom = nav_msgs::msg::Odometry();
     odom.header.stamp = msg->header.stamp;
     odom.header.frame_id = odom_frame_;
@@ -309,7 +336,7 @@ private:
     odom.twist.twist.linear.z = velocity.z();
     odom.twist.twist.angular.x = msg->angular_velocity.x;
     odom.twist.twist.angular.y = msg->angular_velocity.y;
-    odom.twist.twist.angular.z = msg->angular_velocity.z;
+    odom.twist.twist.angular.z = msg->angular_velocity.z * imu_gyro_scale_;
 
     // Dead-reckoned uncertainty grows with time since last ZUPT reset.
     // Position error from accelerometer bias (this IMU reads 11.07 vs 9.81 at
@@ -384,6 +411,120 @@ private:
     tf_broadcaster_->sendTransform(tf);
   }
 
+  // Lidar-aided correction: track changes in map→odom TF published by
+  // slam_toolbox (mapping mode) or AMCL (known-map mode). The increment of
+  // map→odom isolates exactly the drift accumulated in our dead-reckoned
+  // odom since the previous TF update — slam recomputes
+  //   map→odom = T_map_base(scanmatched) ∘ T_odom_base⁻¹
+  // so if odom drifts forward by e, the next map→odom shift contains −e.
+  // Applying that with gain < 1 pulls odom toward truth without the
+  // double-counting trap that killed the previous EKF setup (which fused
+  // /odom with the IMU that /odom was derived from).
+  //
+  // Works in both mapping (slam_toolbox) and localization (AMCL) modes —
+  // both publish map→odom TF continuously. Inactive when no nav is running
+  // (TF absent) — graceful fallback to pure dead-reckon.
+  void apply_lidar_correction(const rclcpp::Time & /*now*/)
+  {
+    if (!lidar_correction_enabled_) return;
+
+    geometry_msgs::msg::TransformStamped map_to_odom;
+    try {
+      // lookupTransform(target_frame, source_frame, stamp) returns
+      // T_target_source. We want map→odom, so target=map, source=odom.
+      // Using tf2::TimePointZero asks for the latest available transform.
+      map_to_odom = tf_buffer_->lookupTransform(
+        "map", odom_frame_, tf2::TimePointZero, tf2::Duration(0));
+    } catch (const tf2::TransformException & ex) {
+      // Nav container not running or TF not yet available — correction
+      // silently inactive. Common during bench work (with_nav:=false) and
+      // at startup before slam_toolbox publishes its first map→odom.
+      (void)ex;
+      return;
+    }
+
+    tf2::Transform T_map_odom;
+    T_map_odom.setOrigin(tf2::Vector3(
+      map_to_odom.transform.translation.x,
+      map_to_odom.transform.translation.y,
+      map_to_odom.transform.translation.z));
+    T_map_odom.setRotation(tf2::Quaternion(
+      map_to_odom.transform.rotation.x,
+      map_to_odom.transform.rotation.y,
+      map_to_odom.transform.rotation.z,
+      map_to_odom.transform.rotation.w));
+
+    if (!have_last_map_odom_) {
+      // First TF received — store baseline, no correction yet.
+      last_map_to_odom_ = T_map_odom;
+      have_last_map_odom_ = true;
+      return;
+    }
+
+    // Delta = how much slam adjusted map→odom since the last sample.
+    // If odom were perfect, delta ≈ identity. If odom over-reported forward
+    // motion by e, delta contains −e (slam absorbs the drift into map→odom
+    // to keep scan-matched base pose consistent with the map).
+    tf2::Transform delta = T_map_odom * last_map_to_odom_.inverse();
+    last_map_to_odom_ = T_map_odom;
+
+    // Extract position error (planar: only x/y matter).
+    tf2::Vector3 err_pos = delta.getOrigin();
+    double err_yaw = 0.0;
+    {
+      double roll, pitch;
+      delta.getBasis().getRPY(roll, pitch, err_yaw);
+    }
+
+    // Ignore near-zero corrections (TF republishes unchanged values at 50 Hz;
+    // only nonzero deltas when slam processes a new scan).
+    if (err_pos.length() < 1e-6 && std::abs(err_yaw) < 1e-6) return;
+
+    // Clamp per-cycle magnitude: rejects slam_toolbox loop-closure jumps
+    // (>0.5 m in one update) and AMCL re-initializations. The jump belongs
+    // in map→odom, not our odom frame — absorbing it would teleport base_link
+    // and break Nav2 costmaps.
+    if (err_pos.length() > max_correction_step_m_) {
+      err_pos *= max_correction_step_m_ / err_pos.length();
+    }
+    if (std::abs(err_yaw) > max_correction_step_yaw_rad_) {
+      err_yaw = std::copysign(max_correction_step_yaw_rad_, err_yaw);
+    }
+
+    // Apply correction under pose_mutex_ (shared with on_imu and
+    // broadcast_odom_tf in the composed container's MultiThreadedExecutor).
+    {
+      std::lock_guard<std::mutex> lk(pose_mutex_);
+
+      last_position_.setX(last_position_.x() + lidar_gain_xy_ * err_pos.x());
+      last_position_.setY(last_position_.y() + lidar_gain_xy_ * err_pos.y());
+
+      // Yaw correction via slerp between current and corrected orientation.
+      if (std::abs(err_yaw) > 1e-6) {
+        double current_yaw, current_roll, current_pitch;
+        tf2::Matrix3x3(last_orientation_).getRPY(current_roll, current_pitch, current_yaw);
+        double target_yaw = current_yaw + lidar_gain_yaw_ * err_yaw;
+        tf2::Quaternion corrected;
+        corrected.setRPY(0.0, 0.0, target_yaw);
+        last_orientation_ = corrected;  // pure yaw correction; roll/pitch zeroed
+        // (planar robot — roll/pitch pinned by gravity reference).
+      }
+
+      // Dampen velocity toward corrected direction to prevent overshoot.
+      // Gain > 0 means "trust the scan match more" so velocity should shrink
+      // proportionally; the dead-reckon integrator rebuilds it from the
+      // next IMU sample onward.
+      last_velocity_ *= (1.0 - lidar_gain_xy_);
+    }
+
+    RCLCPP_DEBUG_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "lidar correction: err_xy=(%.4f, %.4f) m err_yaw=%.4f rad "
+      "applied xy=%.4f yaw=%.4f",
+      err_pos.x(), err_pos.y(), err_yaw,
+      lidar_gain_xy_ * err_pos.length(), lidar_gain_yaw_ * err_yaw);
+  }
+
   void compute_imu_dead_reckon(
     const sensor_msgs::msg::Imu::SharedPtr & msg, const tf2::Quaternion & orientation, double dt,
     tf2::Vector3 & velocity, tf2::Vector3 & position)
@@ -395,6 +536,11 @@ private:
     tf2::Vector3 accel_world = rot * accel_body;
     // Bridge now publishes specific force (gravity removed at calibration), so no
     // further gravity subtraction here.
+
+    // IMU accel scaling: multiplier on world-frame accel before integration.
+    // Controls how much the IMU drives dead-reckoned velocity. <1.0 reduces
+    // over-reporting from residual bias; 0 zeros accel entirely.
+    accel_world *= imu_accel_scale_;
 
     // Bias-leak: track the slow DC component of accel_world and subtract it.
     // A constant phantom bias (from a tilted calibration) is rejected; genuine
@@ -589,6 +735,22 @@ private:
   // the policy, where they can. An unguarded read there yields a torn pose:
   // position from one IMU sample, orientation from the next.
   std::mutex pose_mutex_;
+
+  // IMU scaling.
+  double imu_accel_scale_{1.0};
+  double imu_gyro_scale_{1.0};
+
+  // Lidar-aided correction.
+  bool lidar_correction_enabled_{true};
+  double lidar_gain_xy_{0.15};
+  double lidar_gain_yaw_{0.20};
+  double max_correction_step_m_{0.05};
+  double max_correction_step_yaw_rad_{0.05};
+  double correction_timeout_s_{1.0};
+  std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
+  tf2::Transform last_map_to_odom_;
+  bool have_last_map_odom_{false};
 };
 
 }  // namespace leg_odometry
