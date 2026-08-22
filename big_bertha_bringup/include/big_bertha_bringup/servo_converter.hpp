@@ -79,9 +79,8 @@ public:
 
     // EWMA smoothing, time-based: alpha = 1 - exp(-dt/tau) is the same filter
     // at any call rate, where a fixed alpha is not.
-    const double alpha = (params_.smoothing_tau_s > 1e-9)
-      ? 1.0 - std::exp(-dt / params_.smoothing_tau_s)
-      : 1.0;
+    const double alpha =
+      (params_.smoothing_tau_s > 1e-9) ? 1.0 - std::exp(-dt / params_.smoothing_tau_s) : 1.0;
     std::vector<double> smoothed(12);
     if (first_cmd_) {
       smoothed = targets;
