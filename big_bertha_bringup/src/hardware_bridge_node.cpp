@@ -146,6 +146,11 @@ HardwareBridgeNode::HardwareBridgeNode(const rclcpp::NodeOptions & options)
     [this](
       const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
       std::shared_ptr<std_srvs::srv::Trigger::Response> resp) { handle_imu_diag(req, resp); });
+  recalibrate_imu_srv_ = create_service<std_srvs::srv::Trigger>(
+    "~/recalibrate_imu",
+    [this](
+      const std::shared_ptr<std_srvs::srv::Trigger::Request> & req,
+      std::shared_ptr<std_srvs::srv::Trigger::Response> resp) { handle_recalibrate_imu(req, resp); });
 
   // ── Bridge RPC ───────────────────────────────────────────────────────
   // Candidate socket paths: the running arduino-router may expose either of
@@ -453,6 +458,22 @@ void HardwareBridgeNode::finish_calibration()
     double ay_var = ay_sq_sum / collected - ay_mean * ay_mean;
     double az_var = az_sq_sum / collected - az_mean * az_mean;
 
+    // Tilt check: at rest the horizontal accel means must be ~0. A non-trivial
+    // |ax_mean|/|ay_mean| means the robot was NOT level when this ran, so the
+    // x/y bias captured a gravity projection. That bias is then subtracted from
+    // every later sample, leaving a phantom constant horizontal acceleration
+    // that leg_odometry integrates into a runaway /odom velocity. 0.5 m/s²
+    // ≈ 3° tilt — well above any real stationary noise.
+    const double tilt_thresh = 0.5;
+    if (std::abs(ax_mean) > tilt_thresh || std::abs(ay_mean) > tilt_thresh) {
+      RCLCPP_ERROR(
+        get_logger(),
+        "IMU tilted at calibration (ax=%.3f ay=%.3f m/s², >%.2f). Accel bias will be "
+        "wrong — leg_odometry will report phantom motion. Place the robot level and "
+        "call ~/recalibrate_imu.",
+        ax_mean, ay_mean, tilt_thresh);
+    }
+
     RCLCPP_INFO(
       get_logger(), "accel bias: ax=%.6f ay=%.6f az=%.6f m/s² (g=%.3f)", accel_bias_x_,
       accel_bias_y_, accel_bias_z_, g);
@@ -581,6 +602,31 @@ void HardwareBridgeNode::handle_imu_diag(
   std::lock_guard<std::mutex> lk(diag_mutex_);
   resp->success = !imu_diag_str_.empty();
   resp->message = imu_diag_str_.empty() ? "no imu_diag yet" : imu_diag_str_;
+}
+
+void HardwareBridgeNode::handle_recalibrate_imu(
+  const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+  std::shared_ptr<std_srvs::srv::Trigger::Response> resp)
+{
+  (void)req;
+  std::lock_guard<std::mutex> lk(cal_mutex_);
+  if (!(gyro_calibration_enabled_ || accel_calibration_enabled_)) {
+    resp->success = false;
+    resp->message = "calibration disabled (gyro_calibration_enabled / "
+                    "accel_calibration_enabled are false)";
+    return;
+  }
+  // Reset the accumulator so accumulate_calibration() starts a fresh window.
+  // The next max(gyro,accel)_calibration_samples_ samples rewrite the bias.
+  cal_gx_sum_ = cal_gy_sum_ = cal_gz_sum_ = 0.0;
+  cal_ax_sum_ = cal_ay_sum_ = cal_az_sum_ = 0.0;
+  cal_ax_sq_sum_ = cal_ay_sq_sum_ = cal_az_sq_sum_ = 0.0;
+  cal_collected_ = 0;
+  calibration_done_ = false;
+  resp->success = true;
+  resp->message = "IMU recalibration started — keep the robot level and still for the "
+                  "next calibration window";
+  RCLCPP_INFO(get_logger(), "IMU recalibration (re)started by service call");
 }
 
 }  // namespace big_bertha_bringup

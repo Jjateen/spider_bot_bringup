@@ -57,7 +57,12 @@ public:
     stationary_accel_threshold_ = declare_parameter<double>("stationary_accel_threshold", 0.5);
     stationary_hold_s_ = declare_parameter<double>("stationary_hold_s", 0.4);
     servo_tau_ = declare_parameter<double>("servo_tau", 0.06);
-    gravity_magnitude_ = declare_parameter<double>("gravity_magnitude", 9.81);
+    // High-pass leak on the specific force. Estimates the slowly-varying DC
+    // offset (a residual accel bias the bridge calibration missed, e.g. because
+    // the robot was tilted) and subtracts it, so it cannot integrate into a
+    // runaway /odom velocity. Long tau (~10 s) so real gait acceleration
+    // (period ~1.5 s) passes through untouched. 0 disables the leak.
+    bias_leak_tau_ = declare_parameter<double>("bias_leak_tau", 10.0);
     publish_joint_states_ = declare_parameter<bool>("publish_joint_states", true);
 
     if (velocity_source_ == "leg_kinematics") {
@@ -349,6 +354,17 @@ private:
     // Bridge now publishes specific force (gravity removed at calibration), so no
     // further gravity subtraction here.
 
+    // Bias-leak: track the slow DC component of accel_world and subtract it.
+    // A constant phantom bias (from a tilted calibration) is rejected; genuine
+    // gait-driven acceleration oscillates far above the leak time constant and
+    // is preserved. Without this, one bad calibration drives /odom at the
+    // max_dead_reckon_speed clamp indefinitely.
+    if (bias_leak_tau_ > 0.0 && dt > 0.0) {
+      const double alpha = dt / (bias_leak_tau_ + dt);
+      accel_bias_est_ += (accel_world - accel_bias_est_) * alpha;
+      accel_world -= accel_bias_est_;
+    }
+
     velocity = last_velocity_ + accel_world * dt;
 
     // Bound the estimate to something the robot can physically do. The bridge
@@ -484,7 +500,8 @@ private:
   rclcpp::Time still_since_{0, 0, RCL_ROS_TIME};
 
   double servo_tau_;
-  double gravity_magnitude_;
+  double bias_leak_tau_{10.0};
+  tf2::Vector3 accel_bias_est_{0.0, 0.0, 0.0};
   std::vector<double> filtered_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_joint_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_joint_velocities_{std::vector<double>(12, 0.0)};
