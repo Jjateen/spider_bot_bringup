@@ -61,5 +61,13 @@
     servo_tau: 0.06
     # High-pass leak on the specific force (s): rejects a slow DC bias (e.g. from
     # a tilted IMU calibration) so it cannot integrate into runaway /odom drift.
-    # 0 disables. 10 s is slow enough that gait acceleration (period ~1.5 s) passes.
-    bias_leak_tau: 10.0
+    # 0 disables. Gait acceleration oscillates about zero (~1.5 s period) so its
+    # per-cycle integral nets out even under a short tau; 3 s converges fast
+    # enough that a bad calibration stops pumping velocity within seconds.
+    bias_leak_tau: 3.0
+    # Hard stationary gate on command staleness (s). When /cmd_vel is silent
+    # longer than this the robot is uncommanded (the policy idles after 0.5 s),
+    # so any dead-reckoned velocity is phantom and is forced to zero with the
+    # position anchored — regardless of what the biased IMU reads. Must stay
+    # above the policy's cmd_vel_timeout so packet gaps don't read as idle.
+    cmd_vel_stale_s: 1.0
