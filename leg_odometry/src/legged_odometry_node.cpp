@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "geometry_msgs/msg/transform_stamped.hpp"
+#include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/imu.hpp"
@@ -60,9 +61,22 @@ public:
     // High-pass leak on the specific force. Estimates the slowly-varying DC
     // offset (a residual accel bias the bridge calibration missed, e.g. because
     // the robot was tilted) and subtracts it, so it cannot integrate into a
-    // runaway /odom velocity. Long tau (~10 s) so real gait acceleration
-    // (period ~1.5 s) passes through untouched. 0 disables the leak.
-    bias_leak_tau_ = declare_parameter<double>("bias_leak_tau", 10.0);
+    // runaway /odom velocity. Gait acceleration oscillates about zero with a
+    // ~1.5 s period, so its per-cycle integral nets out even under a short
+    // tau; 3 s converges fast enough that a bad calibration stops pumping
+    // velocity within a few seconds instead of holding it near the speed
+    // clamp for the better part of a minute. 0 disables the leak.
+    bias_leak_tau_ = declare_parameter<double>("bias_leak_tau", 3.0);
+    // Hard stationary gate on command staleness. The policy itself drops to
+    // idle once /cmd_vel goes quiet (its timeout is 0.5 s), so a silent topic
+    // means the robot is physically uncommanded and any dead-reckoned velocity
+    // is phantom — a tilted calibration integrates straight into it and pins
+    // at the clamp while ZUPT stays blocked by the biased raw IMU reading.
+    // When stale, velocity is forced to zero and position anchored no matter
+    // what the IMU says. Never-received counts as stale, which also covers
+    // boots where teleop never connects. Must exceed the policy timeout so a
+    // momentary gap between teleop packets never reads as "uncommanded".
+    cmd_vel_stale_s_ = declare_parameter<double>("cmd_vel_stale_s", 1.0);
     publish_joint_states_ = declare_parameter<bool>("publish_joint_states", true);
 
     if (velocity_source_ == "leg_kinematics") {
@@ -85,6 +99,12 @@ public:
     imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
       imu_topic_, rclcpp::SensorDataQoS(),
       std::bind(&LeggedOdometryNode::on_imu, this, std::placeholders::_1));
+
+    // Only the arrival time of /cmd_vel matters here; the value stays with the
+    // policy, which owns shaping it into joint targets.
+    twist_cmd_sub_ = create_subscription<geometry_msgs::msg::Twist>(
+      "/cmd_vel", rclcpp::QoS(1),
+      std::bind(&LeggedOdometryNode::on_twist_cmd, this, std::placeholders::_1));
 
     joint_state_pub_ =
       create_publisher<sensor_msgs::msg::JointState>("/joint_states", rclcpp::QoS(1));
@@ -182,6 +202,13 @@ private:
     }
   }
 
+  void on_twist_cmd(const geometry_msgs::msg::Twist::SharedPtr msg)
+  {
+    (void)msg;
+    std::lock_guard<std::mutex> lk(pose_mutex_);
+    last_twist_cmd_time_ = this->now();
+  }
+
   void on_imu(const sensor_msgs::msg::Imu::SharedPtr msg)
   {
     auto now = this->now();
@@ -228,10 +255,25 @@ private:
     velocity.setZ(0.0);
     position.setZ(0.0);
 
+    // Uncommanded gate: a silent /cmd_vel stream means nobody is driving (the
+    // policy idles after 0.5 s of silence itself). Any velocity the integrator
+    // still carries then is phantom — a tilted calibration pumps it straight
+    // to the clamp and no IMU-based stationary check can be trusted, because
+    // both its inputs (raw accel, joint motion from position_hold) can read
+    // "moving" while the physical robot sits still. So staleness alone forces
+    // the full ZUPT treatment: velocity zeroed, position anchored.
+    bool uncommanded;
+    {
+      std::lock_guard<std::mutex> lk(pose_mutex_);
+      uncommanded = last_twist_cmd_time_.nanoseconds() == 0 ||
+        (now - last_twist_cmd_time_).seconds() > cmd_vel_stale_s_;
+    }
+
     // ZUPT: zero velocity when robot is stationary (all joints still, no linear
-    // acceleration). Without this the leaky integrator bleeds steady walking
-    // velocity to zero and standing drift accumulates unbounded.
-    if (is_robot_stationary(msg)) {
+    // acceleration) or simply uncommanded. Without this the leaky integrator
+    // bleeds steady walking velocity to zero and standing drift accumulates
+    // unbounded.
+    if (uncommanded || is_robot_stationary(msg)) {
       velocity = tf2::Vector3(0.0, 0.0, 0.0);
       // Freeze the dead-reckoned position while stationary. Zeroing only velocity
       // is not enough: the world-frame accel still carries a small residual bias
@@ -363,6 +405,12 @@ private:
       const double alpha = dt / (bias_leak_tau_ + dt);
       accel_bias_est_ += (accel_world - accel_bias_est_) * alpha;
       accel_world -= accel_bias_est_;
+      // Expose the post-leak reading to the ZUPT gate: it must judge motion on
+      // the same bias-free signal the integrator uses, or a tilted calibration
+      // keeps ZUPT blocked (raw reading above threshold) while velocity stops
+      // growing — pinning /odom at the clamp with the robot standing still.
+      last_filtered_accel_world_ = accel_world;
+      have_filtered_accel_ = true;
     }
 
     velocity = last_velocity_ + accel_world * dt;
@@ -428,12 +476,20 @@ private:
       }
     }
 
-    double ax = msg->linear_acceleration.x;
-    double ay = msg->linear_acceleration.y;
-    double az = msg->linear_acceleration.z;
-    double accel_norm = std::sqrt(ax * ax + ay * ay + az * az);
-    // Bridge now publishes specific force (gravity removed), so at rest norm ≈ 0.
-    double accel_dev = accel_norm;
+    // Prefer the leak-filtered world-frame specific force: it strips the DC
+    // residual a tilted calibration leaves in the raw reading, so this gate
+    // measures actual body motion instead of calibration error. Falls back to
+    // the raw body-frame reading when the filter has not run (leak disabled or
+    // leg_kinematics source). The norm is rotation-invariant, so comparing
+    // magnitudes across frames is sound.
+    double accel_dev;
+    if (have_filtered_accel_) {
+      accel_dev = last_filtered_accel_world_.length();
+    } else {
+      const tf2::Vector3 raw(
+        msg->linear_acceleration.x, msg->linear_acceleration.y, msg->linear_acceleration.z);
+      accel_dev = raw.length();
+    }
     bool accel_still = accel_dev < stationary_accel_threshold_;
 
     RCLCPP_DEBUG_THROTTLE(
@@ -473,6 +529,7 @@ private:
                                                            -0.32, -0.32, 2.00, 2.00, 2.00,  2.00};
 
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr cmd_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr twist_cmd_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   std::string imu_topic_;
 
@@ -496,12 +553,21 @@ private:
   double stationary_joint_vel_threshold_;
   double stationary_accel_threshold_;
   double stationary_hold_s_;
+  double cmd_vel_stale_s_;
   // Start of the current unbroken still stretch; 0 means "moving right now".
   rclcpp::Time still_since_{0, 0, RCL_ROS_TIME};
 
   double servo_tau_;
-  double bias_leak_tau_{10.0};
+  double bias_leak_tau_{3.0};
   tf2::Vector3 accel_bias_est_{0.0, 0.0, 0.0};
+  // Latest post-leak world-frame specific force and validity flag; consumed by
+  // the ZUPT accel gate so it judges motion on the bias-free signal. Written in
+  // on_imu (via compute_imu_dead_reckon) before is_robot_stationary runs.
+  tf2::Vector3 last_filtered_accel_world_{0.0, 0.0, 0.0};
+  bool have_filtered_accel_{false};
+  // Last arrival time of /cmd_vel; 0 means "never commanded". Guarded by
+  // pose_mutex_ because the composed container runs callbacks concurrently.
+  rclcpp::Time last_twist_cmd_time_{0, 0, RCL_ROS_TIME};
   std::vector<double> filtered_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_joint_positions_{std::vector<double>(12, 0.0)};
   std::vector<double> last_joint_velocities_{std::vector<double>(12, 0.0)};
