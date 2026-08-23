@@ -5,11 +5,23 @@ ROS 2 **Jazzy** bringup for the **Big Bertha** quadruped: a PPO locomotion polic
 map and Nav2 plans collision-free point-A-to-point-B paths — demonstrated in a
 Gazebo Harmonic world full of obstacles.
 
-> Simulation bringup first; hardware bringup is scaffolded but empty.
 > Everything is built **for Big Bertha** for now (URDF, meshes, weights).
 
 The full architecture, module decomposition, diagrams, CI, and execution plan
 are maintained as a local design doc (not tracked in the repo).
+
+---
+
+## Related repositories
+
+| Repository | What lives there |
+|---|---|
+| [**spider_bot_training**](https://github.com/Yorha-7/spider_bot_training) | The Isaac Lab RL environment and training scripts that produce the gait. The PPO task definition, the reward terms, and the `train.py` / `play.py` entry points. The ONNX policy this repo runs is exported from there |
+| **spider_bot_bringup** (this repo) | Everything that runs on the robot or in Gazebo: description, policy node, sim bringup, hardware bringup |
+
+The split is deliberate. Training needs a GPU and Isaac Sim; nothing in this
+repo does. The only artefact that crosses between them is the exported ONNX
+policy, so the interface is one file.
 
 ---
 
@@ -21,7 +33,9 @@ are maintained as a local design doc (not tracked in the repo).
 | [`big_bertha_description`](./big_bertha_description) | `ament_cmake` | URDF/xacro, meshes, `ros2_control` |
 | [`big_bertha_policy_controller`](./big_bertha_policy_controller) | `ament_cmake` (C++) | ONNX gait node: `/cmd_vel` → 12 joint targets |
 | [`big_bertha_sim_bringup`](./big_bertha_sim_bringup) | `ament_cmake` | Gazebo sim: world, SLAM, Nav2, RViz |
-| [`big_bertha_bringup`](./big_bertha_bringup) | `ament_cmake` | Hardware bringup (empty stub — BOM in its README) |
+| [`big_bertha_bringup`](./big_bertha_bringup) | `ament_cmake` (C++) | Hardware bringup: MsgPack-RPC bridge to the MCU, PCA9685 servo driver, IMU, UNO Q firmware |
+| [`leg_odometry`](./leg_odometry) | `ament_cmake` (C++) | Leg + IMU odometry with ZUPT drift control |
+| [`big_bertha_controllers`](./big_bertha_controllers) | `ament_cmake` | `ros2_control` controller plugins |
 
 ## Quick start (simulation)
 
@@ -129,6 +143,19 @@ sign information; the direction column is what sets it.
 | arm_b_4_1 | 135 | 0 |  90 | 0 | 13 | +1 |
 | arm_c_4_1 | 40 | 180 | 90 | 1.57 | 12 | -1 |
 
+
+## Team
+
+Built for the **Arduino Physical AI Challenge India 2026** (Robu.in x Arduino)
+by Team Big B, Indian Institute of Information Technology Nagpur.
+
+| Name | Role | GitHub |
+|---|---|---|
+| Jjateen Gundesha | Team Lead | [@Jjateen](https://github.com/Jjateen) |
+| Jayesh Thakare | Developer | [@Yorha-7](https://github.com/Yorha-7) |
+| Mohit Talwar | Support | [@mohittalwar23](https://github.com/mohittalwar23) |
+
+---
 
 ## License
 
