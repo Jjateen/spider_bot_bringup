@@ -1,3 +1,10 @@
+<p align="center">
+  <img src="assets/header.jpg" alt="Big Bertha, a 3D-printed 12-DOF quadruped, standing on loose rock at the mouth of a cave" width="100%">
+</p>
+
+<p align="center"><sub>Concept illustration. The robot is real and the geometry is its actual URDF, but
+it has not been driven on terrain like this: measured foot clearance is about 34 mm.</sub></p>
+
 # Big Bertha Bringup
 
 ROS 2 **Jazzy** bringup for the **Big Bertha** quadruped: a PPO locomotion policy
