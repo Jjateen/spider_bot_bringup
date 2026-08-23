@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Cyclone DDS profile for Big Bertha.
+
+  Two transports, for two different jobs.
+
+  Same host (board-internal: bridge, policy, leg_odometry, Nav2, slam):
+  loopback with multicast. Everything in the composed containers already
+  bypasses DDS via intra-process comms, so this only carries the links that
+  cross a process boundary.
+
+  Cross device (board <-> dev laptop, for RViz) has two paths:
+
+    - wlan0 LAN: the dev machine is the access point for the board
+      (10.42.0.0/24), so same-subnet discovery works. multicast="true" on
+      wlan0 is safe: client<->AP traffic is delivered, and the unicast peer
+      list below covers the client-isolation case where AP<->AP multicast is
+      dropped.
+    - tailscale0: UNICAST only. Tailscale is a WireGuard point-to-point mesh;
+      there is no multicast group to join, so a profile that sets
+      AllowMulticast and expects Tailscale to deliver SPDP discovers nothing,
+      which looks identical to "DDS is broken".
+
+  So discovery is explicit: each peer is listed and found by unicast SPDP.
+  Add a machine here and it joins; leave it out and it will not be seen no
+  matter what else is configured.
+
+  Note this is the RMW-agnostic part of the problem. Switching between Fast
+  DDS and Cyclone changes nothing about AP isolation, which is why the RViz
+  symptom survived an RMW swap.
+-->
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <General>
+      <Interfaces>
+        <!-- Same-host traffic, and it must WIN. Without an explicit priority
+             Cyclone picked tailscale0 as the sole interface and logged
+             "selected interface tailscale0 is not multicast-capable:
+             disabling multicast", which sends board-internal traffic out over
+             a WireGuard tunnel and back. Everything on this robot that crosses
+             a process boundary is same-host, so loopback ranks highest. -->
+        <NetworkInterface name="lo" priority="20" multicast="true"/>
+        <!-- Cross-device LAN: the dev machine is the AP for this robot
+             (wlan0), so multicast and the unicast peers below carry RViz
+             traffic without Tailscale. -->
+        <NetworkInterface name="wlan0" priority="10" multicast="true"/>
+        <!-- Cross-device tailnet. multicast="false": Tailscale cannot carry
+             it, so discovery here comes from <Peers> below. -->
+        <NetworkInterface name="tailscale0" priority="1" multicast="false"
+                          presence_required="false"/>
+      </Interfaces>
+      <AllowMulticast>spdp</AllowMulticast>
+      <!-- Tailscale's default MTU is 1280. Leaving the fragment size above it
+           makes large samples (costmaps, /map, laser scans) fragment at the
+           WireGuard layer instead of the DDS layer, where a single lost
+           fragment costs the whole sample. -->
+      <MaxMessageSize>1200B</MaxMessageSize>
+    </General>
+
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <!-- NO unicast <Peers> here, deliberately, and this is the third design
+           in two days so the reasoning matters.
+
+           Peers were added to make cross-machine RViz work. That listed the
+           dev laptop, which then went off the robot's network. Cyclone keeps a
+           matched reader for a listed peer, the writer retains samples it can
+           never deliver, and once history fills the publish call BLOCKS. That
+           is what made /scan die "after a few minutes" while the driver was
+           still reading the port at full rate.
+
+           The obvious fix, deleting every peer, broke the other direction: the
+           dev machine could no longer discover the board at all, so RViz saw
+           no topics and no /map.
+
+           So neither a fixed peer list nor an empty one is right. Discovery is
+           multicast here: same host over lo, cross-machine over wlan0 where the
+           dev machine is the access point and client<->AP multicast is
+           delivered. Nothing is retained for a host that is not there, so a
+           laptop going away can never stall the robot.
+
+           If multicast is genuinely blocked on some future network, add the
+           peer at RUNTIME with BB_DDS_PEER=<ip> (see scripts/run_stack.sh)
+           rather than editing this file, and only while that host is up. -->
+    </Discovery>
+
+    <Tracing>
+      <!-- Unreachable peers are retried forever and each retry logs
+           "ddsi_udp_conn_write ... failed with retcode -3". With a peer that
+           is off the network that is hundreds of lines a minute, which buries
+           the actual errors and is why boot logs looked like a wall of red.
+           The peers must stay listed (they are how discovery works when they
+           ARE present), so quiet the transport chatter instead. -->
+      <Verbosity>severe</Verbosity>
+    </Tracing>
+
+    <Internal>
+      <!-- Cyclone renamed this; the old spelling logs a deprecation warning on
+           every single node start, which buries real errors in the boot log. -->
+      <SocketReceiveBufferSize min="1MB"/>
+    </Internal>
+  </Domain>
+</CycloneDDS>

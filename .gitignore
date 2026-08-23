@@ -28,3 +28,7 @@ verification_artifacts/
 # Cache files
 .cache/
 .ruff_cache/
+
+# Runtime logs and local helper scripts (not part of the repo)
+*.log
+docker_run.sh

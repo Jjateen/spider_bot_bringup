@@ -1,0 +1,178 @@
+# Parameters for the Big Bertha hardware bridge node.
+#
+# Connects directly to the arduino-router over its MsgPack-RPC unix socket and
+# talks to the STM32U585 co-processor via Bridge RPC. No TCP, no Python relay.
+# If router_socket is empty the node probes the known candidate paths.
+/**:
+  ros__parameters:
+    # arduino-router unix socket (MsgPack-RPC). Empty = auto-probe. The board's
+    # arduino-router is started with --unix-port /var/run/arduino-router.sock.
+    router_socket: "/var/run/arduino-router.sock"
+
+    # Servo PWM range (12-bit, 0-4095). PCA9685 counts 102 and 512 are the
+    # mechanical hard stops, corresponding to 0.5ms and 2.5ms at 50 Hz.
+    # Wide-range clone servos (0.5-2.5ms) sweep the full 0-180° across this
+    # band. REQUIRES HARDWARE VALIDATION - see protractor test procedure in
+    # PR #88.
+    pwm_min: 102
+    pwm_max: 512
+
+    # Joint angle limit in radians — final safety clamp before PWM conversion.
+    joint_limit: 3.14159
+
+    # Rate at which this node forwards targets to the servos. NOT the rate
+    # policy_controller publishes at: that is pd_rate (200 Hz), and on_cmd
+    # throttles down to this value because the PCA9685 only refreshes at 50 Hz,
+    # so the other three of every four messages are discarded by the hardware
+    # while still costing UART bandwidth the IMU stream needs.
+    #
+    # This one value drives both the throttle and the converter's rate limiter
+    # (rate_limit_rad = max_joint_rate_rad_s / command_rate_hz, a PER-MESSAGE
+    # allowance). Raising the send rate without raising this, or vice versa,
+    # caps joint speed by the ratio between them: at 50 Hz sends against a
+    # 200 Hz limiter every joint is clamped to 1.635 rad/s, the same class of
+    # limit that stopped the legs swinging before.
+    command_rate_hz: 50.0
+    # Slew ceiling. The MG995 free-running maximum is 6.54 rad/s, but the gait
+    # never needs anywhere near that, so leaving it at the servo maximum meant
+    # the limiter never engaged and every setpoint step was chased at full
+    # speed. That is what makes the frame snap on touchdown.
+    #
+    # Peak rate a sinusoidal joint actually needs is 2*pi*f*A. The largest
+    # amplitude is the ankle at 0.219 rad, and the gait clock caps at
+    # 0.667 Hz * 2.1 = 1.40 Hz, so the worst case over the whole command
+    # envelope is 2*pi*1.40*0.219 = 1.93 rad/s. 3.0 keeps 1.55x headroom
+    # there while cutting peak slew 2.2x, so it gentles the transitions
+    # without ever clipping the gait.
+    #
+    # Do NOT drop this below ~2.0 to slow the robot down further: that clips
+    # the ankles, which are what lift the feet, and the legs stop clearing the
+    # ground (the old 1.5 rad/s failure). To go slower, lower the commanded vx
+    # instead, which lowers the clock boost and with it the required rate.
+    max_joint_rate_rad_s: 3.0
+    # rate_limit_rad is computed in code: max_joint_rate_rad_s / command_rate_hz
+
+    # EWMA smoothing alpha on outbound position targets. 1.0 = passthrough.
+    #
+    # This is not jitter removal, it is waveform shaping. Every action the
+    # policy emits saturates the action_clip, so each joint target is a
+    # two-level square wave at the gait frequency rather than a smooth curve.
+    # Gazebo never sees that because JointEffortPdController turns the target
+    # into a torque and link inertia integrates it. On hardware the target
+    # goes to the servo as an absolute position, so the square edges arrive
+    # intact and the frame takes the full step on every transition.
+    #
+    # Measured against the 0.96 Hz fundamental at cmd 0.12:
+    #   alpha  fc      fundamental  3rd harm  max step   delivered p-p
+    #   0.5    5.5 Hz      99%         89%     0.250 rad     0.499
+    #   0.2    1.8 Hz      88%         53%     0.100 rad     0.476
+    #   0.08   0.7 Hz      57%         23%     0.039 rad     0.353
+    #
+    # 0.2 keeps 95% of the commanded amplitude while halving the harmonic
+    # content and cutting the worst instantaneous step 2.5x. Its 25 degree
+    # phase lag applies equally to all twelve joints, so it delays the gait
+    # without disturbing the inter-leg offsets the gait actually encodes.
+    # Do not go much below this: the amplitude loss becomes real (0.08 gives
+    # up 29%) and the lag starts eating the swing/stance boundary.
+    smoothing_alpha: 0.2
+
+    # Policy center in radians — the policy output value at which the servo is at its
+    # physical center (0 rad for hips/knees, π/2 rad for ankles). At this value the
+    # servo sits at offset+90 degrees.
+    policy_center:
+      [0.0, 0.0, 0.0, 0.0,
+       0.0, 0.0, 0.0, 0.0,
+       1.57, 1.57, 1.57, 1.57]
+
+    # Per-joint servo parameters in policy output order (Revolute_110..121).
+    # Each array has 12 values, one per joint:
+    #   servo_lower_limit — physical lower angle limit (deg)
+    #   servo_upper_limit — physical upper angle limit (deg)
+    #   servo_offset      — mounting offset from the ideal angle (deg)
+    #   servo_channel     — PCA9685 PWM channel (0-15)
+    #   servo_direction   — +1 or -1 multiplied with the joint action
+    # Values from the physical hardware calibration (spider_bot_training/README.md).
+    servo_lower_limit: [45.0, 30.0, 180.0, 140.0, 135.0, 140.0, 50.0, 50.0, 40.0, 180.0, 150.0, 0.0]    # degrees — smallest angle per joint
+    servo_upper_limit: [180.0, 150.0, 50.0, 0.0, 0.0, 0.0, 180.0, 180.0, 180.0, 40.0, 0.0, 150.0]      # degrees — largest angle per joint
+
+    # Offsets are the physically measured servo horn-center deviations (deg),
+    # from the servo-center test in the README map — independent of the PWM
+    # count mapping. Restored per review; Phase 0 bench check (stand, legs
+    # free) confirms each joint sits at its measured center at policy_center:
+    #   1. Set single_joint_mode: true, single_joint_index: <N>
+    #   2. Command that joint's policy_center value
+    #   3. Measure horn angle with protractor; offset = 90 - measured if off
+    servo_offset: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 0.0, 8.0, 2.0, 5.0]                      # degrees — servo mounting offset
+
+    servo_channel: [14, 10, 2, 6, 13, 9, 1, 5, 12, 8, 0, 4]                                           # which plug on the board each servo uses
+    servo_direction: [1, 1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1]                                   # +1 = keep sign, -1 = flip sign
+
+    # IMU covariance matrices (9 elements each, row-major).
+    # Orientation covariance = [-1] means orientation not estimated.
+    # Accel/gyro diagonals derived from MPU9250 datasheet (DLPF=3, 44 Hz BW)
+    # with margin for motor vibration.
+    orientation_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    linear_acceleration_covariance: [0.001, 0.0, 0.0, 0.0, 0.001, 0.0, 0.0, 0.0, 0.001]
+    angular_velocity_covariance: [0.00001, 0.0, 0.0, 0.0, 0.00001, 0.0, 0.0, 0.0, 0.00001]
+
+    # IMU axis mapping: chip frame -> base_link frame.
+    # The MPU-6500 is mounted 180° about Z (chip x and y point opposite to
+    # base_link x and y), so x and y are negated. Z is unchanged (both point up).
+    # Apply AFTER bias removal.
+    imu_axis_sign: [-1.0, -1.0, 1.0]
+
+    # Magnetometer axis mapping — UNUSED AND UNVALIDATED on this board.
+    #
+    # There is no magnetometer here, and there is no wiring or register fix
+    # that will produce one. Verified 2026-07-28: WHO_AM_I (0x75) reads 0x70,
+    # which is an MPU-6500 -- a SIX-axis die with no magnetometer at all. The
+    # module is sold as an "MPU-9265", which is not an InvenSense part number;
+    # TDK only ever made the MPU-9250 (0x71) and MPU-9255 (0x73).
+    #
+    # Checked with both datasheet preconditions genuinely satisfied, since
+    # BYPASS_EN alone proves nothing: the part is now reset (PWR_MGMT_1 0x80)
+    # and USER_CTRL I2C_MST_EN is explicitly cleared before bypass, because
+    # while that bit is set "pins ES_DA and ES_SCL are isolated from pins
+    # SDA/SDI and SCL/SCLK" (RM-000008 s4.33) and the auxiliary bus is walled
+    # off. Even so: AK8963 WIA reads 0 and a full 1..126 sweep sees only 0x40
+    # and 0x68.
+    #
+    # And bypass is not the only route, so its silence alone would not settle
+    # it: the firmware also drives the AUXILIARY bus directly with the MPU's
+    # own I2C master (I2C_SLV0_* -> EXT_SENS_DATA_00) and reads WIA back from
+    # 0x0C..0x0F. That returns [0, 0, 0, 0] — the aux bus is empty, not merely
+    # unreachable. hw_status carries mag_present/mag_wia/mpu_whoami/aux_probe
+    # so none of this needs rediscovering.
+    #
+    # These signs have therefore never seen real data. Note they also CANNOT be
+    # correct as written if a genuine MPU-9250 is fitted: its AK8963 sits at
+    # mag_x=+accel_y, mag_y=+accel_x, mag_z=-accel_z, which is an X/Y SWAP, and
+    # a sign vector cannot express a swap. Fitting a real magnetometer needs an
+    # axis permutation here, not just these three numbers.
+    mag_axis_sign: [-1.0, 1.0, -1.0]
+
+    # Startup calibration — collects N IMU samples while stationary to compute
+    # gyro bias (mean offsets subtracted from angular_velocity) and accel bias
+    # (mean offsets with gravity removed, assuming IMU is level at startup).
+    # Set to false or 0 to disable.
+    #
+    # The assumption above is load-bearing: if the robot is tilted when this
+    # runs, the x/y accel means capture a gravity projection that becomes a
+    # phantom constant acceleration downstream (leg_odometry integrates it into
+    # a runaway /odom velocity). If you cannot guarantee a level robot at boot,
+    # call the ~/recalibrate_imu service after placing it level — it re-opens
+    # the calibration window for the next N samples without a restart.
+    gyro_calibration_enabled: true
+
+    # Testing mode: drive only one joint (FR calf, idx 10).
+    single_joint_mode: false
+    single_joint_index: 10
+    # 200 samples ~ 2.2 s at the measured 91 Hz. Was 10 (109 ms), which is too
+    # few to average the noise out of the bias estimate: with no magnetometer
+    # on this board, yaw is pure gyro integration with no absolute reference,
+    # so whatever error survives in the gz bias integrates without bound. The
+    # measured raw gz bias is 0.0396 rad/s (2.3 deg/s), so a 1% error in the
+    # estimate is still ~1.4 deg of yaw per minute.
+    gyro_calibration_samples: 200
+    accel_calibration_enabled: true
+    accel_calibration_samples: 200

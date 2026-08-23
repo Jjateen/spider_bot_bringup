@@ -49,7 +49,8 @@ namespace big_bertha_sim_bringup
 class ScanGroundFilter : public rclcpp::Node
 {
 public:
-  ScanGroundFilter() : rclcpp::Node("scan_ground_filter")
+  explicit ScanGroundFilter(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : rclcpp::Node("scan_ground_filter", options)
   {
     // Body height above ground (TF can't supply it: EKF two_d_mode pins z=0).
     // 0.095 measured from gz ground-truth odometry while walking.
@@ -60,6 +61,10 @@ public:
     floor_margin_ = this->declare_parameter<double>("floor_margin", 0.04);
     // Max IMU age vs the scan (s); a stale attitude culls against the wrong tilt.
     imu_max_age_ = this->declare_parameter<double>("imu_max_age", 0.05);
+    // Orientation source. On hardware this is the Madgwick output (/filtered/imu,
+    // has roll/pitch); sim's raw /imu already carries orientation. Default /imu
+    // keeps the sim bringup unchanged (it passes no imu_topic).
+    imu_topic_ = this->declare_parameter<std::string>("imu_topic", "/imu");
     base_frame_ = this->declare_parameter<std::string>("base_frame", "base_link");
     lidar_frame_ = this->declare_parameter<std::string>("lidar_frame", "lidar_link");
 
@@ -68,7 +73,7 @@ public:
 
     const auto sensor_qos = rclcpp::SensorDataQoS();
     imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>(
-      "imu", sensor_qos, std::bind(&ScanGroundFilter::onImu, this, std::placeholders::_1));
+      imu_topic_, sensor_qos, std::bind(&ScanGroundFilter::onImu, this, std::placeholders::_1));
     scan_sub_ = this->create_subscription<sensor_msgs::msg::LaserScan>(
       "scan", sensor_qos, std::bind(&ScanGroundFilter::onScan, this, std::placeholders::_1));
     // RELIABLE so it satisfies the costmap's reliable subscription (a
@@ -164,6 +169,7 @@ private:
   double body_height_{0.09};
   double floor_margin_{0.04};
   double imu_max_age_{0.05};
+  std::string imu_topic_{"/imu"};
   std::string base_frame_{"base_link"};
   std::string lidar_frame_{"lidar_link"};
   bool mount_ready_{false};
@@ -182,10 +188,5 @@ private:
 
 }  // namespace big_bertha_sim_bringup
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<big_bertha_sim_bringup::ScanGroundFilter>());
-  rclcpp::shutdown();
-  return 0;
-}
+#include "rclcpp_components/register_node_macro.hpp"
+RCLCPP_COMPONENTS_REGISTER_NODE(big_bertha_sim_bringup::ScanGroundFilter)

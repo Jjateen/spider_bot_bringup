@@ -1,0 +1,6 @@
+name: i2c_scanner
+description: "Scans all three I2C buses (Wire, Wire1, Wire2) on the UNO Q and reports devices found"
+icon: 🔍
+version: "0.1.0"
+ports: []
+bricks: []

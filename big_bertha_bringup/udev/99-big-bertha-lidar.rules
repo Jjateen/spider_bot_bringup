@@ -1,0 +1,20 @@
+# Stable device node for the YDLidar X2's USB-serial adapter.
+#
+# config/ydlidar_x2.yaml opens /dev/ttyLIDAR rather than /dev/ttyUSB0 because
+# the adapter re-enumerates whenever the USB rail blips (a servo surge browns
+# it; see DEPLOYMENT.md Known Limitations 6) and the kernel then hands out a
+# different ttyUSBn. Without this rule that symlink does not exist at all, the
+# driver fails to open the port, exits with "Failed to check the lidar,
+# because [Device Failed]", and respawn restarts it into the same failure --
+# which looks like the lidar "kickstarting and shutting off" in a loop.
+#
+# Install:
+#   sudo cp 99-big-bertha-lidar.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+#   ls -l /dev/ttyLIDAR
+#
+# 10c4:ea60 is the Silicon Labs CP210x. Confirm with `lsusb` and edit these if
+# your adapter differs (CH341 is 1a86:7523, FTDI is 0403:6001).
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="ttyLIDAR", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="ttyLIDAR", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6001", SYMLINK+="ttyLIDAR", MODE="0666"

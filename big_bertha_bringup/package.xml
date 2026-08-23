@@ -5,19 +5,36 @@
   <version>0.1.0</version>
   <description>
     Hardware bringup for the physical Big Bertha quadruped (Arduino UNO Q,
-    MG995 servos, YDLidar X2, MPU6050). Empty stub for now: the README
-    documents the real BOM (see PLAN.md sec 11) so the hardware bringup mirrors
-    the sim modules. The autonomy stack (state_estimation, mapping,
-    localization, planning) is hardware-agnostic and reused with
-    use_sim_time:=false; only the sensor drivers and the servo bridge replace
-    the simulation layer.
+    MG995 servos, YDLidar X2, MPU6050). The hardware_bridge_node talks
+    directly to the arduino-router MsgPack-RPC unix socket (Bridge RPC) to
+    drive the PCA9685 servos and read the MPU IMU on the STM32U585
+    co-processor — no TCP, no Python relay, no Docker. The autonomy stack
+    (state_estimation, mapping, localization, planning) is hardware-agnostic
+    and reused with use_sim_time:=false.
   </description>
   <maintainer email="jjateen97@gmail.com">Jjateen Gundesha</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <depend>rclcpp</depend>
+  <depend>rclcpp_components</depend>
+  <depend>std_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
+
+  <!-- Runtime deps for the launch files (reused sub-launches + nodes). -->
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>big_bertha_description</exec_depend>
+  <exec_depend>big_bertha_policy_controller</exec_depend>
+  <exec_depend>imu_filter_madgwick</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>leg_odometry</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+
   <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_lint_common</test_depend>
 
   <export>

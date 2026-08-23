@@ -99,19 +99,34 @@ Arduino UNO Q (4 GB, ROS 2 Jazzy, **arm64**) · 3D-printed frame · 12× MG995 s
 exists because the deploy target is arm64.)
 
 ### Physical Params
-| Joint | lower limit | upper_limit | servo center| policy map | channel | direcetion |
+
+`big_bertha_bringup/config/hardware_bridge.yaml` is the source of truth for
+these values; this table mirrors it for reading. Change the yaml, then update
+this table, never the other way round.
+
+The direction column previously disagreed with the yaml on six joints
+(`arm_a_2_1`, `arm_a_3_1`, `arm_b_1_1`, `arm_b_4_1`, `arm_c_2_1`, `arm_c_3_1`).
+The yaml was the correct one: running the README's signs through the URDF
+kinematics gives 126 mm of foot "clearance", i.e. the legs flail rather than
+walk. Corrected below.
+
+Note the limit pair is an unordered range. `servo_converter` clamps to
+`min(lower, upper) .. max(lower, upper)`, so which column is larger carries no
+sign information; the direction column is what sets it.
+
+| Joint | lower limit | upper_limit | servo center| policy map | channel | direction |
 |-----|-----|-----|-----|-----|-----|-----|
-| arm_a_2_1 | 180 | 50 | 90 | 0 | 2 | -1 |
+| arm_a_2_1 | 180 | 50 | 90 | 0 | 2 | +1 |
 | arm_b_2_1 | 50 | 180 | 100| 0 | 1 | -1 |
-| arm_c_2_1 | 150 | 0 | 92 | 1.57 | 0 | -1 |
+| arm_c_2_1 | 150 | 0 | 92 | 1.57 | 0 | +1 |
 | arm_a_1_1 | 30 | 150 | 90| 0 | 10 | +1 |
-| arm_b_1_1 | 140 | 0 | 90 | 0 | 9 | -1 |
+| arm_b_1_1 | 140 | 0 | 90 | 0 | 9 | +1 |
 | arm_c_1_1 | 180 | 40 | 98| 1.57 | 8 | -1 |
-| arm_a_3_1 | 140 | 0 | 90 | 0 | 6 | -1 |
+| arm_a_3_1 | 140 | 0 | 90 | 0 | 6 | +1 |
 | arm_b_3_1 | 50 | 180 | 100| 0 | 5 | -1 |
-| arm_c_3_1 | 0 | 150 | 95 | 1.57 | 4 | -1 |
+| arm_c_3_1 | 0 | 150 | 95 | 1.57 | 4 | +1 |
 | arm_a_4_1 | 45 | 180 | 90 | 0 | 14 | +1 |
-| arm_b_4_1 | 135 | 0 |  90 | 0 | 13 | -1 |
+| arm_b_4_1 | 135 | 0 |  90 | 0 | 13 | +1 |
 | arm_c_4_1 | 40 | 180 | 90 | 1.57 | 12 | -1 |
 
 

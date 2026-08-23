@@ -3,6 +3,7 @@ project(big_bertha_sim_bringup)
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
@@ -16,13 +17,16 @@ install(
 )
 
 # Perception helper node (scan_ground_filter: IMU-gated ghost-wall removal).
-add_executable(scan_ground_filter src/scan_ground_filter.cpp)
-target_include_directories(scan_ground_filter PRIVATE include)
-ament_target_dependencies(scan_ground_filter
-  rclcpp sensor_msgs geometry_msgs tf2 tf2_ros)
+add_library(scan_ground_filter_component SHARED src/scan_ground_filter.cpp)
+target_include_directories(scan_ground_filter_component PRIVATE include)
+ament_target_dependencies(scan_ground_filter_component
+  rclcpp rclcpp_components sensor_msgs geometry_msgs tf2 tf2_ros)
+rclcpp_components_register_node(scan_ground_filter_component
+  PLUGIN "big_bertha_sim_bringup::ScanGroundFilter"
+  EXECUTABLE scan_ground_filter)
 install(
-  TARGETS scan_ground_filter
-  DESTINATION lib/${PROJECT_NAME}
+  TARGETS scan_ground_filter_component
+  ARCHIVE DESTINATION lib LIBRARY DESTINATION lib RUNTIME DESTINATION bin
 )
 
 # maps/ is added by a later chained PR (mapping/localization); install it

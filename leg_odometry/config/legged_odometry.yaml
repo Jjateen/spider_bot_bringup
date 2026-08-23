@@ -4,6 +4,11 @@
 # to the same topic and publishes /joint_states with matching names so the policy
 # reads back correct joint_pos - default_joint_pos in its observation. See
 # big_bertha_policy_controller/config/policy.yaml.
+#
+# On hardware leg_odometry is the SOLE /joint_states publisher (publish_joint_states
+# defaults to true): its EWMA simulates the MG995 lag, which is the feedback the
+# policy needs. hardware_bridge_node no longer publishes /joint_states at all, so
+# the two never collide.
 /**:
   ros__parameters:
     joint_names:
@@ -25,20 +30,84 @@
     base_frame: "base_link"
     publish_tf: false
     velocity_source: "imu_dead_reckon"
-    drift_damping: 0.98
-    # NOTE: drift_damping is applied per IMU sample, not per second. At 125 Hz
-    # (dt=0.008s), 0.98 gives a ~0.4 s velocity time constant. At 100 Hz the
-    # same 0.98 gives ~0.5 s. The effective decay rate changes with IMU rate.
-    # Now replaced by ZUPT (below) — kept for backwards compat only.
+    # Cap on the dead-reckoned speed. One IMU sample at dt ~0.29 s with the
+    # ~1.7 m/s^2 residual bias injects ~0.5 m/s of pure error, and ZUPT only
+    # clears that once the robot stops. The policy tops out near 0.3 m/s.
+    # Replaces drift_damping, which sat here but was never applied in
+    # compute_imu_dead_reckon; switching it on instead would bleed steady
+    # walking velocity, which is why ZUPT replaced it in the first place.
+    max_dead_reckon_speed: 0.32
     # ZUPT (Zero-Velocity Update): when the robot is stationary (all joints
     # still + no linear acceleration), reset the dead-reckon velocity to zero.
     # This replaces the old leaky-damping mechanism for drift control —
     # damping bled steady walking velocity to zero; ZUPT only resets when the
     # robot is actually not moving, preserving velocity during walking.
     stationary_joint_vel_threshold: 0.02   # rad/s per joint
-    stationary_accel_threshold: 0.5        # m/s^2 deviation from 1g
-    stationary_samples: 10                 # consecutive IMU samples (~80 ms @125Hz)
+    # Real IMU accel magnitude at rest is 11.07 vs 9.81 (see hardware_bridge.yaml),
+    # and the boot-time bias calibration leaves a residual that varies run-to-run
+    # (measured 0.03-1.7 m/s^2), so a tight 0.5 gate blocks ZUPT and idle odom
+    # drifts. 2.0 still rejects real motion while tolerating the calibration
+    # variance. The joints_still gate (below) is the primary stationary signal.
+    stationary_accel_threshold: 2.0        # m/s^2 deviation from 1g
+    # How long everything has to stay still before ZUPT engages, in SECONDS.
+    # This used to be a sample count (10), which silently scaled with whatever
+    # rate the IMU arrived at: 80 ms at the designed 125 Hz, but 2.9 s at the
+    # ~3.5 Hz the bridge actually delivers under load, which is longer than most
+    # stops last, so ZUPT never engaged and idle odom drifted anyway.
+    stationary_hold_s: 0.4
     # Servo dynamics model: EWMA time constant (seconds) matching MG995 response.
     # tau=0.06 limits filtered position rate to ~6.5 rad/s (servo's max speed),
     # preventing the positive-feedback loop from synthetic joint states.
     servo_tau: 0.06
+    # High-pass leak on the specific force (s): rejects a slow DC bias (e.g. from
+    # a tilted IMU calibration) so it cannot integrate into runaway /odom drift.
+    # 0 disables. Gait acceleration oscillates about zero (~1.5 s period) so its
+    # per-cycle integral nets out even under a short tau; 3 s converges fast
+    # enough that a bad calibration stops pumping velocity within seconds.
+    bias_leak_tau: 3.0
+    # Hard stationary gate on command staleness (s). When /cmd_vel is silent
+    # longer than this the robot is uncommanded (the policy idles after 0.5 s),
+    # so any dead-reckoned velocity is phantom and is forced to zero with the
+    # position anchored — regardless of what the biased IMU reads. Must stay
+    # above the policy's cmd_vel_timeout so packet gaps don't read as idle.
+    cmd_vel_stale_s: 1.0
+    # ── IMU scaling ────────────────────────────────────────────────────────
+    # Multiplier on world-frame accel before dead-reckon integration.
+    # <1.0 reduces IMU contribution (dial down when IMU over-reports).
+    # >1.0 if IMU under-reports. Set to 0.0 to zero out accel entirely.
+    imu_accel_scale: 1.0
+    # Multiplier on angular velocity in odom twist (gyro passthrough to
+    # consumers of odom.twist.angular.z).
+    imu_gyro_scale: 1.0
+    # ── Lidar-aided correction (complementary filter) ─────────────────────
+    # Monitors map→odom TF changes from slam_toolbox / AMCL and pulls the
+    # dead-reckoned pose toward the scan-matched estimate. Gain = 0: pure
+    # IMU dead-reckon. Gain = 1: full lidar trust (not recommended — noisy
+    # per-scan, better as correction than primary).
+    #
+    # Works in both SLAM (mapping) and known-map (AMCL) modes — both
+    # publish map→odom TF. Inactive when nav is not running (TF absent).
+    #
+    # Non-circular: map→odom changes originate from lidar scan-matching
+    # against the environment; converting back into odom frame isolates
+    # the drift error without feeding back through our own TF.
+    lidar_correction_enabled: true
+    # Fraction of position error removed per update (0..1). 0.15 is
+    # conservative: ~6 updates to absorb 50% error, avoids oscillation
+    # from scan noise and slam's own lag. Raise toward 0.3 for faster
+    # convergence; 0 = no lidar feedback.
+    lidar_gain_xy: 0.15
+    # Fraction of yaw error removed per update (0..1). Slightly higher
+    # than xy because yaw drift is unbounded (no magnetometer reference)
+    # and lidar heading is the only absolute source.
+    lidar_gain_yaw: 0.20
+    # Max position correction per TF update (m). Rejects slam_toolbox
+    # loop-closure jumps (> 0.5 m in one update) — those belong in
+    # map→odom, not our odom frame. Also bounds per-cycle noise from
+    # individual scan matches.
+    max_correction_step_m: 0.05
+    # Max yaw correction per TF update (rad) ≈ 2.9°.
+    max_correction_step_yaw_rad: 0.05
+    # If no TF update for this long, correction goes inactive (pure
+    # dead-reckon). Matches stall behavior if nav dies.
+    correction_timeout_s: 1.0

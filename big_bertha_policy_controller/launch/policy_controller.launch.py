@@ -23,11 +23,9 @@ Loads ``config/policy.yaml`` and points ``model_path`` at the bundled
 import os
 
 from ament_index_python.packages import get_package_share_directory
-
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
-
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
@@ -48,9 +46,11 @@ def generate_launch_description():
     steer_kp = LaunchConfiguration('steer_kp')
     steer_max = LaunchConfiguration('steer_max')
     lateral_hold = LaunchConfiguration('lateral_hold')
+    position_hold = LaunchConfiguration('position_hold')
+    imu_topic = LaunchConfiguration('imu_topic')
 
     return LaunchDescription([
-        DeclareLaunchArgument('use_sim_time', default_value='true'),
+        DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('model_path', default_value=default_model),
         DeclareLaunchArgument('params_file', default_value=default_params),
         DeclareLaunchArgument('start_enabled', default_value='true'),
@@ -67,6 +67,13 @@ def generate_launch_description():
         DeclareLaunchArgument('steer_kp', default_value='1.8'),
         DeclareLaunchArgument('steer_max', default_value='0.26'),
         DeclareLaunchArgument('lateral_hold', default_value='true'),
+        # The third odom-fed outer loop. Exposed for the same reason as the
+        # other two: on hardware /odom drifts, so all three have to be
+        # switchable from the bringup without editing policy.yaml.
+        DeclareLaunchArgument('position_hold', default_value='true'),
+        # IMU topic the gait controller reads orientation from. On real hardware
+        # this is the filtered output (/filtered/imu); sim supplies /imu.
+        DeclareLaunchArgument('imu_topic', default_value='/imu'),
 
         Node(
             package='big_bertha_policy_controller',
@@ -91,6 +98,9 @@ def generate_launch_description():
                         steer_max, value_type=float),
                     'lateral_hold': ParameterValue(
                         lateral_hold, value_type=bool),
+                    'position_hold': ParameterValue(
+                        position_hold, value_type=bool),
+                    'imu_topic': imu_topic,
                 },
             ],
         ),

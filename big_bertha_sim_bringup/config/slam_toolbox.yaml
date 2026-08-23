@@ -35,7 +35,13 @@ slam_toolbox:
     map_update_interval: 1.0
     resolution: 0.05
     min_laser_range: 0.12
-    max_laser_range: 8.0
+    # 5.0, not 8.0: Nav2 only ever consumes 3.0 (raytrace_max_range), so
+    # mapping to 8 extended the map with returns no planner reads, and each
+    # extension re-initialised the global costmap static layer -- the repeating
+    # "Trying to create a map of size X x Y". 5.0 keeps 1.67x margin over Nav2
+    # and drops the far soft-target returns that are least reliable indoors.
+    # Raise toward 6-7 if a room wider than 5 m stops closing its walls.
+    max_laser_range: 5.0
     minimum_time_interval: 0.2
     transform_timeout: 0.2
     tf_buffer_duration: 30.0
@@ -52,6 +58,24 @@ slam_toolbox:
     link_match_minimum_response_fine: 0.1
     link_scan_maximum_distance: 1.5
     loop_search_maximum_distance: 3.0
+    # Karto marks a cell occupied while hits/passes > this, so clearing a
+    # REMOVED obstacle needs passes > hits/threshold. Upstream's 0.1 (what we
+    # were inheriting by not setting it) means a box observed for 100 scans
+    # needs 1000 clearing scans before it leaves the map, which is why the old
+    # position of the test box stayed visible long after the scan stopped
+    # seeing anything there. 0.4 needs 2.5x the hits instead of 10x.
+    #
+    # Safe for real structure: a wall is hit by nearly every ray that reaches
+    # it, so its ratio sits near 1.0, far above 0.4. A thin object seen edge-on
+    # can sit lower and may now drop out of /map sooner, but Nav2's obstacle
+    # layer still marks it live from /scan_filtered, so it is not lost to the
+    # planner.
+    #
+    # Note this only governs /map. The global costmap's static_layer takes /map
+    # and combines with updateWithMax, so while a cell is lethal in the map the
+    # obstacle layer CANNOT raytrace it away. Until slam clears it, the costmap
+    # cannot. scripts/reset_map.sh is the immediate escape hatch.
+    occupancy_threshold: 0.4
     do_loop_closing: true
     loop_match_minimum_chain_size: 10
     loop_match_maximum_variance_coarse: 3.0

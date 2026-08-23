@@ -139,8 +139,20 @@ controller_interface::return_type JointEffortPdController::update(
   const bool have_targets = targets != nullptr && targets->size() == n;
 
   for (std::size_t i = 0; i < n; ++i) {
-    const double q = state_interfaces_[i].get_optional().value_or(0.0);
-    const double qd = state_interfaces_[n + i].get_optional().value_or(0.0);
+    auto q_opt = state_interfaces_[i].get_optional();
+    if (!q_opt.has_value()) {
+      RCLCPP_WARN_THROTTLE(
+        get_node()->get_logger(), *get_node()->get_clock(), 5000,
+        "position state interface missing for joint %zu", i);
+    }
+    auto qd_opt = state_interfaces_[n + i].get_optional();
+    if (!qd_opt.has_value()) {
+      RCLCPP_WARN_THROTTLE(
+        get_node()->get_logger(), *get_node()->get_clock(), 5000,
+        "velocity state interface missing for joint %zu", i);
+    }
+    const double q = q_opt.value_or(0.0);
+    const double qd = qd_opt.value_or(0.0);
     const double q_des = have_targets ? (*targets)[i] : default_positions_[i];
 
     // Stable PD (Tan, Liu & Turk, "Stable Proportional-Derivative

@@ -13,12 +13,50 @@
     # Absolute path is supplied by the launch file (package share /models).
     model_path: ""
     action_scale: 0.25
+    # Swing amplitude per physical group. The coxa keeps action_scale.
+    #
+    # Why per group: the exported policy SATURATES action_clip on all twelve
+    # joints, 100% of samples, at every command in the envelope. It carries
+    # phase only, never amplitude, so the joint target is a fixed-size square
+    # wave and these scales ARE the gait amplitude. Nothing downstream can add
+    # it back: smoothing is worth ~8% and max_joint_rate_rad_s above 3.0 is
+    # worth nothing, because the limiter already runs saturated.
+    #
+    # The three groups are not interchangeable. Foot lift per radian at the
+    # default stance, and worst-case servo margin per group:
+    #   idx 0-3  arm_a  coxa    0.0 mm/rad   10.8 deg  (also carries steer_cmd)
+    #   idx 4-7  arm_b  THIGH -50.3 mm/rad   43.3 deg  <- the lifter
+    #   idx 8-11 arm_c  shin  +25.6 mm/rad    7.0 deg
+    # The coxa axis is exactly vertical, so it cannot lift at any angle, only
+    # sweep. A uniform raise is blocked by the shin at 7 deg while leaving the
+    # thigh's 43 deg unused, which is why these are separate.
+    #
+    # Delivered foot clearance above the plane the other three feet define,
+    # through the full chain, raising the THIGH alone:
+    #   thigh  forward   fwd+turn   thigh margin
+    #   0.32    34.0 mm   34.6 mm     43.3 deg
+    #   0.45    47.0 mm   45.1 mm     35.9 deg   <- here, +38% / +30%
+    #   0.60    61.5 mm      -        27.3 deg
+    # Raising the coxa instead was measured and rejected: 0.25 -> 0.33 moved
+    # foot sweep 98 -> 100 mm and clearance not at all, for a third of its
+    # margin. Yaw comes from steer_max, not from coxa swing.
+    thigh_action_scale: 0.45
+    shin_action_scale: 0.32
     control_rate: 50.0       # Hz
     start_enabled: true
     cmd_vel_timeout: 0.5     # s; stale /cmd_vel -> command zeroed (safe stop)
-    joint_limit: 2.355      # rad; calf upper limit is the binding one
+    joint_limit: 3.14159     # rad; full ±180deg for MG995, raised from 1.57 to not clip training ankle default (2.00 rad)
     # PD lives in JointEffortPdController (ros2_control.yaml): synchronous,
     # zero-latency q/qd. PD here over a topic damps stale velocity -> jitter.
+    #
+    # Keep this false on hardware and do not add a PID here. MG995 is a POSITION
+    # servo: it closes its own loop inside the case, you hand it a pulse width
+    # and its electronics drive the horn to that angle and hold it. No torque or
+    # current input is exposed, so an effort loop here has nothing to act on --
+    # it would compute a torque and then throw it away at the PWM conversion.
+    # JointEffortPdController is sim-only on purpose: the Gazebo joint has no
+    # internal controller, so it has to fake the one the real servo already has.
+    # Running it on hardware means two loops fighting each other.
     use_effort: false        # publish position targets, controller does the PD
     pd_rate: 200.0           # Hz; target publish rate (policy decimated to 50)
     action_clip: 1.0         # raw policy action clamp (matches env)
@@ -40,7 +78,27 @@
     # (calibrated: b=-0.25 took yaw -0.086 -> +0.002), hence all signs -1.
     steer_kp: 1.8            # rad of hip bias per rad of heading error
     steer_ki: 0.8            # removes the steady heading offset vs drift
-    steer_max: 0.26          # max |hip bias|
+    # max |hip bias|. This saturates during any sustained turn: err pins at
+    # heading_err_clamp 0.4 and steer_i winds to steer_max/steer_ki = 0.325, so
+    # the PI demands 1.8*0.4 + 0.8*0.325 = 0.98 rad and gets 0.26, i.e. 27% of
+    # demand. It is therefore the next knob if turning is still weak after
+    # rotate_to_heading_angular_vel went back to 0.5. Servo margin on the worst
+    # hip (Revolute_116, lower limit 50 deg), including a full +-action_scale
+    # swing on top of the bias:
+    #   0.26 -> 10.8 deg   0.30 -> 8.5   0.35 -> 5.6   0.40 -> 2.8   0.45 clips
+    # Raise it alone, one step at a time: more hip bias also distorts the
+    # stance, so a gain in yaw is not guaranteed and has to be measured.
+    # 0.26 -> 0.32. This saturates during any sustained turn (err pins at
+    # heading_err_clamp 0.4, steer_i winds to steer_max/steer_ki, so the PI
+    # demands ~0.98 rad and gets this), and it is the ONLY yaw lever: coxa
+    # swing was measured and moves foot sweep 2% for a third of its margin.
+    # Servo margin on the worst coxa (Revolute_116, lower limit 50 deg),
+    # including a full action_scale swing on top of the bias:
+    #   0.26 -> 10.8 deg   0.32 -> 7.3   0.35 -> 5.6   0.40 -> 2.8   0.45 clips
+    # 7.3 deg matches what the shin already runs at. Go further only on a
+    # measured turn rate, since more bias also distorts the stance.
+    steer_max: 0.32
+    steer_rate_limit: 0.01   # rad/step at 50 Hz (0.5 rad/s) — prevents sudden hip jerks
     hip_steer_sign: [-1.0, -1.0, -1.0, -1.0]
     # Lateral-hold: vy = clamp(-lateral_kp*line_offset); holds the LINE, not
     # just the heading. A/B post armature fix: forward 1:1 (0.136 m/s), crab
@@ -51,7 +109,7 @@
     # path-following wz kept resetting the reference every cycle).
     lateral_turn_thresh: 0.25
     # Cross-track steering: line offset -> heading bias, so the strong hip-bias
-    # steering pulls back to the line. kp 0.6 over-steered into obstacles.
+    # steering pulls back to the line.
     lateral_yaw_kp: 0.4     # rad of heading bias per metre of offset
     lateral_yaw_max: 0.3    # max |cross-track bias| (rad)
     # Gate the gait below this vx (the policy walks even at vx=0).
@@ -60,18 +118,18 @@
     # stance ~15 deg otherwise).
     station_keep: true
     joint_names:
-      - Revolute_110   # idx0  hip  leg1
-      - Revolute_113   # idx1  hip  leg2
-      - Revolute_116   # idx2  hip  leg3
-      - Revolute_119   # idx3  hip  leg4
-      - Revolute_111   # idx4  knee leg1
-      - Revolute_114   # idx5  knee leg2
-      - Revolute_117   # idx6  knee leg3
-      - Revolute_120   # idx7  knee leg4
-      - Revolute_112   # idx8  ankle leg1
-      - Revolute_115   # idx9  ankle leg2
-      - Revolute_118   # idx10 ankle leg3
-      - Revolute_121   # idx11 ankle leg4
+      - Revolute_110   # idx0  hip  leg4 (back-left)
+      - Revolute_113   # idx1  hip  leg1 (front-left)
+      - Revolute_116   # idx2  hip  leg2 (front-right)
+      - Revolute_119   # idx3  hip  leg3 (back-right)
+      - Revolute_111   # idx4  knee leg4 (back-left)
+      - Revolute_114   # idx5  knee leg1 (front-left)
+      - Revolute_117   # idx6  knee leg2 (front-right)
+      - Revolute_120   # idx7  knee leg3 (back-right)
+      - Revolute_112   # idx8  ankle leg4 (back-left)
+      - Revolute_115   # idx9  ankle leg1 (front-left)
+      - Revolute_118   # idx10 ankle leg2 (front-right)
+      - Revolute_121   # idx11 ankle leg3 (back-right)
     default_joint_pos:
       [0.0, 0.0, 0.0, 0.0,
        -0.32, -0.32, -0.32, -0.32,

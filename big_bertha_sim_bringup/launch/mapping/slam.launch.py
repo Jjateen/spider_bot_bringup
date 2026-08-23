@@ -16,22 +16,26 @@
 Mapping bringup: slam_toolbox (online async) for Big Bertha.
 
 Consumes /scan + odom->base_link (from the EKF) and produces /map and the
-map->odom transform. The async node is a lifecycle node, so a
-nav2_lifecycle_manager with autostart configures + activates it on startup
-(so it subscribes to /scan and starts mapping without a manual transition).
-After a scripted drive, ``ros2 run nav2_map_server map_saver_cli`` writes
+map->odom transform. The async node is a lifecycle node that starts
+unconfigured, so a nav2_lifecycle_manager drives it to active: with
+``autostart:=true`` (the default, and what the simulator uses) that happens on
+startup, and with ``autostart:=false`` it waits for a manual STARTUP, which is
+what the hardware bringup wants. After a scripted drive,
+``ros2 run nav2_map_server map_saver_cli`` writes
 maps/obstacle_world.{yaml,pgm}.
 """
 
 import os
+from typing import List
 
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -42,6 +46,24 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     slam_config = LaunchConfiguration('slam_config')
 
+    # autostart: whether the first scan is taken on launch or on request.
+    #
+    # slam_toolbox only integrates a scan once the robot has moved
+    # minimum_travel_distance (0.1 m) or turned minimum_travel_heading
+    # (0.1 rad). A robot standing still therefore NEVER updates its map: the
+    # very first scan is frozen in for good. On hardware someone has to walk
+    # over and flip the servo buck-converter switch, so that person is stood
+    # next to the robot when the first scan lands, gets mapped as an obstacle
+    # overlapping the footprint, and Nav2 reports a collision before it will
+    # plan anything. Waiting does not clear it, which is what was observed.
+    #
+    # slam_toolbox starts UNCONFIGURED and lifecycle_manager_slam below is
+    # what drives it to active, so autostart:=false parks it with no /scan
+    # subscription until the operator says the area is clear. That is exact,
+    # where a timer is a guess about how long the power-up takes: run long and
+    # you are mapped anyway, run short and every boot waits for nothing.
+    # big_bertha_bringup/scripts/start_mapping.sh is the trigger, and
+    # reset_map.sh still recovers a map that already caught someone.
     slam_node = Node(
         package='slam_toolbox',
         executable='async_slam_toolbox_node',
@@ -49,7 +71,22 @@ def generate_launch_description():
         output='screen',
         parameters=[
             slam_config,
-            {'use_sim_time': use_sim_time},
+            {
+                'use_sim_time': use_sim_time,
+                # Where the robot sits in the map frame at startup. The yaml
+                # default is the Gazebo spawn pose, which is only correct for
+                # the simulator. On hardware the robot starts wherever you put
+                # it, and inheriting -3.5,-3.5 built the entire map that far
+                # from the real start. Callers pass their own via x/y/yaw.
+                'map_start_pose': ParameterValue(
+                    PythonExpression(
+                        ['[', LaunchConfiguration('x'), ', ',
+                         LaunchConfiguration('y'), ', ',
+                         LaunchConfiguration('yaw'), ']'],
+                    ),
+                    value_type=List[float],
+                ),
+            },
         ],
     )
 
@@ -60,7 +97,8 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': use_sim_time,
-            'autostart': True,
+            'autostart': ParameterValue(
+                LaunchConfiguration('autostart'), value_type=bool),
             'node_names': ['slam_toolbox'],
             'bond_timeout': 0.0,
         }],
@@ -68,7 +106,16 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='true'),
+        DeclareLaunchArgument(
+            'autostart', default_value='true',
+            description='true: map from launch; false: wait for '
+                        'start_mapping.sh so the operator can step clear'),
         DeclareLaunchArgument('slam_config', default_value=default_slam),
+        # Defaults are the Gazebo spawn pose, so the sim bringup is unchanged.
+        # big_bertha.launch.py passes its own (0,0,0 by default) on hardware.
+        DeclareLaunchArgument('x', default_value='-3.5'),
+        DeclareLaunchArgument('y', default_value='-3.5'),
+        DeclareLaunchArgument('yaw', default_value='0.0'),
 
         slam_node,
         lifecycle_manager,

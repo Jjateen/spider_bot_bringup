@@ -209,10 +209,14 @@ def main():
     parser.add_argument('--progress-dist', type=float, default=0.15,
                         help='metres of closing that counts as progress')
     parser.add_argument('--goal-clearance', type=float, default=0.25,
-                        help='required free radius (m) around a frontier goal; '
-                             'robot_radius is 0.18 and the costmap inflates to '
-                             '0.38, so a goal tight against a wall cannot be '
-                             'driven to')
+                        help='required free radius (m) around a frontier goal. '
+                             'The footprint is a polygon now, not robot_radius: '
+                             'Nav2 derives inscribed 0.165 and circumscribed '
+                             '0.393 from it, and the costmap inflates to 0.22. '
+                             'This stays below the circumscribed radius on '
+                             'purpose, because the robot never has to occupy '
+                             'the frontier point itself; xy_goal_tolerance is '
+                             '0.30, so it only has to get near it.')
     parser.add_argument('--blacklist-radius', type=float, default=0.6,
                         help='skip frontiers within this radius of a failed one')
     args, ros_args = parser.parse_known_args()

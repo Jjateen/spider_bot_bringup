@@ -1,0 +1,75 @@
+# YDLidar X2 on the UNO Q.
+#
+# Based on the driver's shipped X2.yaml, with two deliberate changes:
+#  - frame_id is lidar_link, not the driver default of laser_frame.
+#  - port is /dev/ttyLIDAR, a udev symlink, not the raw /dev/ttyUSB0.
+#
+# frame_id: The URDF names the sensor mount lidar_link, and scan_ground_filter
+# looks up base_link -> lidar_link to work out how far the beam plane has
+# tilted with the gait. With frame_id left at laser_frame there is no such
+# transform, every scan fails to resolve, and the costmaps see nothing at all
+# while the driver still reports a healthy 10 Hz on /scan. The failure looks
+# like a Nav2 problem rather than a frame problem, which is the expensive kind.
+#
+# port: the CP210x caps TTL adapter re-enumerates whenever the USB rail blips
+# (servo surge browns it; see DEPLOYMENT Known Limitations 6), and Linux then
+# reassigns the tty minor, so the device alternates between /dev/ttyUSB0 and
+# /dev/ttyUSB1. The udev rule in the bringup deployment
+# (99-big-bertha-lidar.rules) symlinks it by idVendor/idProduct/serial to a
+# stable /dev/ttyLIDAR, so the driver opens the right node no matter which
+# ttyUSBn the kernel decided on. auto_reconnect below then recovers the stream
+# after each blip.
+ydlidar_ros2_driver_node:
+  ros__parameters:
+    port: /dev/ttyLIDAR
+    frame_id: lidar_link
+    ignore_array: ""
+    # X2 is a single-channel 115200 unit. The G-series profiles in the driver
+    # use 230400 and isSingleChannel false; loading one of those against an X2
+    # gives a driver that opens the port and then times out on every read.
+    baudrate: 115200
+    lidar_type: 1
+    device_type: 0
+    sample_rate: 3
+    abnormal_check_count: 4
+    fixed_resolution: true
+    # Both true because the unit is mounted UPSIDE DOWN on this robot.
+    #
+    # These are the driver's X2 defaults and they are wrong here. With the
+    # sensor inverted, an unflipped scan is mirrored about the x axis: angles
+    # increase the wrong way, so the map builds as a mirror image and every
+    # obstacle bearing Nav2 plans against is reflected. Nothing errors, the
+    # scan looks plausible at 11 Hz, and the fault only shows up as a map that
+    # does not match the room.
+    #
+    # reversion flips the scan direction, inverted flips the angle sign.
+    reversion: true
+    inverted: true
+    auto_reconnect: true
+    isSingleChannel: true
+    intensity_bit: 0
+    intensity: false
+    support_motor_dtr: true
+    angle_max: 180.0
+    angle_min: -180.0
+    # 8.0, not 12.0: the X2 is an 8 m sensor, so anything beyond that is a
+    # return the hardware cannot have measured honestly. The range chain has to
+    # stay ordered driver >= slam >= Nav2 (8.0 >= 5.0 >= 3.0), or the map grows
+    # from returns nothing will ever plan against and the global costmap static
+    # layer re-initialises on every resize.
+    range_max: 8.0
+    # 0.1 is the driver default. The robot's own legs sit inside that, so the
+    # scan contains returns off its own body; scan_ground_filter culls by
+    # geometry rather than range, and Nav2's obstacle layer has its own
+    # obstacle_min_range. Left at the driver value so raw /scan stays honest
+    # about what the sensor actually saw.
+    range_min: 0.1
+    # 10.0 -> 6.0. The A35 has four cores and ran at load average 4.2 with
+    # the full stack up, which starved the scan callbacks: scans queued, the
+    # message filter dropped them, and the map stopped updating. Cutting the
+    # rate at the SOURCE is strictly better than throttling downstream, where
+    # every dropped scan has already been received, deserialised and copied.
+    # A spider walking at 0.14 m/s moves 23 mm between scans at 6 Hz.
+    frequency: 6.0
+    invalid_range_is_inf: false
+    debug: false

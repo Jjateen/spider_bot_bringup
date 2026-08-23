@@ -56,9 +56,17 @@ controller_server:
     general_goal_checker:
       stateful: True
       plugin: "nav2_controller::SimpleGoalChecker"
-      # 0.6 m: honest arrival for a ~0.36 m crawler; stops the under-damped
-      # approach before it overshoots. (1.2 masked an AMCL false-success.)
-      xy_goal_tolerance: 0.6
+      # 0.6 was too generous and is what "the robot stops before it reaches
+      # the goal" actually was: the body is ~0.36 m across, so the checker
+      # declared SUCCESS up to 1.7 body lengths short and the controller
+      # stopped there. Nothing cancelled the path, Nav2 believed it had
+      # arrived. 0.30 is under one body length, which reads as arrival, and
+      # still leaves ~1.7x robot_radius of slack for the under-damped
+      # approach. stateful latches success on first entry, so the robot does
+      # not have to hold the tolerance. Tighten further only if the approach
+      # stops circling; too tight and an under-damped crawler orbits the goal
+      # without ever latching.
+      xy_goal_tolerance: 0.30
       # Don't gate success on final heading (0.25 left the robot failing the
       # yaw check forever on the goal point).
       yaw_goal_tolerance: 3.15
@@ -75,14 +83,41 @@ controller_server:
       # A slow, weak-yaw platform needs a LONGER carrot for stability, not a
       # shorter one.
       lookahead_dist: 0.7
-      # 0.27 = the MEASURED in-place yaw rate of the deployed v1.1.0 policy
-      # on the torque-speed plant. Commanding the 0.5 clamp ceiling kept the
-      # command saturated and made RPP's pivot timing a lie.
-      rotate_to_heading_angular_vel: 0.27
+      # Back to the trained ceiling 0.5. The old 0.27 was the MEASURED in-place
+      # yaw rate, set so RPP's pivot timing matched reality, and that reasoning
+      # was wrong twice over.
+      #
+      # First, this is a COMMAND, not an observation. The plant delivers about
+      # 0.27 when asked for 0.5, so asking for 0.27 delivers roughly 0.15.
+      # Second, it also throttles the gait: the clock boost uses
+      # turn_clock_boost * min(|wz|/0.4, 1), which only saturates at 0.4, so
+      # 0.27 ran the cadence at 1.54 instead of 1.80. The two compound to about
+      # 46% of the platform's turn authority, which is the "yaw is too little"
+      # report from the hardware run.
+      #
+      # Anything below 0.4 pays that second penalty, so there is no useful
+      # setting between 0.4 and 0.5. The pivot-timing concern it was traded for
+      # is cosmetic: RPP rotates until the heading error closes, it does not
+      # time the pivot open-loop, so over-commanding just turns faster.
+      rotate_to_heading_angular_vel: 0.5
       transform_tolerance: 0.2
       use_velocity_scaled_lookahead_dist: false
-      min_approach_linear_velocity: 0.05
-      approach_velocity_scaling_dist: 0.6
+      # These two have to move with xy_goal_tolerance or the fix to it just
+      # trades stopping short for stalling short.
+      #
+      # scaling_dist was 0.6, exactly the old tolerance, so the goal checker
+      # fired at the same distance the deceleration ramp began and the slow
+      # approach never actually ran. With the tolerance now 0.30 the robot
+      # would have had to cover 0.6 -> 0.30 m on the ramp. 0.35 starts the
+      # ramp just outside the tolerance instead.
+      #
+      # The floor was 0.05 m/s, which this plant cannot walk at: v1.1.0 needs
+      # about a 0.12 command to move at all (it tracks 0.135 m/s there), and
+      # the policy gates its gait below stand_vx_thresh 0.02 anyway. A 0.05
+      # command is a crawl the servos will not deliver, so the last stretch
+      # before the goal would creep or stop outright.
+      min_approach_linear_velocity: 0.12
+      approach_velocity_scaling_dist: 0.35
       use_collision_detection: true
       # 1.0 s (0.4 clipped obstacles); ghost walls were the real over-freeze
       # cause, now removed by scan_ground_filter.
@@ -106,7 +141,7 @@ local_costmap:
   local_costmap:
     ros__parameters:
       use_sim_time: true
-      update_frequency: 10.0  # match the 10 Hz lidar (was 4 collision checks per refresh)
+      update_frequency: 5.0  # matches the 6 Hz lidar; see ydlidar_x2.yaml
       publish_frequency: 2.0
       global_frame: odom
       robot_base_frame: base_link
@@ -114,12 +149,46 @@ local_costmap:
       width: 5
       height: 5
       resolution: 0.05
-      robot_radius: 0.18
+      # Polygon, not robot_radius. base_link sits 9.2 cm off the foot
+      # centroid, so no circle about it fits: at the default stance the four
+      # feet are at radii 0.112, 0.219, 0.229 and 0.293 m, and over a gait
+      # cycle they sweep to 0.373 m. robot_radius 0.18 was therefore under
+      # half the robot on one side while wasting 6.8 cm of margin on the
+      # other, and Nav2 planned through gaps the legs then clipped.
+      #
+      # This is the convex hull of every foot tip over full cycles of
+      # forward, slow, left turn, right turn, pivot and stand, grown 2 cm,
+      # then reduced to 8 vertices. An honest CIRCLE about base_link would be
+      # r=0.403, i.e. a 0.81 m corridor and 0.510 m^2; the polygon is the same
+      # robot in 0.244 m^2 and about 0.55 m, which is what makes a cramped
+      # indoor space navigable at all. Nav2 derives inscribed 0.169 and
+      # circumscribed 0.403 from it, and base_link is inside it as required.
+      #
+      # REGENERATE THIS whenever default_joint_pos, action_scale,
+      # thigh_action_scale, shin_action_scale or steer_max change: the sweep
+      # is a function of all of them. Generated at coxa 0.25, thigh 0.45,
+      # shin 0.32, steer_max 0.32.
+      footprint: "[[-0.207, -0.169], [-0.155, -0.286], [0.167, -0.336], [0.309, -0.258], [0.338, 0.042], [0.301, 0.138], [0.197, 0.216], [-0.137, 0.170]]"
       plugins: ["voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.38
+        # Exponential falloff rate outside the inscribed radius. At 3.0 the
+        # curve has only decayed to exp(-3.0 * (0.38 - 0.18)) = 0.55 by the
+        # outer edge, so cost is still ~138 of 252 there and the whole halo
+        # renders as one dark slab with no usable gradient for the planner to
+        # descend. 9.0 puts the edge at ~34. The solid core is the inscribed
+        # radius, now 0.165 derived from the footprint polygon rather than
+        # robot_radius; do not shrink that to make the blobs look smaller.
+        #
+        # 0.38 -> 0.22 from a hardware run in a cluttered room. inflation_radius
+        # is the outer edge of the DECAYING halo, not the lethal core (that is
+        # robot_radius, unchanged at 0.18), but with clutter every few tens of
+        # cm the 0.38 halos merged into one high-cost field and the planner
+        # kept failing, which is what left the robot standing still. 0.22 keeps
+        # the 0.18 core plus a thin gradient. Trade-off: the robot now plans
+        # closer to obstacles, so raise it again for open spaces.
+        cost_scaling_factor: 9.0
+        inflation_radius: 0.22
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -138,10 +207,19 @@ local_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
-          # Hold obstacles > one gait stride: the tilting lidar only sees a
+          # Hold obstacles for one gait cycle: the tilting lidar only sees a
           # mid-range obstacle on the uphill phase; at persistence 0 it
           # flickered out every stride and the planner thrashed.
-          observation_persistence: 1.5
+          #
+          # 1.5 -> 1.0. Nav2 re-marks every buffered observation each costmap
+          # cycle, so this is how long a stale return keeps being painted. At
+          # the crawl's 0.14 m/s, 1.5 s smears an obstacle 21 cm plus whatever
+          # odom drifts in that window, against a robot_radius of 0.18 -- the
+          # speckle field visible around the robot in the hardware RViz capture.
+          # The floor is one full gait cycle, 1/(gait_frequency*boost): 0.72 s
+          # at cmd 0.29 (boost 2.06) and 1.04 s at cmd 0.12 (boost 1.44). 1.0
+          # covers the slowest case; 1.5 was 1.4 to 2.1 cycles.
+          observation_persistence: 1.0
           raytrace_max_range: 3.0
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
@@ -152,11 +230,12 @@ global_costmap:
   global_costmap:
     ros__parameters:
       use_sim_time: true
-      update_frequency: 2.0  # cheap now the grid is map-sized, halves plan staleness
+      update_frequency: 1.0  # A35 is core-starved; 1 Hz replan is ample at 0.14 m/s
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      robot_radius: 0.18
+      # See the local_costmap footprint note.
+      footprint: "[[-0.207, -0.169], [-0.155, -0.286], [0.167, -0.336], [0.309, -0.258], [0.338, 0.042], [0.301, 0.138], [0.197, 0.216], [-0.137, 0.170]]"
       resolution: 0.05
       # Non-rolling grid sized from /map by the static layer, so the planner
       # plans around mapped obstacles instead of discovering them at lidar
@@ -181,16 +260,31 @@ global_costmap:
           clearing: True
           marking: True
           data_type: "LaserScan"
-          # Hold obstacles > one gait stride (see local_costmap note).
-          observation_persistence: 1.5
+          # Hold obstacles for one gait cycle (see local_costmap note).
+          observation_persistence: 1.0
           raytrace_max_range: 3.0
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 3.0
-        inflation_radius: 0.38
+        # Exponential falloff rate outside the inscribed radius. At 3.0 the
+        # curve has only decayed to exp(-3.0 * (0.38 - 0.18)) = 0.55 by the
+        # outer edge, so cost is still ~138 of 252 there and the whole halo
+        # renders as one dark slab with no usable gradient for the planner to
+        # descend. 9.0 puts the edge at ~34. The solid core is the inscribed
+        # radius, now 0.165 derived from the footprint polygon rather than
+        # robot_radius; do not shrink that to make the blobs look smaller.
+        #
+        # 0.38 -> 0.22 from a hardware run in a cluttered room. inflation_radius
+        # is the outer edge of the DECAYING halo, not the lethal core (that is
+        # robot_radius, unchanged at 0.18), but with clutter every few tens of
+        # cm the 0.38 halos merged into one high-cost field and the planner
+        # kept failing, which is what left the robot standing still. 0.22 keeps
+        # the 0.18 core plus a thin gradient. Trade-off: the robot now plans
+        # closer to obstacles, so raise it again for open spaces.
+        cost_scaling_factor: 9.0
+        inflation_radius: 0.22
       always_send_full_costmap: True
 
 planner_server:

@@ -48,14 +48,33 @@
 using namespace std::chrono_literals;
 namespace bbpc = big_bertha_policy_controller;
 
+namespace big_bertha_policy_controller
+{
+
 class PolicyControllerNode : public rclcpp::Node
 {
 public:
-  PolicyControllerNode() : Node("policy_controller")
+  explicit PolicyControllerNode(const rclcpp::NodeOptions & options = rclcpp::NodeOptions())
+  : Node("policy_controller", options)
   {
     // ----------------------------- Parameters ----------------------------
     model_path_ = declare_parameter<std::string>("model_path", "");
     action_scale_ = declare_parameter<double>("action_scale", 0.25);
+    // Three physical groups, three amplitudes, because they differ in both
+    // what they can do and how much range they have left.
+    //
+    // Measured on the URDF at the default stance, per radian of foot lift:
+    //   idx 0-3  arm_a  coxa   0.0 mm  (axis is exactly vertical: pure sweep)
+    //   idx 4-7  arm_b  THIGH -50.3 mm (the lifter)
+    //   idx 8-11 arm_c  shin  +25.6 mm
+    // and worst-case servo margin per group at the shipped values:
+    //   coxa 10.8 deg (also carries steer_cmd), THIGH 43.3 deg, shin 7.0 deg.
+    //
+    // So the thigh both does the lifting and has by far the most room, while a
+    // uniform raise is blocked by the shin at 7 deg. Both default to
+    // action_scale, so leaving them unset changes nothing.
+    thigh_action_scale_ = declare_parameter<double>("thigh_action_scale", action_scale_);
+    shin_action_scale_ = declare_parameter<double>("shin_action_scale", action_scale_);
     control_rate_ = declare_parameter<double>("control_rate", 50.0);
     enabled_ = declare_parameter<bool>("start_enabled", true);
     cmd_timeout_ = declare_parameter<double>("cmd_vel_timeout", 0.5);
@@ -78,9 +97,15 @@ public:
     shaper_.steer_kp = declare_parameter<double>("steer_kp", 0.6);
     shaper_.steer_ki = declare_parameter<double>("steer_ki", 0.5);
     shaper_.steer_max = declare_parameter<double>("steer_max", 0.25);
+    steer_rate_limit_ = declare_parameter<double>("steer_rate_limit", 0.01);
     hip_steer_sign_ =
       declare_parameter<std::vector<double>>("hip_steer_sign", {1.0, 1.0, 1.0, 1.0});
-    hip_steer_sign_.resize(4, 0.0);
+    if (hip_steer_sign_.size() != 4) {
+      RCLCPP_WARN(
+        get_logger(), "'hip_steer_sign' has %zu entries, expected 4; using defaults",
+        hip_steer_sign_.size());
+      hip_steer_sign_ = {1.0, 1.0, 1.0, 1.0};
+    }
     // Gait gates off below these thresholds (the policy cannot stand still on
     // its own). stand_yaw must stay under the trained turn-in-place floor
     // (|yaw| in [0.15, 0.4]) or pure-yaw commands would never reach the policy.
@@ -95,11 +120,8 @@ public:
     shaper_.lateral_turn_thresh = declare_parameter<double>("lateral_turn_thresh", 0.05);
     shaper_.lateral_yaw_kp = declare_parameter<double>("lateral_yaw_kp", 0.6);
     shaper_.lateral_yaw_max = declare_parameter<double>("lateral_yaw_max", 0.4);
-    // In-node effort-PD (tau = kp*(q_des - q) - kd*qd) is UNUSED in the
-    // shipped path: JointEffortPdController does the PD and reads this topic
-    // as POSITION targets, so use_effort=true would feed it torques as
-    // positions. Default false to match the wiring; kp/kd/effort_limit below
-    // only matter if use_effort is deliberately re-enabled.
+    // In-node effort-PD is UNUSED in the shipped path: JointEffortPdController
+    // does the PD and reads this topic as POSITION targets.
     use_effort_ = declare_parameter<bool>("use_effort", false);
     kp_ = declare_parameter<double>("kp", 20.0);
     kd_ = declare_parameter<double>("kd", 2.0);
@@ -110,16 +132,16 @@ public:
     warmup_sec_ = declare_parameter<double>("warmup_sec", 3.0);
     policy_decimation_ = std::max(1, static_cast<int>(std::round(pd_rate_ / control_rate_)));
     joint_names_ = declare_parameter<std::vector<std::string>>(
-      "joint_names", {"Revolute_110", "Revolute_111", "Revolute_112", "Revolute_113",
-                      "Revolute_114", "Revolute_115", "Revolute_116", "Revolute_117",
-                      "Revolute_118", "Revolute_119", "Revolute_120", "Revolute_121"});
+      "joint_names", {"Revolute_110", "Revolute_113", "Revolute_116", "Revolute_119",
+                      "Revolute_111", "Revolute_114", "Revolute_117", "Revolute_120",
+                      "Revolute_112", "Revolute_115", "Revolute_118", "Revolute_121"});
     auto default_pose = declare_parameter<std::vector<double>>(
       "default_joint_pos",
       {0.0, 0.0, 0.0, 0.0, -0.32, -0.32, -0.32, -0.32, 2.00, 2.00, 2.00, 2.00});
 
     for (int i = 0; i < bbpc::kNumJoints && i < static_cast<int>(default_pose.size()); ++i) {
       obs_.default_joint_pos[i] = default_pose[i];
-      target_pos_[i] = default_pose[i];
+      obs_.joint_pos[i] = default_pose[i];
     }
     for (size_t i = 0; i < joint_names_.size(); ++i) {
       joint_index_[joint_names_[i]] = static_cast<int>(i);
@@ -147,10 +169,11 @@ public:
     status_pub_ = create_publisher<spider_msgs::msg::PolicyStatus>("policy_status", rclcpp::QoS(1));
 
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-      "/odom", rclcpp::SensorDataQoS(),
+      "/odom", rclcpp::QoS(1),
       std::bind(&PolicyControllerNode::on_odom, this, std::placeholders::_1));
+    imu_topic_ = declare_parameter<std::string>("imu_topic", "/imu");
     imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-      "/imu", rclcpp::SensorDataQoS(),
+      imu_topic_, rclcpp::SensorDataQoS(),
       std::bind(&PolicyControllerNode::on_imu, this, std::placeholders::_1));
     joint_sub_ = create_subscription<sensor_msgs::msg::JointState>(
       "/joint_states", rclcpp::SensorDataQoS(),
@@ -260,6 +283,7 @@ private:
     cmd_vx_ = msg->linear.x;
     cmd_vy_ = msg->linear.y;
     cmd_wz_ = msg->angular.z;
+    raw_cmd_wz_ = msg->angular.z;  // Save raw wz for moving gate check
     last_cmd_time_ = now();
   }
 
@@ -346,8 +370,11 @@ private:
         // Gate the gait when neither forward nor turn is commanded (the policy
         // cannot stand still). The |wz| half matters: gating on vx alone would
         // swallow the trained turn-in-place commands.
-        moving = obs_.commands[0] > shaper_.stand_vx_thresh ||
-                 std::abs(obs_.commands[2]) > stand_yaw_thresh_;
+        // Check raw_cmd_wz (before heading correction) not obs_.commands[2]
+        // (after correction). With heading_kp=2.0 and thresh=0.05, any heading
+        // error >0.025 rad would trigger walking instead of standing correction.
+        moving =
+          obs_.commands[0] > shaper_.stand_vx_thresh || std::abs(raw_cmd_wz_) > stand_yaw_thresh_;
         if (!moving) {
           // Hold the default stance; with station_keep the hip-bias steering
           // stays active to hold the latched heading against contact creep.
@@ -410,7 +437,11 @@ private:
             double a_raw = std::isfinite(action[i]) ? action[i] : 0.0;
             // Env clamps the raw action to [-1, 1] before scaling.
             double a = std::clamp(a_raw, -action_clip_, action_clip_);
-            double t = action_scale_ * a + obs_.default_joint_pos[i];
+            // 0-3 coxa, 4-7 thigh, 8-11 shin. See the scales above.
+            const double scale = (i < 4)   ? action_scale_
+                                 : (i < 8) ? thigh_action_scale_
+                                           : shin_action_scale_;
+            double t = scale * a + obs_.default_joint_pos[i];
             if (i < 4) {  // hips: inject differential-stride steering + debug bias
               t += debug_hip_bias_[i] + shaper_.steer_cmd * hip_steer_sign_[i];
             }
@@ -461,6 +492,8 @@ private:
   // Params
   std::string model_path_;
   double action_scale_{0.25};
+  double thigh_action_scale_{0.25};
+  double shin_action_scale_{0.25};
   double control_rate_{50.0};
   double cmd_timeout_{0.5};
   double joint_limit_{3.14159};
@@ -485,10 +518,12 @@ private:
   double cmd_vx_{0.0};
   double cmd_vy_{0.0};
   double cmd_wz_{0.0};
+  double raw_cmd_wz_{0.0};  // Raw wz before heading correction, for moving gate
   double current_x_{0.0};
   double current_y_{0.0};
   double current_yaw_{0.0};
   bool have_odom_yaw_{false};
+  double steer_rate_limit_{0.01};
   std::vector<double> hip_steer_sign_{1.0, 1.0, 1.0, 1.0};
   std::array<double, 4> debug_hip_bias_{};
   double stand_yaw_thresh_{0.05};
@@ -498,6 +533,7 @@ private:
   rclcpp::Publisher<spider_msgs::msg::PolicyStatus>::SharedPtr status_pub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
+  std::string imu_topic_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr joint_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hip_bias_sub_;
@@ -506,10 +542,7 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
-int main(int argc, char ** argv)
-{
-  rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<PolicyControllerNode>());
-  rclcpp::shutdown();
-  return 0;
-}
+}  // namespace big_bertha_policy_controller
+
+#include "rclcpp_components/register_node_macro.hpp"
+RCLCPP_COMPONENTS_REGISTER_NODE(big_bertha_policy_controller::PolicyControllerNode)
