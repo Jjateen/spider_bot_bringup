@@ -137,6 +137,61 @@
       </sensor>
     </gazebo>
 
+    <!-- ==================== Foot contact sensors ======================= -->
+    <!-- Ground-truth per-foot contact, for the policy controller's landing
+         assist (see big_bertha_policy_controller). References each foot's
+         PRIMARY collision only (arm_c_N_1_collision: the main leg/foot
+         mesh, auto-named by the URDF->SDF collision-ordering convention,
+         confirmed by dry-running `gz sdf -p` on the expanded urdf). This is
+         the same collision the training env treats as "the foot tip" (see
+         big_bertha_env.py's _tip_offset comment), deliberately NOT the
+         secondary servo-housing collision (arm_c_N_1_collision_1), which
+         isn't the ground-contact surface. Requires gz-sim-contact-system,
+         already loaded in obstacle_world.sdf. Additive only: no link,
+         joint, or collision element is moved or added; this just attaches
+         a sensor to existing geometry. -->
+    <!-- NOTE: the contact sensor publishes on the topic nested inside
+         <contact>, NOT the generic sensor-level <topic> that other sensor
+         types (lidar/imu) use: confirmed empirically, the outer <topic>
+         was silently ignored, gz only had a publisher on the
+         auto-generated default topic until this was fixed. -->
+    <gazebo reference="arm_c_1_1">
+      <sensor name="foot_contact" type="contact">
+        <update_rate>200</update_rate>
+        <contact>
+          <collision>arm_c_1_1_collision</collision>
+          <topic>foot_contact/leg1</topic>
+        </contact>
+      </sensor>
+    </gazebo>
+    <gazebo reference="arm_c_2_1">
+      <sensor name="foot_contact" type="contact">
+        <update_rate>200</update_rate>
+        <contact>
+          <collision>arm_c_2_1_collision</collision>
+          <topic>foot_contact/leg2</topic>
+        </contact>
+      </sensor>
+    </gazebo>
+    <gazebo reference="arm_c_3_1">
+      <sensor name="foot_contact" type="contact">
+        <update_rate>200</update_rate>
+        <contact>
+          <collision>arm_c_3_1_collision</collision>
+          <topic>foot_contact/leg3</topic>
+        </contact>
+      </sensor>
+    </gazebo>
+    <gazebo reference="arm_c_4_1">
+      <sensor name="foot_contact" type="contact">
+        <update_rate>200</update_rate>
+        <contact>
+          <collision>arm_c_4_1_collision</collision>
+          <topic>foot_contact/leg4</topic>
+        </contact>
+      </sensor>
+    </gazebo>
+
   </xacro:macro>
 
 </robot>

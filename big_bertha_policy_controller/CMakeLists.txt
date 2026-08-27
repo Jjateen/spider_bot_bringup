@@ -15,6 +15,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(spider_msgs REQUIRED)
+find_package(ros_gz_interfaces REQUIRED)
 
 # ----------------------------- ONNX Runtime -------------------------------
 # Prebuilt ONNX Runtime (C++). It is NOT on rosdep/apt for Jazzy, so it cannot
@@ -73,7 +74,7 @@ target_include_directories(policy_controller_node PRIVATE
   ${ONNXRUNTIME_INCLUDE_DIR})
 target_link_libraries(policy_controller_node ${ONNXRUNTIME_LIB})
 ament_target_dependencies(policy_controller_node
-  rclcpp std_msgs sensor_msgs nav_msgs geometry_msgs spider_msgs)
+  rclcpp std_msgs sensor_msgs nav_msgs geometry_msgs spider_msgs ros_gz_interfaces)
 
 # Embed the ONNX Runtime lib directory in the binary RPATH so the shared
 # library resolves at runtime without LD_LIBRARY_PATH (the prebuilt ORT is

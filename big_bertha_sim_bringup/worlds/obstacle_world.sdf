@@ -74,7 +74,19 @@
             <!-- DART combines friction by MIN (Isaac multiplies), so ground
                  mu must be 1.5 to match the feet -> effective 1.5 as trained.
                  1.25 (Isaac's dynamic value) was tested and FAILED HARD:
-                 straight walk collapsed 0.13 -> 0.06 m/s. Keep 1.5. -->
+                 straight walk collapsed 0.13 -> 0.06 m/s. Keep 1.5.
+                 Also tried 3.0 (matches foot mu): under correct fresh-spawn-
+                 per-trial measurement (batch testing without a respawn is
+                 NOT trustworthy here, see plan doc) it's a real ~44% walking
+                 gain (0.090 -> 0.130 m avg over 6s @ vx=0.3), still short of
+                 the gate. Not adopted: an idle-drift check first looked like
+                 mu=3.0 broke standing (0.238 m/15s vs an assumed ~0.03-0.06 m
+                 baseline), but that "baseline" turned out to itself be a
+                 measurement artifact (a worn, non-respawned sim state, likely
+                 resting against a wall) -- the SAME ~0.2-0.25 m/15s drift is
+                 present at the untouched mu=1.5 too. See plan doc's idle-
+                 creep root cause (arm_c_2_1/arm_c_3_1 URDF mismatch vs
+                 training) before revisiting mu as a lever again. -->
             <friction>
               <ode>
                 <mu>1.5</mu>

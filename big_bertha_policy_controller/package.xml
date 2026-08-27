@@ -21,6 +21,7 @@
   <depend>nav_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>spider_msgs</depend>
+  <depend>ros_gz_interfaces</depend>
 
   <!-- ONNX Runtime (C++) is required by policy_controller_node but is NOT on
        rosdep/apt for Jazzy, so it cannot be a <depend>. CMakeLists.txt resolves

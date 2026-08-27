@@ -13,6 +13,25 @@
     # Absolute path is supplied by the launch file (package share /models).
     model_path: ""
     action_scale: 0.25
+    # Per-joint-group override of action_scale (idx 0-3 hip, 4-7 knee, 8-11
+    # ankle). Measured (not guessed): /policy_status action_norm sits at
+    # sqrt(12) (full [-1,1] saturation on all 12 joints) a large fraction of
+    # ticks while moving -- the policy carries phase, not amplitude, so
+    # action_scale IS the delivered gait amplitude and nothing downstream
+    # (PD gains, landing assist) can put lift back once it's capped low.
+    # Analytic FK at the default stance (base_link->foot tip, walking the
+    # urdf joint chain, no live TF/sim needed) gives each joint's foot-lift
+    # leverage and remaining range at action_scale=0.25:
+    #   hip    ~0 mm/rad    (axis is vertical, cannot lift at all)
+    #   knee   ~-50 mm/rad, ~72 deg of range left  <- most leverage, most room
+    #   ankle  ~+26 mm/rad, ~20 deg of range left  <- already near its limit
+    # So the knee is the joint to push; the ankle has almost nothing left to
+    # give and the hip's action_scale is irrelevant to lift (it only carries
+    # steer_cmd/hip bias). Defaults below == action_scale (exact parity);
+    # not yet bumped -- see plan doc before raising knee_action_scale.
+    hip_action_scale: 0.25
+    knee_action_scale: 0.25
+    ankle_action_scale: 0.25
     control_rate: 50.0       # Hz
     start_enabled: true
     cmd_vel_timeout: 0.5     # s; stale /cmd_vel -> command zeroed (safe stop)
@@ -45,7 +64,19 @@
     # (calibrated: b=-0.25 took yaw -0.086 -> +0.002), hence all signs -1.
     steer_kp: 1.8            # rad of hip bias per rad of heading error
     steer_ki: 0.8            # removes the steady heading offset vs drift
-    steer_max: 0.26          # max |hip bias|
+    # 0.26 -> 0.4: idle drift is a real, persistent, DETERMINISTIC creep (same
+    # sign/direction across every independent fresh-spawn trial, not solver
+    # noise) -- root-caused to arm_c_2_1/arm_c_3_1 having mismatched inertial
+    # + servo-mount geometry vs both each other and the training URDF (which
+    # has them byte-identical). URDF is off-limits to fix directly, so this
+    # gives the PI hip-bias loop more authority to compensate. Measured
+    # (5 fresh-respawn trials each, 15s idle): 0.26 -> avg 0.237 m drift,
+    # 0.4 -> avg 0.197 m (-17%). 0.5 + steer_ki 1.4 tested and was NOT
+    # better (avg 0.210) -- more I gain doesn't help, more max authority does,
+    # a little. Walking-gate re-checked at 0.4, unaffected (avg 0.095 m vs
+    # 0.090 m baseline, within noise). Does not eliminate the drift -- the
+    # real fix is the URDF geometry, out of scope here.
+    steer_max: 0.4           # max |hip bias|
     hip_steer_sign: [-1.0, -1.0, -1.0, -1.0]
     # Lateral-hold: vy = clamp(-lateral_kp*line_offset); holds the LINE, not
     # just the heading. A/B post armature fix: forward 1:1 (0.136 m/s), crab
@@ -102,3 +133,30 @@
     # vx 0.104 -> 0.150 m/s (+44%), wz 0.016 -> 0.076 rad/s (4.7x).
     gait_boost_max: 2.1
     gait_offsets: [0.0, 0.5, 0.25, 0.75]   # legs 1/2/3/4 = arm_c_1_1..arm_c_4_1
+    # Landing assist (v3, real contact): per-leg ankle-target correction for
+    # a foot that isn't touching the ground. "Settled" is ground-truth
+    # contact from the per-foot contact sensors in big_bertha.gazebo.xacro
+    # (bridged as /foot_contact/leg1..4, ros_gz_interfaces/msg/Contacts) --
+    # not a proxy. Two earlier designs were tried and dropped: v1 (phase-
+    # gated off gait_phase/gait_offsets) found no clean swing-vs-settle
+    # phase plateau to calibrate from in 3 trials; v2 (velocity-proxy
+    # "settled") tested clean end-to-end but net displacement was
+    # statistically unchanged from baseline, and its velocity-only test had
+    # a blind spot -- a frozen-but-ungrounded leg has low velocity, so it
+    # read as "settled" and never got assist. v3 fixes that: if a foot has
+    # stayed OUT of contact continuously for longer than
+    # landing_assist_stuck_time_thresh, pull its ankle toward
+    # landing_assist_land_pos (2.0 = default_joint_pos's own trained ankle
+    # rest value, not a fit-from-data guess). Resets the instant contact is
+    # regained. See plan doc for the full design history.
+    # Disabled until verified; flip to true only after verify_locomotion.sh
+    # + per-leg duty-cycle checks pass with it on.
+    landing_assist_enabled: false
+    landing_assist_land_pos: 2.0
+    landing_assist_stuck_time_thresh: 0.5  # s; ~ a typical half-cycle at nominal cadence
+    landing_assist_rate: 1.0               # rad/s, error-driven pull toward land_pos
+    landing_assist_max_bias: 0.2           # rad hard cap; PD saturates ~0.026 rad anyway
+    # Temporary calibration/diagnostic logger (see plan doc); not part of the
+    # shipped behavior.
+    debug_log_gait: false
+    debug_log_path: "/tmp/gait_debug.csv"
