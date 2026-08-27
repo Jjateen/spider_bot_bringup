@@ -13,174 +13,130 @@
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- Emit a gz OdometryPublisher for base_link -> /odom + odom->base_link
-       tf. Enabled in simulation; the real robot fuses wheel/leg odom in the
-       EKF instead, so this stays behind an arg.
+  <xacro:macro name="big_bertha_gazebo" params="publish_odom odom_tf sim_drive">
 
-       odom_tf controls whether this plugin also publishes the
-       odom->base_link transform. When the robot_localization EKF is running
-       it owns that transform, so the state_estimation bringup sets
-       odom_tf:=false and the plugin's tf is routed to an unused topic
-       (keeping /odom as the EKF input). -->
-  <xacro:arg name="publish_odom" default="true"/>
-  <xacro:arg name="odom_tf" default="true"/>
-  <xacro:property name="publish_odom" value="$(arg publish_odom)"/>
-  <xacro:property name="odom_tf" value="$(arg odom_tf)"/>
+    <!-- Odometry publisher -->
+    <xacro:if value="${publish_odom}">
+      <gazebo>
+        <plugin filename="gz-sim-odometry-publisher-system"
+                name="gz::sim::systems::OdometryPublisher">
+          <odom_frame>odom</odom_frame>
+          <robot_base_frame>base_link</robot_base_frame>
+          <odom_topic>odom</odom_topic>
+          <xacro:if value="${odom_tf}">
+            <tf_topic>/tf</tf_topic>
+          </xacro:if>
+          <xacro:unless value="${odom_tf}">
+            <tf_topic>/odom_tf_unused</tf_topic>
+          </xacro:unless>
+          <dimensions>3</dimensions>
+          <odom_publish_frequency>50</odom_publish_frequency>
+        </plugin>
+      </gazebo>
+    </xacro:if>
 
-  <xacro:if value="${publish_odom}">
-    <gazebo>
-      <plugin filename="gz-sim-odometry-publisher-system"
-              name="gz::sim::systems::OdometryPublisher">
-        <odom_frame>odom</odom_frame>
-        <robot_base_frame>base_link</robot_base_frame>
-        <odom_topic>odom</odom_topic>
-        <xacro:if value="${odom_tf}">
-          <tf_topic>/tf</tf_topic>
+    <xacro:if value="${sim_drive}">
+      <gazebo>
+        <plugin filename="gz-sim-velocity-control-system"
+                name="gz::sim::systems::VelocityControl">
+          <topic>cmd_vel</topic>
+        </plugin>
+      </gazebo>
+    </xacro:if>
+
+    <!-- ===================== Friction / materials ====================== -->
+    <xacro:macro name="bb_surface" params="link color:=Gazebo/Silver mu:=1.0 soft:=false">
+      <gazebo reference="${link}">
+        <material>${color}</material>
+        <mu1>${mu}</mu1>
+        <mu2>${mu}</mu2>
+        <self_collide>false</self_collide>
+        <xacro:if value="${soft}">
+          <kp>1.0e5</kp>
+          <kd>10.0</kd>
         </xacro:if>
-        <xacro:unless value="${odom_tf}">
-          <tf_topic>/odom_tf_unused</tf_topic>
-        </xacro:unless>
-        <dimensions>3</dimensions>
-        <odom_publish_frequency>50</odom_publish_frequency>
-      </plugin>
-    </gazebo>
-  </xacro:if>
+      </gazebo>
+    </xacro:macro>
 
-  <!-- Sim-only kinematic drive. When sim_drive:=true a gz VelocityControl
-       system moves base_link directly from a Twist on the gz "cmd_vel"
-       topic, decoupled from the legs. This is a verification aid for the
-       mapping / localization / planning gates: it lets a scripted /cmd_vel
-       drive build a map and run A->B navigation independently of the gait
-       policy. The real robot and the locomotion demo do not use it
-       (sim_drive defaults off). -->
-  <xacro:arg name="sim_drive" default="false"/>
-  <xacro:property name="sim_drive" value="$(arg sim_drive)"/>
-  <xacro:if value="${sim_drive}">
-    <gazebo>
-      <plugin filename="gz-sim-velocity-control-system"
-              name="gz::sim::systems::VelocityControl">
-        <topic>cmd_vel</topic>
-      </plugin>
-    </gazebo>
-  </xacro:if>
+    <xacro:bb_surface link="base_link"  mu="0.6"/>
+    <xacro:bb_surface link="arm_a_1_1"  mu="0.6"/>
+    <xacro:bb_surface link="arm_b_1_1"  mu="0.6"/>
+    <xacro:bb_surface link="arm_c_1_1"  mu="3.0" soft="true"/>
+    <xacro:bb_surface link="arm_a_2_1"  mu="0.6"/>
+    <xacro:bb_surface link="arm_b_2_1"  mu="0.6"/>
+    <xacro:bb_surface link="arm_c_2_1"  mu="3.0" soft="true"/>
+    <xacro:bb_surface link="arm_a_3_1"  mu="0.6"/>
+    <xacro:bb_surface link="arm_b_3_1"  mu="0.6"/>
+    <xacro:bb_surface link="arm_c_3_1"  mu="3.0" soft="true"/>
+    <xacro:bb_surface link="arm_a_4_1"  mu="0.6"/>
+    <xacro:bb_surface link="arm_b_4_1"  mu="0.6"/>
+    <xacro:bb_surface link="arm_c_4_1"  mu="3.0" soft="true"/>
+    <xacro:bb_surface link="battery_link"          mu="0.6"/>
+    <xacro:bb_surface link="circuit_box_base_link" mu="0.6"/>
+    <xacro:bb_surface link="circuit_box_link"      mu="0.6"/>
+    <xacro:bb_surface link="lidar_link"          mu="0.6"/>
 
-  <!-- ===================== Friction / materials ====================== -->
-  <xacro:macro name="bb_surface" params="link color:=Gazebo/Silver mu:=1.0 soft:=false">
-    <gazebo reference="${link}">
-      <material>${color}</material>
-      <mu1>${mu}</mu1>
-      <mu2>${mu}</mu2>
-      <!-- Self-collision off: the upper-leg links still use STL-mesh collision,
-           and mesh-mesh self contact injects noisy forces (only the feet are
-           clean spheres). Legs do not overlap in a normal gait. -->
-      <self_collide>false</self_collide>
-      <!-- Foot contact softness: DART's default (near-rigid) contact stiffness
-           was tuned implicitly against the old, ~2x-too-heavy foot mass. The
-           v1.0.0 mass correction (0.12 to 0.0637 kg per calf/foot link, see
-           big_bertha.urdf.xacro) halved the foot's mass without softening the
-           contact spring, so the natural contact frequency ~sqrt(kp/m) roughly
-           doubled, observed as joint velocity pinned at the hardware cap
-           (6.54 rad/s) in perfect 4 leg sync every control tick, a genuine
-           physical resonance, not a PD/damping tunable oscillation (confirmed
-           unresponsive to a 12.5x joint PD kd increase). kp/kd here are ODE
-           contact spring stiffness/damping (N/m, Ns/m), not the joint PD gains.
-      -->
-      <xacro:if value="${soft}">
-        <kp>1.0e5</kp>
-        <kd>10.0</kd>
-      </xacro:if>
+    <!-- ============================ Lidar ============================== -->
+    <gazebo reference="lidar_link">
+      <material>Gazebo/DarkGrey</material>
+      <sensor name="lidar" type="gpu_lidar">
+        <topic>scan</topic>
+        <gz_frame_id>lidar_link</gz_frame_id>
+        <update_rate>10</update_rate>
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.141592653589793</min_angle>
+              <max_angle>3.141592653589793</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>1</samples>
+              <resolution>1</resolution>
+              <min_angle>0</min_angle>
+              <max_angle>0</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.35</min>
+            <max>8.0</max>
+            <resolution>0.01</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
+        </lidar>
+      </sensor>
     </gazebo>
+
+    <!-- ============================= IMU =============================== -->
+    <gazebo reference="imu_link">
+      <material>Gazebo/DarkGrey</material>
+      <sensor name="imu" type="imu">
+        <topic>imu</topic>
+        <gz_frame_id>imu_link</gz_frame_id>
+        <update_rate>100</update_rate>
+        <always_on>true</always_on>
+        <imu>
+          <angular_velocity>
+            <x><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></x>
+            <y><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></y>
+            <z><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x><noise type="gaussian"><mean>0.0</mean><stddev>0.017</stddev></noise></x>
+            <y><noise type="gaussian"><mean>0.0</mean><stddev>0.017</stddev></noise></y>
+            <z><noise type="gaussian"><mean>0.0</mean><stddev>0.017</stddev></noise></z>
+          </linear_acceleration>
+        </imu>
+      </sensor>
+    </gazebo>
+
   </xacro:macro>
-
-  <!-- Feet (arm_c_*) get high friction to match the training ground
-       (static/dynamic 1.0) and softened contact for the lighter foot mass;
-       body + upper links a touch lower friction, default (rigid) contact. -->
-  <xacro:bb_surface link="base_link"  mu="0.6"/>
-  <xacro:bb_surface link="arm_a_1_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_b_1_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_1_1"  mu="1.5" soft="true"/>
-  <xacro:bb_surface link="arm_a_2_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_b_2_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_2_1"  mu="1.5" soft="true"/>
-  <xacro:bb_surface link="arm_a_3_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_b_3_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_3_1"  mu="1.5" soft="true"/>
-  <xacro:bb_surface link="arm_a_4_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_b_4_1"  mu="0.6"/>
-  <xacro:bb_surface link="arm_c_4_1"  mu="1.5" soft="true"/>
-  <xacro:bb_surface link="battery_link"          mu="0.6"/>
-  <xacro:bb_surface link="circuit_box_base_link" mu="0.6"/>
-  <xacro:bb_surface link="circuit_box_link"      mu="0.6"/>
-  <xacro:bb_surface link="lidar_link"          mu="0.6"/>
-
-  <!-- ============================ Lidar ============================== -->
-  <!-- YDLidar X2: 360 deg, ~8 m range, 10 Hz. Published on gz topic "scan",
-       frame_id = lidar_link. -->
-  <gazebo reference="lidar_link">
-    <material>Gazebo/DarkGrey</material>
-    <sensor name="lidar" type="gpu_lidar">
-      <topic>scan</topic>
-      <gz_frame_id>lidar_link</gz_frame_id>
-      <update_rate>10</update_rate>
-      <always_on>true</always_on>
-      <visualize>true</visualize>
-      <lidar>
-        <scan>
-          <horizontal>
-            <samples>360</samples>
-            <resolution>1</resolution>
-            <min_angle>-3.141592653589793</min_angle>
-            <max_angle>3.141592653589793</max_angle>
-          </horizontal>
-          <vertical>
-            <samples>1</samples>
-            <resolution>1</resolution>
-            <min_angle>0</min_angle>
-            <max_angle>0</max_angle>
-          </vertical>
-        </scan>
-        <range>
-          <!-- 0.35 m, not 0.12: the body lidar otherwise hits Big Bertha's own
-               legs (~0.14-0.30 m away, ~80 of 360 rays), which marked the
-               robot's own cell as a near-lethal obstacle (cost 99) so Nav2
-               could not plan from its start pose, and fed self-returns into
-               slam. Real obstacles are well beyond 0.35 m. -->
-          <min>0.35</min>
-          <max>8.0</max>
-          <resolution>0.01</resolution>
-        </range>
-        <noise>
-          <type>gaussian</type>
-          <mean>0.0</mean>
-          <stddev>0.01</stddev>
-        </noise>
-      </lidar>
-    </sensor>
-  </gazebo>
-
-  <!-- ============================= IMU =============================== -->
-  <!-- MPU9250 class IMU on imu_link. Published on gz topic "imu",
-       frame_id = imu_link. -->
-  <gazebo reference="imu_link">
-    <material>Gazebo/DarkGrey</material>
-    <sensor name="imu" type="imu">
-      <topic>imu</topic>
-      <gz_frame_id>imu_link</gz_frame_id>
-      <update_rate>100</update_rate>
-      <always_on>true</always_on>
-      <imu>
-        <angular_velocity>
-          <x><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></x>
-          <y><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></y>
-          <z><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></z>
-        </angular_velocity>
-        <linear_acceleration>
-          <x><noise type="gaussian"><mean>0.0</mean><stddev>0.017</stddev></noise></x>
-          <y><noise type="gaussian"><mean>0.0</mean><stddev>0.017</stddev></noise></y>
-          <z><noise type="gaussian"><mean>0.0</mean><stddev>0.017</stddev></noise></z>
-        </linear_acceleration>
-      </imu>
-    </sensor>
-  </gazebo>
 
 </robot>

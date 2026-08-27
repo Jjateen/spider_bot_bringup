@@ -11,54 +11,52 @@
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
 
-  <!-- One leg joint with a position command + position/velocity state. -->
-  <xacro:macro name="bb_joint" params="name init:=0.0">
-    <joint name="${name}">
-      <command_interface name="effort">
-        <param name="min">-12.0</param>
-        <param name="max">12.0</param>
-      </command_interface>
-      <state_interface name="position">
-        <param name="initial_value">${init}</param>
-      </state_interface>
-      <state_interface name="velocity"/>
-      <state_interface name="effort"/>
-    </joint>
+  <xacro:macro name="big_bertha_ros2_control" params="ros2_control_config">
+
+    <xacro:macro name="bb_joint" params="name init:=0.0">
+      <joint name="${name}">
+        <command_interface name="effort">
+          <param name="min">-12.0</param>
+          <param name="max">12.0</param>
+        </command_interface>
+        <state_interface name="position">
+          <param name="initial_value">${init}</param>
+        </state_interface>
+        <state_interface name="velocity"/>
+        <state_interface name="effort"/>
+      </joint>
+    </xacro:macro>
+
+    <ros2_control name="GazeboSimSystem" type="system">
+      <hardware>
+        <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      </hardware>
+
+      <!-- Leg 4 (back-left) -->
+      <xacro:bb_joint name="Revolute_110" init="0.0"/>
+      <xacro:bb_joint name="Revolute_111" init="-0.32"/>
+      <xacro:bb_joint name="Revolute_112" init="2.00"/>
+      <!-- Leg 1 (front-left) -->
+      <xacro:bb_joint name="Revolute_113" init="0.0"/>
+      <xacro:bb_joint name="Revolute_114" init="-0.32"/>
+      <xacro:bb_joint name="Revolute_115" init="2.00"/>
+      <!-- Leg 2 (front-right) -->
+      <xacro:bb_joint name="Revolute_116" init="0.0"/>
+      <xacro:bb_joint name="Revolute_117" init="-0.32"/>
+      <xacro:bb_joint name="Revolute_118" init="2.00"/>
+      <!-- Leg 3 (back-right) -->
+      <xacro:bb_joint name="Revolute_119" init="0.0"/>
+      <xacro:bb_joint name="Revolute_120" init="-0.32"/>
+      <xacro:bb_joint name="Revolute_121" init="2.00"/>
+    </ros2_control>
+
+    <gazebo>
+      <plugin filename="gz_ros2_control-system"
+              name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+        <parameters>${ros2_control_config}</parameters>
+      </plugin>
+    </gazebo>
+
   </xacro:macro>
-
-  <ros2_control name="GazeboSimSystem" type="system">
-    <hardware>
-      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
-    </hardware>
-
-    <!-- Leg 4 (back-left) -->
-    <xacro:bb_joint name="Revolute_110" init="0.0"/>
-    <xacro:bb_joint name="Revolute_111" init="-0.32"/>
-    <xacro:bb_joint name="Revolute_112" init="2.00"/>
-    <!-- Leg 1 (front-left) -->
-    <xacro:bb_joint name="Revolute_113" init="0.0"/>
-    <xacro:bb_joint name="Revolute_114" init="-0.32"/>
-    <xacro:bb_joint name="Revolute_115" init="2.00"/>
-    <!-- Leg 2 (front-right) -->
-    <xacro:bb_joint name="Revolute_116" init="0.0"/>
-    <xacro:bb_joint name="Revolute_117" init="-0.32"/>
-    <xacro:bb_joint name="Revolute_118" init="2.00"/>
-    <!-- Leg 3 (back-right) -->
-    <xacro:bb_joint name="Revolute_119" init="0.0"/>
-    <xacro:bb_joint name="Revolute_120" init="-0.32"/>
-    <xacro:bb_joint name="Revolute_121" init="2.00"/>
-  </ros2_control>
-
-  <!-- gz_ros2_control system plugin: loads controller_manager inside gz,
-       parameterised by config/ros2_control.yaml. The leg joints use an EFFORT
-       command interface (the policy node streams torque tau = kp*(q_des-q) +
-       kd*(0-qd)), which gz_ros2_control applies directly as joint torque, so
-       no position_proportional_gain servo is involved. -->
-  <gazebo>
-    <plugin filename="gz_ros2_control-system"
-            name="gz_ros2_control::GazeboSimROS2ControlPlugin">
-      <parameters>$(arg ros2_control_config)</parameters>
-    </plugin>
-  </gazebo>
 
 </robot>

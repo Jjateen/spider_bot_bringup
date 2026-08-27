@@ -61,6 +61,19 @@
     lateral_yaw_max: 0.3    # max |cross-track bias| (rad)
     # Gate the gait below this vx (the policy walks even at vx=0).
     stand_vx_thresh: 0.02
+    # Gate the gait below this post-shaping yaw_cmd. Default (0.05) trips on
+    # any heading error past ~1.4 deg (yaw_cmd = heading_kp * err), so small
+    # idle wobble was triggering full gait-stepping turns instead of the
+    # calm hip-bias hold below -- and an underdamped gait correcting itself
+    # via full turn-steps overshoots, producing the observed idle wander.
+    # Raised to give the passive hold more room before handing off to
+    # active stepping.
+    stand_yaw_thresh: 0.3
+    # TEST: position_hold's corrective walk (triggered once drift exceeds
+    # pos_hold_deadband=0.30m) can't converge through the same broken gait
+    # that fails the walking gate -- suspected source of ongoing idle
+    # positional drift even with stand_yaw_thresh fixed. Disabled to test.
+    position_hold: false
     # Hold the latched heading while gated/idle (contact creep pivots the
     # stance ~15 deg otherwise).
     station_keep: true

@@ -71,7 +71,9 @@ EXPECTED=(
 if [ "${SLAM}" = "true" ]; then
   EXPECTED+=(slam_toolbox lifecycle_manager_slam)
 else
-  EXPECTED+=(amcl map_server lifecycle_manager_localization)
+  # bringup.launch.py's known-map default is localization:=ground_truth (a
+  # static map->odom identity, see localization.launch.py), not amcl.
+  EXPECTED+=(map_to_odom_ground_truth map_server lifecycle_manager_localization)
 fi
 
 echo "[verify] asserting expected nodes are present"
