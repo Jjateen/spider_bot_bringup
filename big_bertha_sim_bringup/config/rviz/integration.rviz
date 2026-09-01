@@ -13,6 +13,13 @@ Visualization Manager:
       Enabled: true
       Plane Cell Count: 20
       Reference Frame: map
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Obstacle Markers
+      Enabled: true
+      Topic:
+        Value: /obstacle_markers
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
     - Class: rviz_default_plugins/Map
       Name: Map
       Enabled: true

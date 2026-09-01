@@ -149,8 +149,13 @@ local_costmap:
       width: 5
       height: 5
       resolution: 0.05
-      # Polygon, not robot_radius. base_link sits 9.2 cm off the foot
-      # centroid, so no circle about it fits: at the default stance the four
+      # Polygon, not robot_radius: no circle fits the robot's asymmetric
+      # stance regardless of where base_link sits. (Historical note: this
+      # was originally written when base_link sat ~9.2 cm off the chassis
+      # center; base_link was recentered 2026-08-28 and this polygon
+      # translated to match, see the footprint line's own comment -- the
+      # radii/sweep/area figures below are relative to base_link and are
+      # unaffected by that shift.) At the default stance the four
       # feet are at radii 0.112, 0.219, 0.229 and 0.293 m, and over a gait
       # cycle they sweep to 0.373 m. robot_radius 0.18 was therefore under
       # half the robot on one side while wasting 6.8 cm of margin on the
@@ -158,17 +163,32 @@ local_costmap:
       #
       # This is the convex hull of every foot tip over full cycles of
       # forward, slow, left turn, right turn, pivot and stand, grown 2 cm,
-      # then reduced to 8 vertices. An honest CIRCLE about base_link would be
-      # r=0.403, i.e. a 0.81 m corridor and 0.510 m^2; the polygon is the same
-      # robot in 0.244 m^2 and about 0.55 m, which is what makes a cramped
-      # indoor space navigable at all. Nav2 derives inscribed 0.169 and
-      # circumscribed 0.403 from it, and base_link is inside it as required.
+      # then reduced to 8 vertices. The polygon itself is ~0.244 m^2 and
+      # about 0.55 m across, and base_link is inside it as required. Shape
+      # and area are frame-independent, but inscribed/circumscribed radius
+      # are NOT -- both are measured *from base_link*, so see the
+      # 2026-08-28 note below for the current values.
       #
       # REGENERATE THIS whenever default_joint_pos, action_scale,
       # thigh_action_scale, shin_action_scale or steer_max change: the sweep
       # is a function of all of them. Generated at coxa 0.25, thigh 0.45,
       # shin 0.32, steer_max 0.32.
-      footprint: "[[-0.207, -0.169], [-0.155, -0.286], [0.167, -0.336], [0.309, -0.258], [0.338, 0.042], [0.301, 0.138], [0.197, 0.216], [-0.137, 0.170]]"
+      #
+      # 2026-08-28: base_link was recentered to the chassis's true geometric
+      # center in big_bertha.urdf.xacro (it was previously offset ~6.5cm
+      # toward one corner). This polygon is rigidly translated by that same
+      # offset (-0.06489606, +0.06499993 per vertex) to match -- the sweep's
+      # shape and area are unchanged by a translation, only re-anchored to
+      # the corrected base_link origin. Only rerun the sweep generator (not
+      # this translation) if coxa/thigh/shin/steer_max actually change.
+      # Inscribed/circumscribed radius, however, ARE measured relative to
+      # base_link and so did change for real, moving the reference point to
+      # sit correctly inside the polygon rather than off to one side: Nav2
+      # now computes inscribed 0.255 (was 0.169 relative to the old,
+      # off-center origin), circumscribed ~0.31 (was 0.403) -- see the
+      # inflation_layer comment below for why inflation_radius was raised
+      # to match.
+      footprint: "[[-0.272, -0.104], [-0.220, -0.221], [0.102, -0.271], [0.244, -0.193], [0.273, 0.107], [0.236, 0.203], [0.132, 0.281], [-0.202, 0.235]]"
       plugins: ["voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -177,18 +197,33 @@ local_costmap:
         # outer edge, so cost is still ~138 of 252 there and the whole halo
         # renders as one dark slab with no usable gradient for the planner to
         # descend. 9.0 puts the edge at ~34. The solid core is the inscribed
-        # radius, now 0.165 derived from the footprint polygon rather than
-        # robot_radius; do not shrink that to make the blobs look smaller.
+        # radius, derived from the footprint polygon rather than robot_radius;
+        # do not shrink inflation_radius below it to make the blobs look
+        # smaller (Nav2 itself warns if you do).
         #
-        # 0.38 -> 0.22 from a hardware run in a cluttered room. inflation_radius
-        # is the outer edge of the DECAYING halo, not the lethal core (that is
-        # robot_radius, unchanged at 0.18), but with clutter every few tens of
-        # cm the 0.38 halos merged into one high-cost field and the planner
-        # kept failing, which is what left the robot standing still. 0.22 keeps
-        # the 0.18 core plus a thin gradient. Trade-off: the robot now plans
-        # closer to obstacles, so raise it again for open spaces.
+        # 2026-08-28: base_link was recentered to the chassis's true geometric
+        # center (see big_bertha.urdf.xacro's own note) and this footprint
+        # polygon translated to match. Inscribed/circumscribed radius are
+        # measured *from base_link*, so unlike the footprint's shape/area,
+        # they are NOT translation-invariant -- moving the reference point to
+        # sit correctly inside the polygon changed them for real: Nav2 now
+        # computes inscribed 0.255 (was 0.169 relative to the old, off-center
+        # origin), circumscribed ~0.31 (was 0.403). inflation_radius raised
+        # from 0.22 to 0.26 accordingly (Nav2 errors below the inscribed
+        # radius: "highly recommended to set inflation radius to be at least
+        # as big as the inscribed radius to avoid collisions").
+        #
+        # 0.38 -> 0.22 (now 0.26) came from a hardware run in a cluttered
+        # room: inflation_radius is the outer edge of the DECAYING halo, not
+        # the lethal core (that's robot_radius/the inscribed radius above),
+        # but with clutter every few tens of cm the 0.38 halos merged into one
+        # high-cost field and the planner kept failing, which is what left
+        # the robot standing still. RE-VALIDATE 0.26 in a similarly cluttered
+        # space -- the inscribed-radius increase above forced this higher
+        # than the original hardware tuning, so the halo-merging failure mode
+        # that 0.22 was chosen to avoid may need to be re-checked.
         cost_scaling_factor: 9.0
-        inflation_radius: 0.22
+        inflation_radius: 0.26
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -235,7 +270,14 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       # See the local_costmap footprint note.
-      footprint: "[[-0.207, -0.169], [-0.155, -0.286], [0.167, -0.336], [0.309, -0.258], [0.338, 0.042], [0.301, 0.138], [0.197, 0.216], [-0.137, 0.170]]"
+      # 2026-08-28: base_link was recentered to the true chassis center in
+      # big_bertha.urdf.xacro (it was previously offset ~6.5cm toward one
+      # corner). This polygon is rigidly translated by that same offset
+      # (-0.06489606, +0.06499993 per vertex) to match -- same sweep shape
+      # and area as the comment above describes, just re-anchored to the
+      # corrected base_link origin. Only rerun the sweep generator (not this
+      # translation) if coxa/thigh/shin/steer_max actually change.
+      footprint: "[[-0.272, -0.104], [-0.220, -0.221], [0.102, -0.271], [0.244, -0.193], [0.273, 0.107], [0.236, 0.203], [0.132, 0.281], [-0.202, 0.235]]"
       resolution: 0.05
       # Non-rolling grid sized from /map by the static layer, so the planner
       # plans around mapped obstacles instead of discovering them at lidar
@@ -273,18 +315,33 @@ global_costmap:
         # outer edge, so cost is still ~138 of 252 there and the whole halo
         # renders as one dark slab with no usable gradient for the planner to
         # descend. 9.0 puts the edge at ~34. The solid core is the inscribed
-        # radius, now 0.165 derived from the footprint polygon rather than
-        # robot_radius; do not shrink that to make the blobs look smaller.
+        # radius, derived from the footprint polygon rather than robot_radius;
+        # do not shrink inflation_radius below it to make the blobs look
+        # smaller (Nav2 itself warns if you do).
         #
-        # 0.38 -> 0.22 from a hardware run in a cluttered room. inflation_radius
-        # is the outer edge of the DECAYING halo, not the lethal core (that is
-        # robot_radius, unchanged at 0.18), but with clutter every few tens of
-        # cm the 0.38 halos merged into one high-cost field and the planner
-        # kept failing, which is what left the robot standing still. 0.22 keeps
-        # the 0.18 core plus a thin gradient. Trade-off: the robot now plans
-        # closer to obstacles, so raise it again for open spaces.
+        # 2026-08-28: base_link was recentered to the chassis's true geometric
+        # center (see big_bertha.urdf.xacro's own note) and this footprint
+        # polygon translated to match. Inscribed/circumscribed radius are
+        # measured *from base_link*, so unlike the footprint's shape/area,
+        # they are NOT translation-invariant -- moving the reference point to
+        # sit correctly inside the polygon changed them for real: Nav2 now
+        # computes inscribed 0.255 (was 0.169 relative to the old, off-center
+        # origin), circumscribed ~0.31 (was 0.403). inflation_radius raised
+        # from 0.22 to 0.26 accordingly (Nav2 errors below the inscribed
+        # radius: "highly recommended to set inflation radius to be at least
+        # as big as the inscribed radius to avoid collisions").
+        #
+        # 0.38 -> 0.22 (now 0.26) came from a hardware run in a cluttered
+        # room: inflation_radius is the outer edge of the DECAYING halo, not
+        # the lethal core (that's robot_radius/the inscribed radius above),
+        # but with clutter every few tens of cm the 0.38 halos merged into one
+        # high-cost field and the planner kept failing, which is what left
+        # the robot standing still. RE-VALIDATE 0.26 in a similarly cluttered
+        # space -- the inscribed-radius increase above forced this higher
+        # than the original hardware tuning, so the halo-merging failure mode
+        # that 0.22 was chosen to avoid may need to be re-checked.
         cost_scaling_factor: 9.0
-        inflation_radius: 0.22
+        inflation_radius: 0.26
       always_send_full_costmap: True
 
 planner_server:

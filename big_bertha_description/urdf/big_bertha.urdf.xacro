@@ -8,6 +8,43 @@
   big_bertha_v1.0.0 policy actually trained against, not patched onto the
   older bringup-specific geometry (which had its own joint origins and a
   hand-tuned lidar height/position from an earlier, now-superseded URDF).
+
+  Refreshed 2026-08-28 against a newer hardware-revision CAD export
+  (big_bertha_description/urdf/Spyder_mg995_description.urdf, no _v2 suffix,
+  a raw, non-xacro URDF dump, base_link-relative coordinates only, no
+  ros2_control/gazebo scaffolding). base_link now uses that export's raw CAD
+  origin directly, verified as the true geometric center of the chassis: the
+  4 leg-mount points on both the bottom and top perforated plates average to
+  (0,0) in this frame to within 1e-4 m. An earlier pass at this transfer
+  preserved an inherited offset from the older xacro (+0.06489606,
+  -0.06499993 relative to this frame) under the mistaken assumption that
+  matching nav2_params.yaml's already-tuned footprint polygon meant that
+  offset was the correct/centered choice, it wasn't actually centered, it
+  was just wherever one CAD sub-part's own local mesh origin happened to
+  land. Corrected: base_link, the 4 hip joints, battery_joint, and imu_joint
+  (a bringup-synthetic frame with no CAD source of its own, but still
+  base_link-relative so it moves too) all use the raw/true-centered frame
+  now; nav2_params.yaml's footprint polygon has been re-derived into this
+  frame to match (see that file's own note). The actual hardware delta the
+  new export carries is real: a bigger/heavier battery (0.18kg
+  0.107x0.035x0.025m to 0.5kg 0.1083x0.07745x0.047m), which pushed
+  circuit_box_base_joint's mount point down accordingly, plus small
+  CAD-refinement updates to circuit_box_link's inertia and the MPU_9265
+  chip's mesh placement. Joint topology (names, parent/child, axes, limits)
+  is unchanged, so ros2_control.yaml's joint list and ordering remain valid
+  untouched.
+
+  arm_c_2_1/arm_c_3_1 (2026-08-28, later same day): the CAD export gave
+  these two links different inertia despite both using arm_c_left.stl,
+  the same physical part as each other, mounted at different corners. That
+  has no legitimate hardware explanation and matched a transcription-
+  artifact pattern already diagnosed once before on a different branch
+  (see memory: project_sim2sim_walking_regression), confirmed here too by
+  an A/B test (symmetrizing cut an 8s straight-walk yaw veer from +0.043
+  rad to +0.015 rad). Re-symmetrized to the arithmetic mean of the two CAD
+  readings (no independent/training reference was available to pick one
+  as correct), see each link's own inertial comment.
+
   Augmented with:
     - a gz_ros2_control system plugin,
     - a 12-joint position ros2_control block,
@@ -50,242 +87,253 @@
   <xacro:property name="mesh_pkg" value="package://big_bertha_description/meshes"/>
 
   <!-- ============================== Links ============================== -->
+  <!-- base_link origin is the raw CAD origin from Spyder_mg995_description.urdf
+       (the 2026-08-28 hardware CAD refresh), verified as the true geometric
+       center of the chassis: the 4 leg-mount points on both the bottom and
+       top perforated plates average to (0,0) in this frame to within 1e-4 m.
+       An earlier pass at this transfer preserved an inherited offset from
+       the older xacro (+0.06489606, -0.06499993 relative to this frame)
+       under the mistaken assumption that "already matches nav2's footprint
+       tuning" meant "correct/centered", it wasn't actually centered, it
+       was just wherever one CAD sub-part's own local mesh origin happened to
+       land. Corrected here; nav2_params.yaml's footprint polygon has been
+       re-derived into this frame to match (see that file). -->
   <link name="base_link">
     <inertial>
-      <origin xyz="0.06489606 -0.06499993 0.02039469" rpy="0 0 0"/>
+      <origin xyz="0 0 0.02039469" rpy="0 0 0"/>
       <mass value="0.263885"/>
       <inertia ixx="0.00116595" ixy="-0.00000226" ixz="0.00000001" iyy="0.00116867" iyz="0.00000004" izz="0.00226074"/>
     </inertial>
     <visual>
-      <origin xyz="0 -0 0.005" rpy="3.140796 -0 0"/>
+      <origin xyz="-0.06489606 0.06499993 0.005" rpy="3.140796 -0 0"/>
       <geometry>
         <mesh filename="${mesh_pkg}/central_perforated_plate.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0 -0 0.005" rpy="3.140796 -0 0"/>
+      <origin xyz="-0.06489606 0.06499993 0.005" rpy="3.140796 -0 0"/>
       <geometry>
         <mesh filename="${mesh_pkg}/central_perforated_plate.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0 -0 0.035" rpy="3.140796 -0 0"/>
+      <origin xyz="-0.06489606 0.06499993 0.035" rpy="3.140796 -0 0"/>
       <geometry>
         <mesh filename="${mesh_pkg}/central_perforated_plate.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0 -0 0.035" rpy="3.140796 -0 0"/>
+      <origin xyz="-0.06489606 0.06499993 0.035" rpy="3.140796 -0 0"/>
       <geometry>
         <mesh filename="${mesh_pkg}/central_perforated_plate.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.001 -0.061 0.03" rpy="3.140796 -0 0"/>
+      <origin xyz="-0.06389606 0.00399993 0.03" rpy="3.140796 -0 0"/>
       <geometry>
         <mesh filename="${mesh_pkg}/body_standoffs.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.001 -0.061 0.03" rpy="3.140796 -0 0"/>
+      <origin xyz="-0.06389606 0.00399993 0.03" rpy="3.140796 -0 0"/>
       <geometry>
         <mesh filename="${mesh_pkg}/body_standoffs.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.069 -0.001 0.03" rpy="3.140796 -0 -1.57"/>
-      <geometry>
-        <mesh filename="${mesh_pkg}/body_standoffs.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-      <material name="silver"/>
-    </visual>
-    <collision>
-      <origin xyz="0.069 -0.001 0.03" rpy="3.140796 -0 -1.57"/>
-      <geometry>
-        <mesh filename="${mesh_pkg}/body_standoffs.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </collision>
-    <visual>
-      <origin xyz="0.127 -0.069 0.03" rpy="3.140796 -0 3.14"/>
+      <origin xyz="0.00410394 0.06399993 0.03" rpy="3.140796 -0 -1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/body_standoffs.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.127 -0.069 0.03" rpy="3.140796 -0 3.14"/>
+      <origin xyz="0.00410394 0.06399993 0.03" rpy="3.140796 -0 -1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/body_standoffs.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.068 -0.127 0.03" rpy="3.140796 -0 1.57"/>
+      <origin xyz="0.06210394 -0.00400007 0.03" rpy="3.140796 -0 3.14"/>
       <geometry>
         <mesh filename="${mesh_pkg}/body_standoffs.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.068 -0.127 0.03" rpy="3.140796 -0 1.57"/>
+      <origin xyz="0.06210394 -0.00400007 0.03" rpy="3.140796 -0 3.14"/>
       <geometry>
         <mesh filename="${mesh_pkg}/body_standoffs.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.0325 0.007 0" rpy="3.140796 -0 -1.57"/>
+      <origin xyz="0.00310394 -0.06200007 0.03" rpy="3.140796 -0 1.57"/>
+      <geometry>
+        <mesh filename="${mesh_pkg}/body_standoffs.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+    <collision>
+      <origin xyz="0.00310394 -0.06200007 0.03" rpy="3.140796 -0 1.57"/>
+      <geometry>
+        <mesh filename="${mesh_pkg}/body_standoffs.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="-0.03239606 0.07199993 0" rpy="3.140796 -0 -1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.0325 0.007 0" rpy="3.140796 -0 -1.57"/>
+      <origin xyz="-0.03239606 0.07199993 0" rpy="3.140796 -0 -1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.137 -0.032 0" rpy="3.140796 -0 3.14"/>
-      <geometry>
-        <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-      <material name="silver"/>
-    </visual>
-    <collision>
-      <origin xyz="0.137 -0.032 0" rpy="3.140796 -0 3.14"/>
-      <geometry>
-        <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </collision>
-    <visual>
-      <origin xyz="-0.007 -0.098 0" rpy="3.140796 -0 0"/>
+      <origin xyz="0.07210394 0.03299993 0" rpy="3.140796 -0 3.14"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="-0.007 -0.098 0" rpy="3.140796 -0 0"/>
+      <origin xyz="0.07210394 0.03299993 0" rpy="3.140796 -0 3.14"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.097 -0.137 0" rpy="3.140796 -0 1.57"/>
+      <origin xyz="-0.07189606 -0.03300007 0" rpy="3.140796 -0 0"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.097 -0.137 0" rpy="3.140796 -0 1.57"/>
+      <origin xyz="-0.07189606 -0.03300007 0" rpy="3.140796 -0 0"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.155 -0.078 0.03" rpy="3.140796 -0 -1.57"/>
+      <origin xyz="0.03210394 -0.07200007 0" rpy="3.140796 -0 1.57"/>
+      <geometry>
+        <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+    <collision>
+      <origin xyz="0.03210394 -0.07200007 0" rpy="3.140796 -0 1.57"/>
+      <geometry>
+        <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0.09010394 -0.01300007 0.03" rpy="3.140796 -0 -1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.155 -0.078 0.03" rpy="3.140796 -0 -1.57"/>
+      <origin xyz="0.09010394 -0.01300007 0.03" rpy="3.140796 -0 -1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.052 -0.155 0.03" rpy="3.140796 -0 -3.14"/>
+      <origin xyz="-0.01289606 -0.09000007 0.03" rpy="3.140796 -0 -3.14"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.052 -0.155 0.03" rpy="3.140796 -0 -3.14"/>
+      <origin xyz="-0.01289606 -0.09000007 0.03" rpy="3.140796 -0 -3.14"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.078 0.025 0.03" rpy="3.140796 -0 0"/>
+      <origin xyz="0.01310394 0.08999993 0.03" rpy="3.140796 -0 0"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.078 0.025 0.03" rpy="3.140796 -0 0"/>
+      <origin xyz="0.01310394 0.08999993 0.03" rpy="3.140796 -0 0"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="-0.025 -0.052 0.03" rpy="3.140796 -0 1.57"/>
+      <origin xyz="-0.08989606 0.01299993 0.03" rpy="3.140796 -0 1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="-0.025 -0.052 0.03" rpy="3.140796 -0 1.57"/>
+      <origin xyz="-0.08989606 0.01299993 0.03" rpy="3.140796 -0 1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="-0.015 -0.0115 0.002" rpy="0.0007963268 -0 0"/>
+      <origin xyz="-0.07989606 0.05349993 0.002" rpy="0.0007963268 -0 0"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="-0.015 -0.0115 0.002" rpy="0.0007963268 -0 0"/>
+      <origin xyz="-0.07989606 0.05349993 0.002" rpy="0.0007963268 -0 0"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.011 -0.145 0.002" rpy="0.0007963268 -0 1.57"/>
+      <origin xyz="-0.05389606 -0.08000007 0.002" rpy="0.0007963268 -0 1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.011 -0.145 0.002" rpy="0.0007963268 -0 1.57"/>
+      <origin xyz="-0.05389606 -0.08000007 0.002" rpy="0.0007963268 -0 1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.145 -0.1185 0.002" rpy="0.0007963268 -0 -3.14"/>
+      <origin xyz="0.08010394 -0.05350007 0.002" rpy="0.0007963268 -0 -3.14"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.145 -0.1185 0.002" rpy="0.0007963268 -0 -3.14"/>
+      <origin xyz="0.08010394 -0.05350007 0.002" rpy="0.0007963268 -0 -3.14"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.1185 0.015 0.002" rpy="0.0007963268 -0 -1.57"/>
+      <origin xyz="0.05360394 0.07999993 0.002" rpy="0.0007963268 -0 -1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.1185 0.015 0.002" rpy="0.0007963268 -0 -1.57"/>
+      <origin xyz="0.05360394 0.07999993 0.002" rpy="0.0007963268 -0 -1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
@@ -298,7 +346,7 @@
        height, which was tuned against a stale URDF. -->
   <link name="lidar_link">
     <inertial>
-      <origin xyz="0 0.005 0.08" rpy="0 0 0"/>
+      <origin xyz="0 0 0.08" rpy="0 0 0"/>
       <mass value="0.15"/>
       <inertia ixx="7.980e-05" iyy="7.980e-05" izz="9.710e-05" ixy="0.0" ixz="0.0" iyz="0.0"/>
     </inertial>
@@ -317,23 +365,25 @@
     </collision>
   </link>
 
+  <!-- Bigger/heavier battery per the 2026-08-28 hardware CAD refresh
+       (0.18kg 0.107x0.035x0.025m -> 0.5kg 0.1083x0.07745x0.047m). -->
   <link name="battery_link">
     <inertial>
-      <origin xyz="0 0 0.0105" rpy="0 0 0"/>
-      <mass value="0.18"/>
-      <inertia ixx="0.00002775" ixy="0.0" ixz="0.0" iyy="0.00018111" iyz="0.0" izz="0.00019011"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.5"/>
+      <inertia ixx="0.00034198" ixy="0.0" ixz="0.0" iyy="0.00058075" iyz="0.0" izz="0.00073864"/>
     </inertial>
     <visual>
-      <origin xyz="0 0 0.0105" rpy="0 0 0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <box size="0.107 0.035 0.025"/>
+        <box size="0.1083 0.07745 0.047"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0.0105" rpy="0 0 0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <box size="0.107 0.035 0.025"/>
+        <box size="0.1083 0.07745 0.047"/>
       </geometry>
     </collision>
   </link>
@@ -361,9 +411,9 @@
 
   <link name="circuit_box_link">
     <inertial>
-      <origin xyz="0.02066488 -0.00224629 0.01891372" rpy="0 0 0"/>
+      <origin xyz="0.02068512 -0.00214141 0.01888206" rpy="0 0 0"/>
       <mass value="0.138015"/>
-      <inertia ixx="0.00009520" ixy="-0.00001035" ixz="-0.00000298" iyy="0.00023211" iyz="-0.00000273" izz="0.00024761"/>
+      <inertia ixx="0.00009594" ixy="-0.00001011" ixz="-0.00000305" iyy="0.00023207" iyz="-0.00000249" izz="0.00024815"/>
     </inertial>
     <visual>
       <origin xyz="-0.15 -0.435 -0.01" rpy="0 0 4.71"/>
@@ -418,14 +468,14 @@
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0 0.018 0.012" rpy="0 0 1.57"/>
+      <origin xyz="-0.015 0.018 -0.002" rpy="1.57 0 1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/MPU_9265.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0 0.018 0.012" rpy="0 0 1.57"/>
+      <origin xyz="-0.015 0.018 -0.002" rpy="1.57 0 1.57"/>
       <geometry>
         <mesh filename="${mesh_pkg}/MPU_9265.stl" scale="0.001 0.001 0.001"/>
       </geometry>
@@ -625,7 +675,7 @@
   <link name="arm_c_4_1">
     <inertial>
       <origin xyz="-0.00152686 -0.01416578 -0.02679160" rpy="0 0 0"/>
-      <mass value="0.063687"/>
+      <mass value="0.063683"/>
       <!-- ARMATURE EMULATION (not the raw CAD inertia). The CAD calf inertia
            is ~3.4e-5; we add +0.005 to model Isaac's per-joint `armature`
            (reflected servo rotor inertia), which training pins at 0.005 in
@@ -638,7 +688,7 @@
            rad/s (feet skitter, no push-off, 0.029 m/s); with it the ankle
            stays under the 6.54 cap and straight-walk tracks 1:1 (0.125 m/s at
            0.12 cmd, matching Isaac's 0.97 ratio). -->
-      <inertia ixx="0.00503866" ixy="-0.00000290" ixz="-0.00000068" iyy="0.00501100" iyz="-0.00000123" izz="0.00503408"/>
+      <inertia ixx="0.00503860" ixy="-0.00000290" ixz="-0.00000068" iyy="0.00501100" iyz="-0.00000123" izz="0.00503402"/>
     </inertial>
     <visual>
       <origin xyz="0.01 -0.145 -0.053" rpy="1.57 0 -3.14"/>
@@ -728,7 +778,7 @@
   <link name="arm_c_1_1">
     <inertial>
       <origin xyz="-0.00152686 -0.01416578 -0.02679160" rpy="0 0 0"/>
-      <mass value="0.063687"/>
+      <mass value="0.063683"/>
       <!-- ARMATURE EMULATION (not the raw CAD inertia). The CAD calf inertia
            is ~3.4e-5; we add +0.005 to model Isaac's per-joint `armature`
            (reflected servo rotor inertia), which training pins at 0.005 in
@@ -741,7 +791,7 @@
            rad/s (feet skitter, no push-off, 0.029 m/s); with it the ankle
            stays under the 6.54 cap and straight-walk tracks 1:1 (0.125 m/s at
            0.12 cmd, matching Isaac's 0.97 ratio). -->
-      <inertia ixx="0.00503866" ixy="-0.00000290" ixz="-0.00000068" iyy="0.00501100" iyz="-0.00000123" izz="0.00503408"/>
+      <inertia ixx="0.00503860" ixy="-0.00000290" ixz="-0.00000068" iyy="0.00501100" iyz="-0.00000123" izz="0.00503402"/>
     </inertial>
     <visual>
       <origin xyz="0.01 -0.145 -0.053" rpy="1.57 0 -3.14"/>
@@ -822,12 +872,24 @@
 
   <link name="arm_c_2_1">
     <inertial>
-      <origin xyz="-0.00122772 -0.01509700 -0.03204975" rpy="0 0 0"/>
-      <mass value="0.063687"/>
+      <!-- Symmetrized with arm_c_3_1 2026-08-28: both links are the same
+           physical part (arm_c_left.stl, same as arm_a_1_1/arm_c_1_1's
+           "right" pair is already byte-identical), there is no legitimate
+           hardware reason for them to differ. The CAD export gave them
+           different numbers (iyy differed ~50%, CoM ~22mm apart), matching
+           a transcription-artifact pattern already diagnosed once before on
+           a different branch (see [[project_sim2sim_walking_regression]]
+           in memory) as a cause of heading drift, confirmed by A/B test
+           here too (symmetrizing cut an 8s straight-walk yaw veer from
+           +0.043 rad to +0.015 rad). No independent reference (training's
+           own URDF) was available to pick one measurement as correct, so
+           these are the arithmetic mean of the two CAD readings. -->
+      <origin xyz="0.00010937 -0.01746521 -0.03616019" rpy="0 0 0"/>
+      <mass value="0.063683"/>
       <!-- ARMATURE EMULATION: see arm_c_1_1 for the full rationale. CAD calf
            inertia ~3.4e-5; +0.005 isotropic emulates Isaac's `armature` (no
            native <armature> in gz-sim 8). Restores 1:1 straight-walk. -->
-      <inertia ixx="0.00503854" ixy="-0.00000238" ixz="0.00000067" iyy="0.00501083" iyz="0.00000147" izz="0.00503352"/>
+      <inertia ixx="0.00503677" ixy="-0.00000253" ixz="0.00000127" iyy="0.00501292" iyz="0.00000189" izz="0.00503492"/>
     </inertial>
     <visual>
       <origin xyz="0.012 -0.1455 -0.040" rpy="1.57 0 -3.14"/>
@@ -908,12 +970,16 @@
 
   <link name="arm_c_3_1">
     <inertial>
-      <origin xyz="-0.00122772 -0.01509700 -0.03204975" rpy="0 0 0"/>
-      <mass value="0.063687"/>
+      <!-- Symmetrized with arm_c_2_1 2026-08-28: same physical part
+           (arm_c_left.stl) mounted at a different corner, see arm_c_2_1's
+           inertial comment for the full rationale and the A/B test that
+           confirmed this was a real contributor to yaw veer. -->
+      <origin xyz="0.00010937 -0.01746521 -0.03616019" rpy="0 0 0"/>
+      <mass value="0.063683"/>
       <!-- ARMATURE EMULATION: see arm_c_1_1 for the full rationale. CAD calf
            inertia ~3.4e-5; +0.005 isotropic emulates Isaac's `armature` (no
            native <armature> in gz-sim 8). Restores 1:1 straight-walk. -->
-      <inertia ixx="0.00503854" ixy="-0.00000238" ixz="0.00000067" iyy="0.00501083" iyz="0.00000147" izz="0.00503352"/>
+      <inertia ixx="0.00503677" ixy="-0.00000253" ixz="0.00000127" iyy="0.00501292" iyz="0.00000189" izz="0.00503492"/>
     </inertial>
     <visual>
       <origin xyz="0.012 -0.1455 -0.040" rpy="1.57 0 -3.14"/>
@@ -949,7 +1015,7 @@
        hardware cap every tick under the old (bringup-specific) geometry. -->
   <!-- Leg 4 (back-left): Revolute_110/111/112 -->
   <joint name="Revolute_110" type="revolute">
-    <origin xyz="0.129 0.015 0.04" rpy="1.570796 -0 -0.785"/>
+    <origin xyz="0.06410394 0.07999993 0.04" rpy="1.570796 -0 -0.785"/>
     <parent link="base_link"/>
     <child link="arm_a_4_1"/>
     <axis xyz="0 1.0 0"/>
@@ -977,7 +1043,7 @@
 
   <!-- Leg 1 (front-left): Revolute_113/114/115 -->
   <joint name="Revolute_113" type="revolute">
-    <origin xyz="-0.015 -0.002 0.04" rpy="1.570796 -0 0.785"/>
+    <origin xyz="-0.07989606 0.06299993 0.04" rpy="1.570796 -0 0.785"/>
     <parent link="base_link"/>
     <child link="arm_a_1_1"/>
     <axis xyz="0 1.0 0"/>
@@ -1005,7 +1071,7 @@
 
   <!-- Leg 2 (front-right): Revolute_116/117/118 -->
   <joint name="Revolute_116" type="revolute">
-    <origin xyz="0.0027 -0.145 0.04" rpy="1.570796 -0 2.355"/>
+    <origin xyz="-0.06219606 -0.08000007 0.04" rpy="1.570796 -0 2.355"/>
     <parent link="base_link"/>
     <child link="arm_a_2_1"/>
     <axis xyz="0 1.0 0"/>
@@ -1033,7 +1099,7 @@
 
   <!-- Leg 3 (back-right): Revolute_119/120/121 -->
   <joint name="Revolute_119" type="revolute">
-    <origin xyz="0.145 -0.128 0.04" rpy="1.570796 -0 -2.355"/>
+    <origin xyz="0.08010394 -0.06300007 0.04" rpy="1.570796 -0 -2.355"/>
     <parent link="base_link"/>
     <child link="arm_a_3_1"/>
     <axis xyz="0 1.0 0"/>
@@ -1066,13 +1132,15 @@
        lidar height/position, a "+4cm ghost-wall workaround" tuned against a
        stale URDF). -->
   <joint name="battery_joint" type="fixed">
-    <origin xyz="0.0657 -0.0657 0.0585" rpy="3.140796 -0 0"/>
+    <origin xyz="0.00080394 -0.00070007 0.0585" rpy="3.140796 -0 0"/>
     <parent link="base_link"/>
     <child link="battery_link"/>
   </joint>
 
   <joint name="circuit_box_base_joint" type="fixed">
-    <origin xyz="0 0 -0.0029" rpy="0 3.14 0"/>
+    <!-- z was -0.0029; the taller 2026-08-28 battery pushed this mount
+         point down to -0.0245. -->
+    <origin xyz="0 0 -0.0245" rpy="0 3.14 0"/>
     <parent link="battery_link"/>
     <child link="circuit_box_base_link"/>
   </joint>
@@ -1085,9 +1153,25 @@
 
   <!-- ydlidar_joint in training's URDF; renamed lidar_link/lidar_joint to
        match bringup's existing sensor-plugin references (gazebo.xacro,
-       ros2_control), naming only, the mount point is training's own. -->
+       ros2_control), naming only, the mount point is training's own.
+
+       +0.02 m local offset added 2026-09-02: raises the physical lidar
+       mount height per scan_ground_filter.cpp's own documented lever
+       ("raise the lidar or reduce gait tilt"). Deliberately NOT the old
+       "+4cm ghost-wall workaround" this file's header already warns about
+       reintroducing, since that value was tuned against a since-replaced
+       mount chain and isn't evidence for this one. This offset is on
+       lidar_joint only, not the battery/circuit_box chain above it, so it
+       doesn't touch any training-matched mass/inertia geometry: the
+       trained policy consumes joint state/IMU/cmd_vel, not lidar data, so
+       the sensor's own mount height has no bearing on matching training
+       dynamics. Sign is in circuit_box_link's local frame (rotated about
+       180 deg through the mount chain from base_link); verify the
+       resulting lidar-height-above-base_link (scan_ground_filter's own
+       startup log line: "mount resolved: lidar X m above base_link")
+       actually increased, not decreased, before trusting this value. -->
   <joint name="lidar_joint" type="fixed">
-    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <origin xyz="0 0 0.02" rpy="0 0 0"/>
     <parent link="circuit_box_link"/>
     <child link="lidar_link"/>
   </joint>
@@ -1095,9 +1179,11 @@
   <!-- IMU stays a direct base_link child (not chained through circuit_box)
        so its rotation is identity vs base_link, matching training's own
        ImuCfg convention (rot=(1,0,0,0)) rather than the MPU_9265 mesh's own
-       cosmetic mount rotation inside circuit_box_link. -->
+       cosmetic mount rotation inside circuit_box_link. XY matches
+       battery_joint (both sit on the same central stack); Z is higher
+       since the IMU sits above the battery. -->
   <joint name="imu_joint" type="fixed">
-    <origin xyz="0.0657 -0.0657 0.0614" rpy="0 0 0"/>
+    <origin xyz="0.00080394 -0.00070007 0.0614" rpy="0 0 0"/>
     <parent link="base_link"/>
     <child link="imu_link"/>
   </joint>
