@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <memory>
@@ -60,6 +61,9 @@ public:
     stationary_accel_threshold_ = declare_parameter<double>("stationary_accel_threshold", 0.5);
     stationary_hold_s_ = declare_parameter<double>("stationary_hold_s", 0.4);
     servo_tau_ = declare_parameter<double>("servo_tau", 0.06);
+    // Matches hardware_bridge's max_joint_rate_rad_s -- see servo_tau's own
+    // comment and legged_odometry.yaml for the full rationale.
+    servo_max_rate_rad_s_ = declare_parameter<double>("servo_max_rate_rad_s", 3.0);
     // High-pass leak on the specific force. Estimates the slowly-varying DC
     // offset (a residual accel bias the bridge calibration missed, e.g. because
     // the robot was tilted) and subtracts it, so it cannot integrate into a
@@ -170,28 +174,50 @@ private:
 
     // 1st-order servo dynamics: EWMA filter simulates MG995's physical lag.
     // alpha = 1 - exp(-dt / tau) where tau matches the servo's closed-loop
-    // response time (~0.06s for MG995 at 6.54 rad/s max speed). This breaks the
+    // response time (~0.09s, matching hardware_bridge's servo_converter.hpp
+    // effective tau -- see servo_tau's own comment for why). This breaks the
     // positive-feedback loop caused by feeding commanded positions as "measured"
     // joint state (see ISSUES.md #15).
-    const double alpha = (dt > 1e-6) ? (1.0 - std::exp(-dt / servo_tau_)) : 1.0;
+    const bool first_call = !(dt > 1e-6);
+    const double alpha = first_call ? 1.0 : (1.0 - std::exp(-dt / servo_tau_));
+
+    // Slew limit, mirroring servo_converter.hpp's convert(): the EWMA alone
+    // is not what the real chain does to the target before it reaches the
+    // servo -- hardware_bridge additionally caps the rate of change at
+    // servo_max_rate_rad_s. Without this, this node's feedback converges to
+    // any commanded step faster than the real servo can move, independent of
+    // how far tau alone is matched (see leg_odometry/docs/ for the measured
+    // before/after: EWMA-only left leg_odometry's synthesized feedback
+    // leading the real delivery by tens of ms; adding this closed nearly all
+    // of that remaining gap).
+    const double dt_capped = std::min(dt, kMaxDt_);
+    const double step = servo_max_rate_rad_s_ * dt_capped;
 
     for (size_t i = 0; i < 12; ++i) {
       double cmd_pos = msg->data[i];
 
       // EWMA: blend commanded position toward filtered position
-      double filt_pos = alpha * cmd_pos + (1.0 - alpha) * filtered_positions_[i];
-      filtered_positions_[i] = filt_pos;
-      js.position.push_back(filt_pos);
+      double smoothed_pos = alpha * cmd_pos + (1.0 - alpha) * filtered_positions_[i];
+      filtered_positions_[i] = smoothed_pos;
+
+      double limited_pos;
+      if (first_call) {
+        limited_pos = smoothed_pos;  // no prior pose to slew-limit from
+      } else {
+        limited_pos = std::clamp(
+          smoothed_pos, last_joint_positions_[i] - step, last_joint_positions_[i] + step);
+      }
+      js.position.push_back(limited_pos);
 
       if (dt > 1e-6) {
-        double vel = (filt_pos - last_joint_positions_[i]) / dt;
+        double vel = (limited_pos - last_joint_positions_[i]) / dt;
         js.velocity.push_back(vel);
         last_joint_velocities_[i] = vel;
       } else {
         js.velocity.push_back(0.0);
         last_joint_velocities_[i] = 0.0;
       }
-      last_joint_positions_[i] = filt_pos;
+      last_joint_positions_[i] = limited_pos;
     }
     last_cmd_time_ = now;
 
@@ -701,6 +727,10 @@ private:
   rclcpp::Time still_since_{0, 0, RCL_ROS_TIME};
 
   double servo_tau_;
+  double servo_max_rate_rad_s_;
+  // Same cap as servo_converter.hpp's kMaxDt: one late/gapped command must
+  // not authorise an unbounded slew step.
+  static constexpr double kMaxDt_ = 0.10;
   double bias_leak_tau_{3.0};
   tf2::Vector3 accel_bias_est_{0.0, 0.0, 0.0};
   // Latest post-leak world-frame specific force and validity flag; consumed by

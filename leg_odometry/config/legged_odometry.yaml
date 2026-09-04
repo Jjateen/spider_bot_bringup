@@ -77,9 +77,18 @@
     #
     # Raised to match hardware_bridge's effective tau, so /joint_states
     # reflects (approximately) what the servo is actually doing rather than
-    # an independently-guessed number. Still missing the slew limiter's
-    # effect -- flagged as a follow-up, not fixed by this change alone.
+    # an independently-guessed number.
     servo_tau: 0.0896
+    # Slew cap matching hardware_bridge's max_joint_rate_rad_s (see that
+    # file's comment for the derivation). EWMA alone still converges faster
+    # than the real chain during large steps, because the real chain also
+    # caps the RATE of change independent of the filter's own catch-up
+    # curve. Adding this closed nearly all of the remaining timing gap
+    # between this feedback model and the real delivery -- see
+    # docs/servo_tau_mismatch.png and docs/servo_tau_plus_slew_hypothesis.png
+    # for the measured before/after (leg_odometry's feedback led the real
+    # delivery by ~45ms with tau matched alone, ~5ms with this added).
+    servo_max_rate_rad_s: 3.0
     # High-pass leak on the specific force (s): rejects a slow DC bias (e.g. from
     # a tilted IMU calibration) so it cannot integrate into runaway /odom drift.
     # 0 disables. Gait acceleration oscillates about zero (~1.5 s period) so its
