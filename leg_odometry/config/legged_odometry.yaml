@@ -55,10 +55,31 @@
     # ~3.5 Hz the bridge actually delivers under load, which is longer than most
     # stops last, so ZUPT never engaged and idle odom drifted anyway.
     stationary_hold_s: 0.4
-    # Servo dynamics model: EWMA time constant (seconds) matching MG995 response.
-    # tau=0.06 limits filtered position rate to ~6.5 rad/s (servo's max speed),
-    # preventing the positive-feedback loop from synthetic joint states.
-    servo_tau: 0.06
+    # Servo dynamics model: EWMA time constant (seconds) approximating MG995
+    # response, used ONLY to synthesize /joint_states feedback for the policy
+    # (see legged_odometry_node.cpp on_cmd()). This is a SEPARATE model from
+    # the one that actually drives the servo: hardware_bridge's
+    # servo_converter.hpp derives an effective tau of ~0.0896s from
+    # smoothing_alpha=0.2 @ command_rate_hz=50 (see hardware_bridge.yaml),
+    # AND additionally applies a 3.0 rad/s slew limiter that this model has
+    # no equivalent of at all.
+    #
+    # 0.06 was sized off the servo's raw max-speed spec (6.54 rad/s), not off
+    # what the command chain in front of it actually delivers. That makes this
+    # feedback converge FASTER than the real chain: on a real gait cycle
+    # (Revolute_117, walk-0.29ms-current-config bag), this model reaches each
+    # peak/trough measurably earlier than both the modeled hardware delivery
+    # and Isaac's own trained-against physics response -- see
+    # docs/servo_tau_mismatch.png. The policy is trained on feedback shaped by
+    # Isaac's physics lag; feeding it a faster, decoupled model on hardware
+    # tells it "the leg already arrived" before it physically has, which can
+    # trigger the next phase transition (e.g. swing->stance) early.
+    #
+    # Raised to match hardware_bridge's effective tau, so /joint_states
+    # reflects (approximately) what the servo is actually doing rather than
+    # an independently-guessed number. Still missing the slew limiter's
+    # effect -- flagged as a follow-up, not fixed by this change alone.
+    servo_tau: 0.0896
     # High-pass leak on the specific force (s): rejects a slow DC bias (e.g. from
     # a tilted IMU calibration) so it cannot integrate into runaway /odom drift.
     # 0 disables. Gait acceleration oscillates about zero (~1.5 s period) so its
