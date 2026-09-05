@@ -55,16 +55,110 @@
     # ~3.5 Hz the bridge actually delivers under load, which is longer than most
     # stops last, so ZUPT never engaged and idle odom drifted anyway.
     stationary_hold_s: 0.4
-    # Servo dynamics model: EWMA time constant (seconds) matching MG995 response.
-    # tau=0.06 limits filtered position rate to ~6.5 rad/s (servo's max speed),
-    # preventing the positive-feedback loop from synthetic joint states.
-    servo_tau: 0.06
+    # Servo dynamics model: EWMA time constant (seconds) approximating MG995
+    # response, used ONLY to synthesize /joint_states feedback for the policy
+    # (see legged_odometry_node.cpp on_cmd()). This is a SEPARATE model from
+    # the one that actually drives the servo: hardware_bridge's
+    # servo_converter.hpp derives an effective tau of ~0.0896s from
+    # smoothing_alpha=0.2 @ command_rate_hz=50 (see hardware_bridge.yaml),
+    # AND additionally applies a 3.0 rad/s slew limiter that this model has
+    # no equivalent of at all.
+    #
+    # 0.06 was sized off the servo's raw max-speed spec (6.54 rad/s), not off
+    # what the command chain in front of it actually delivers. That makes this
+    # feedback converge FASTER than the real chain: on a real gait cycle
+    # (Revolute_117, walk-0.29ms-current-config bag), this model reaches each
+    # peak/trough measurably earlier than both the modeled hardware delivery
+    # and Isaac's own trained-against physics response -- see
+    # docs/servo_tau_mismatch.png. The policy is trained on feedback shaped by
+    # Isaac's physics lag; feeding it a faster, decoupled model on hardware
+    # tells it "the leg already arrived" before it physically has, which can
+    # trigger the next phase transition (e.g. swing->stance) early.
+    #
+    # Raised to match hardware_bridge's effective tau, so /joint_states
+    # reflects (approximately) what the servo is actually doing rather than
+    # an independently-guessed number.
+    servo_tau: 0.0896
+    # Ankle ("calf") joints -- indices 8-11, the only joints that touch the
+    # ground -- get their own tau instead of sharing servo_tau above. An
+    # offline resimulation sweep against a recorded yaw-sweep bag measured
+    # "floor dwell" (% of time each joint sits within 5% of its own
+    # range-minimum) against Isaac ground truth: at the shared servo_tau,
+    # hip/knee were already close to Isaac (gap ~1-2pt), but ankle was not --
+    # front-left modeled 43.6% vs Isaac's actual 1.3%, front-right 33.2% vs
+    # 4.1%, back-right 84.3% vs 17.7%. Isaac's real ankle response is shaped
+    # by stance-phase ground contact (foot planted, load resisting motion)
+    # that this feedforward command-follower has no signal for -- raising
+    # servo_tau globally to compensate made hip/knee worse (their dwell
+    # dropped toward 0% vs their own true 1-10%), which is why this needed a
+    # separate parameter rather than one shared retune.
+    #
+    # 0.28 is the sweep optimum trading the floor-dwell gap against the
+    # cross-correlation lag metric from the prior servo_tau tuning pass (see
+    # docs/servo_tau_mismatch.png) -- see docs/ankle_tau_dwell_sweep.png for
+    # the full grid. Back-left/back-right keep a residual gap (30pt / 47.4pt)
+    # that no tau/rate combination in the sweep closed: that's the
+    # stance-phase effect itself, which an open-loop model structurally
+    # cannot chase without a contact/stance signal it doesn't have. Accepted
+    # as a known limitation rather than over-fit to one recording -- flag for
+    # a stance-aware follow-up only if hardware behavior shows it matters.
+    servo_tau_ankle: 0.28
+    # Slew cap matching hardware_bridge's max_joint_rate_rad_s (see that
+    # file's comment for the derivation). EWMA alone still converges faster
+    # than the real chain during large steps, because the real chain also
+    # caps the RATE of change independent of the filter's own catch-up
+    # curve. Adding this closed nearly all of the remaining timing gap
+    # between this feedback model and the real delivery -- see
+    # docs/servo_tau_mismatch.png and docs/servo_tau_plus_slew_hypothesis.png
+    # for the measured before/after (leg_odometry's feedback led the real
+    # delivery by ~45ms with tau matched alone, ~5ms with this added).
+    #
+    # Shared across all 12 joints, including ankle: the servo_tau_ankle sweep
+    # above also varied this rate and found it had no meaningful effect on the
+    # ankle floor-dwell gap, so a separate ankle rate would just be a knob
+    # that does nothing.
+    servo_max_rate_rad_s: 3.0
+    # Matches hardware_bridge.yaml's command_rate_hz. The real chain
+    # throttles the policy's raw ~200Hz stream down to this rate BEFORE its
+    # EWMA+slew ever run (the PCA9685 only refreshes this fast); this node's
+    # own EWMA+slew must run on that same throttled cadence, not the raw
+    # policy rate. Missing this let a brief (<20ms) commanded transient that
+    # the real chain would only partially see (or drop) get processed here at
+    # full resolution, producing an overshoot the real servo likely never
+    # fully reaches -- see on_cmd()'s throttle gate.
+    command_rate_hz: 50.0
     # High-pass leak on the specific force (s): rejects a slow DC bias (e.g. from
     # a tilted IMU calibration) so it cannot integrate into runaway /odom drift.
     # 0 disables. Gait acceleration oscillates about zero (~1.5 s period) so its
     # per-cycle integral nets out even under a short tau; 3 s converges fast
     # enough that a bad calibration stops pumping velocity within seconds.
     bias_leak_tau: 3.0
+    # Stationary-gated leak on gyro-z, separate from bias_leak_tau above.
+    # That leak runs continuously because gait acceleration genuinely
+    # oscillates about zero; yaw rate during a genuine sustained turn does
+    # NOT, so the same trick would reject real turning as bias. Instead this
+    # only refines the gyro-z bias estimate while the robot is confirmed
+    # stationary (joints still + no accel, same gate ZUPT uses) — true
+    # gyro-z reads exactly 0 then — and holds the estimate during any motion,
+    # turns included. There is no magnetometer on this board, so nothing else
+    # corrects yaw; without this, an upstream residual gyro bias integrates
+    # straight into /odom's heading with nothing to reject it.
+    #
+    # tau chosen via an Isaac-Sim sweep (pure yaw rotation, wz=0.15 rad/s,
+    # ~21s, closed through policy_controller's heading-hold) comparing
+    # leg_odometry's guessed heading change against Isaac ground truth:
+    #   tau (s)   0.5    1.0    2.0    5.0    10.0   @ bias=0.02 rad/s
+    #   error %   3.21   4.30   1.99   2.23   2.54
+    # 2.0 had the lowest error; confirmed stable across a bias range at that
+    # tau (0/0.02/0.04 rad/s -> 3.41%/1.99%/2.87%, vs ~7-8% with the leak
+    # disabled) — no regression when there's no real bias to correct. The
+    # injected bias values are illustrative (no hardware measurement exists
+    # yet for the residual left after hardware_bridge's own boot
+    # calibration); this sim used a hand-rolled Madgwick-equivalent stand-in
+    # (no magnetometer, no drift correction), not the real imu_filter_madgwick
+    # package, so real-hardware confirmation is still a follow-up.
+    yaw_bias_leak_enabled: true
+    yaw_bias_leak_tau: 2.0
     # Hard stationary gate on command staleness (s). When /cmd_vel is silent
     # longer than this the robot is uncommanded (the policy idles after 0.5 s),
     # so any dead-reckoned velocity is phantom and is forced to zero with the

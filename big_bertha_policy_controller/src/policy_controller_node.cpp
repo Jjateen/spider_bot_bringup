@@ -126,6 +126,19 @@ public:
     kp_ = declare_parameter<double>("kp", 20.0);
     kd_ = declare_parameter<double>("kd", 2.0);
     effort_limit_ = declare_parameter<double>("effort_limit", 1.0);
+    // Shape target_pos_ before it hits the wire, same EWMA+slew law
+    // hardware_bridge_node applies via ServoConverter (tau=0.0896s,
+    // max_rate=3.0 rad/s) so gz's JointEffortPdController (kp=20, kd=2,
+    // effort_limit=1.18) sees the step sizes a real MG995 servo would
+    // actually be fed, instead of a raw policy ZOH jump every 20ms. Without
+    // this, sustained commanded joint speeds (measured 1-2 rad/s RMS, up to
+    // ~11 rad/s peak during a full yaw sweep) sit far past the effort loop's
+    // linear-tracking bound (effort_limit/kp / kd*kp ~= 0.59 rad/s), so it
+    // rides in torque saturation almost continuously and rings on desaturate
+    // -- the per-joint ripple this was added to fix.
+    shape_enable_ = declare_parameter<bool>("shape_enable", true);
+    shape_tau_s_ = declare_parameter<double>("shape_tau_s", 0.0896);
+    shape_max_rate_rad_s_ = declare_parameter<double>("shape_max_rate_rad_s", 3.0);
     // PD runs at pd_rate_ (200 Hz), policy decimated to control_rate_ (50 Hz,
     // matching training). PD at 50 Hz under-damps -> in-place jitter.
     pd_rate_ = declare_parameter<double>("pd_rate", 200.0);
@@ -459,15 +472,33 @@ private:
     cmd.data.resize(bbpc::kNumJoints);
     {
       std::lock_guard<std::mutex> lk(state_mutex_);
+      // Time-based EWMA + slew, identical law to ServoConverter::convert()
+      // (see its header for the derivation) so the shaped setpoint here
+      // matches what a real servo would receive over the hardware path.
+      // dt is fixed: this runs off timer_ at pd_rate_, not a variable
+      // callback.
+      const double dt = 1.0 / pd_rate_;
+      const double alpha =
+        (shape_tau_s_ > 1e-9) ? 1.0 - std::exp(-dt / shape_tau_s_) : 1.0;
+      const double step = shape_max_rate_rad_s_ * dt;
       for (int i = 0; i < bbpc::kNumJoints; ++i) {
+        double q_cmd = target_pos_[i];
+        if (shape_enable_) {
+          const double smoothed =
+            shape_first_ ? q_cmd : alpha * q_cmd + (1.0 - alpha) * shaped_pos_[i];
+          q_cmd = shape_first_
+                    ? smoothed
+                    : std::clamp(smoothed, shaped_pos_[i] - step, shaped_pos_[i] + step);
+          shaped_pos_[i] = q_cmd;
+        }
         if (use_effort_) {
-          double effort =
-            kp_ * (target_pos_[i] - obs_.joint_pos[i]) + kd_ * (0.0 - obs_.joint_vel[i]);
+          double effort = kp_ * (q_cmd - obs_.joint_pos[i]) + kd_ * (0.0 - obs_.joint_vel[i]);
           cmd.data[i] = std::clamp(effort, -effort_limit_, effort_limit_);
         } else {
-          cmd.data[i] = target_pos_[i];
+          cmd.data[i] = q_cmd;
         }
       }
+      shape_first_ = false;
     }
     cmd_pub_->publish(cmd);
 
@@ -507,6 +538,11 @@ private:
   int policy_decimation_{4};
   int decim_count_{0};
   std::array<double, bbpc::kNumJoints> target_pos_{};
+  bool shape_enable_{true};
+  double shape_tau_s_{0.0896};
+  double shape_max_rate_rad_s_{3.0};
+  std::array<double, bbpc::kNumJoints> shaped_pos_{};
+  bool shape_first_{true};
   double last_inf_ms_{0.0};
   double last_action_norm_{0.0};
   double action_clip_{1.0};
