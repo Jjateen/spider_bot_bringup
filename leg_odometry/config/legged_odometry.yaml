@@ -89,12 +89,47 @@
     # for the measured before/after (leg_odometry's feedback led the real
     # delivery by ~45ms with tau matched alone, ~5ms with this added).
     servo_max_rate_rad_s: 3.0
+    # Matches hardware_bridge.yaml's command_rate_hz. The real chain
+    # throttles the policy's raw ~200Hz stream down to this rate BEFORE its
+    # EWMA+slew ever run (the PCA9685 only refreshes this fast); this node's
+    # own EWMA+slew must run on that same throttled cadence, not the raw
+    # policy rate. Missing this let a brief (<20ms) commanded transient that
+    # the real chain would only partially see (or drop) get processed here at
+    # full resolution, producing an overshoot the real servo likely never
+    # fully reaches -- see on_cmd()'s throttle gate.
+    command_rate_hz: 50.0
     # High-pass leak on the specific force (s): rejects a slow DC bias (e.g. from
     # a tilted IMU calibration) so it cannot integrate into runaway /odom drift.
     # 0 disables. Gait acceleration oscillates about zero (~1.5 s period) so its
     # per-cycle integral nets out even under a short tau; 3 s converges fast
     # enough that a bad calibration stops pumping velocity within seconds.
     bias_leak_tau: 3.0
+    # Stationary-gated leak on gyro-z, separate from bias_leak_tau above.
+    # That leak runs continuously because gait acceleration genuinely
+    # oscillates about zero; yaw rate during a genuine sustained turn does
+    # NOT, so the same trick would reject real turning as bias. Instead this
+    # only refines the gyro-z bias estimate while the robot is confirmed
+    # stationary (joints still + no accel, same gate ZUPT uses) — true
+    # gyro-z reads exactly 0 then — and holds the estimate during any motion,
+    # turns included. There is no magnetometer on this board, so nothing else
+    # corrects yaw; without this, an upstream residual gyro bias integrates
+    # straight into /odom's heading with nothing to reject it.
+    #
+    # tau chosen via an Isaac-Sim sweep (pure yaw rotation, wz=0.15 rad/s,
+    # ~21s, closed through policy_controller's heading-hold) comparing
+    # leg_odometry's guessed heading change against Isaac ground truth:
+    #   tau (s)   0.5    1.0    2.0    5.0    10.0   @ bias=0.02 rad/s
+    #   error %   3.21   4.30   1.99   2.23   2.54
+    # 2.0 had the lowest error; confirmed stable across a bias range at that
+    # tau (0/0.02/0.04 rad/s -> 3.41%/1.99%/2.87%, vs ~7-8% with the leak
+    # disabled) — no regression when there's no real bias to correct. The
+    # injected bias values are illustrative (no hardware measurement exists
+    # yet for the residual left after hardware_bridge's own boot
+    # calibration); this sim used a hand-rolled Madgwick-equivalent stand-in
+    # (no magnetometer, no drift correction), not the real imu_filter_madgwick
+    # package, so real-hardware confirmation is still a follow-up.
+    yaw_bias_leak_enabled: true
+    yaw_bias_leak_tau: 2.0
     # Hard stationary gate on command staleness (s). When /cmd_vel is silent
     # longer than this the robot is uncommanded (the policy idles after 0.5 s),
     # so any dead-reckoned velocity is phantom and is forced to zero with the

@@ -64,6 +64,13 @@ public:
     // Matches hardware_bridge's max_joint_rate_rad_s -- see servo_tau's own
     // comment and legged_odometry.yaml for the full rationale.
     servo_max_rate_rad_s_ = declare_parameter<double>("servo_max_rate_rad_s", 3.0);
+    // Matches hardware_bridge.yaml's command_rate_hz: the real chain
+    // throttles the policy's raw ~200Hz stream down to this rate before its
+    // EWMA+slew ever run (the PCA9685 only refreshes this fast). This node's
+    // own EWMA+slew below must run on that same throttled cadence, not the
+    // raw policy rate -- see on_cmd()'s throttle gate for what breaks without it.
+    command_rate_hz_ = declare_parameter<double>("command_rate_hz", 50.0);
+    cmd_throttle_period_ = rclcpp::Duration::from_seconds(1.0 / command_rate_hz_);
     // High-pass leak on the specific force. Estimates the slowly-varying DC
     // offset (a residual accel bias the bridge calibration missed, e.g. because
     // the robot was tilted) and subtracts it, so it cannot integrate into a
@@ -73,6 +80,19 @@ public:
     // velocity within a few seconds instead of holding it near the speed
     // clamp for the better part of a minute. 0 disables the leak.
     bias_leak_tau_ = declare_parameter<double>("bias_leak_tau", 3.0);
+    // Stationary-gated leak on gyro-z, separate from bias_leak_tau above:
+    // that one runs continuously because gait acceleration genuinely
+    // oscillates about zero, so a short tau nets out real signal and rejects
+    // bias. Yaw rate during a genuine sustained turn is NOT zero-mean, so the
+    // same continuous-leak trick would reject real turning as if it were
+    // bias. Instead, only refine gyro_bias_z_est_ while is_robot_stationary()
+    // says the robot is confirmed still (true gyro-z reads exactly 0 then);
+    // hold it during any motion, turns included. Without this, an upstream
+    // residual gyro bias (no magnetometer on this board, so nothing else
+    // corrects yaw) integrates straight into /odom's heading with nothing to
+    // reject it.
+    yaw_bias_leak_enabled_ = declare_parameter<bool>("yaw_bias_leak_enabled", true);
+    yaw_bias_leak_tau_ = declare_parameter<double>("yaw_bias_leak_tau", 2.0);
     // Hard stationary gate on command staleness. The policy itself drops to
     // idle once /cmd_vel goes quiet (its timeout is 0.5 s), so a silent topic
     // means the robot is physically uncommanded and any dead-reckoned velocity
@@ -163,6 +183,18 @@ private:
 
     auto now = this->now();
 
+    // Throttle to command_rate_hz, mirroring hardware_bridge_node.cpp's
+    // on_cmd(): the real chain forwards at this rate (the PCA9685 only
+    // refreshes this fast) and drops the rest, so the EWMA+slew model below
+    // should run on THAT throttled stream, not the raw ~200Hz policy rate.
+    // Without this, a brief (<20ms) commanded transient that a throttled
+    // real chain would only partially see (or drop entirely) gets processed
+    // here at full resolution, letting the model chase and overshoot toward
+    // a target the real servo may never fully receive.
+    if (last_cmd_time_.nanoseconds() > 0 && (now - last_cmd_time_) < cmd_throttle_period_) {
+      return;
+    }
+
     auto js = sensor_msgs::msg::JointState();
     js.header.stamp = now;
     js.name = joint_names_;
@@ -172,14 +204,27 @@ private:
       dt = (now - last_cmd_time_).seconds();
     }
 
+    // Cap dt ONCE, before deriving anything from it -- mirrors
+    // servo_converter.hpp, which caps dt upfront and computes both its EWMA
+    // alpha and its slew step from that single capped value. This node used
+    // to cap dt for the slew step only and leave alpha computed from the RAW
+    // dt: a late/gapped command (a stalled publisher, a scheduling hiccup)
+    // then made alpha -> 1 (no smoothing at all), writing the almost-raw
+    // target straight into filtered_positions_[i] -- the EWMA's persistent
+    // state -- even though that same call's PUBLISHED position was correctly
+    // slew-clamped. The next few calls then kept pulling toward that
+    // corrupted internal state, producing a multi-sample slew-limited spike
+    // toward an erroneous value that the policy read as real servo feedback.
+    const bool first_call = !(dt > 1e-6);
+    const double dt_capped = first_call ? 0.0 : std::min(dt, kMaxDt_);
+
     // 1st-order servo dynamics: EWMA filter simulates MG995's physical lag.
     // alpha = 1 - exp(-dt / tau) where tau matches the servo's closed-loop
     // response time (~0.09s, matching hardware_bridge's servo_converter.hpp
     // effective tau -- see servo_tau's own comment for why). This breaks the
     // positive-feedback loop caused by feeding commanded positions as "measured"
     // joint state (see ISSUES.md #15).
-    const bool first_call = !(dt > 1e-6);
-    const double alpha = first_call ? 1.0 : (1.0 - std::exp(-dt / servo_tau_));
+    const double alpha = first_call ? 1.0 : (1.0 - std::exp(-dt_capped / servo_tau_));
 
     // Slew limit, mirroring servo_converter.hpp's convert(): the EWMA alone
     // is not what the real chain does to the target before it reaches the
@@ -190,7 +235,6 @@ private:
     // before/after: EWMA-only left leg_odometry's synthesized feedback
     // leading the real delivery by tens of ms; adding this closed nearly all
     // of that remaining gap).
-    const double dt_capped = std::min(dt, kMaxDt_);
     const double step = servo_max_rate_rad_s_ * dt_capped;
 
     for (size_t i = 0; i < 12; ++i) {
@@ -263,6 +307,13 @@ private:
       last_orientation_.setValue(
         msg->orientation.x, msg->orientation.y, msg->orientation.z, msg->orientation.w);
       last_orientation_.normalize();
+      // Seed the self-integrated yaw from whatever upstream reports at boot,
+      // rather than 0 -- see yaw_estimate_'s own comment for why this node
+      // integrates yaw itself instead of trusting the incoming quaternion's
+      // yaw component on every cycle.
+      double seed_roll, seed_pitch, seed_yaw;
+      tf2::Matrix3x3(last_orientation_).getRPY(seed_roll, seed_pitch, seed_yaw);
+      yaw_estimate_ = seed_yaw;
       return;
     }
 
@@ -300,6 +351,33 @@ private:
     velocity.setZ(0.0);
     position.setZ(0.0);
 
+    // Computed once here and reused below for the ZUPT gate, rather than
+    // calling is_robot_stationary() twice -- it also gates the yaw-bias leak.
+    bool stationary = is_robot_stationary(msg);
+
+    // Stationary-gated gyro-yaw-bias leak (see yaw_bias_leak_tau's own
+    // comment for the full rationale). Then integrate yaw itself from the
+    // bias-corrected gyro-z, instead of trusting the incoming quaternion's
+    // yaw component -- upstream (Madgwick or equivalent) has no magnetometer
+    // on this board and no drift-bias correction of its own, so its yaw is
+    // exactly as bias-prone as raw integration would be; doing the
+    // integration here is what lets this leak reject that bias.
+    if (yaw_bias_leak_enabled_ && stationary && dt > 0.0) {
+      const double alpha = dt / (yaw_bias_leak_tau_ + dt);
+      gyro_bias_z_est_ += (msg->angular_velocity.z - gyro_bias_z_est_) * alpha;
+    }
+    const double corrected_gz = msg->angular_velocity.z - gyro_bias_z_est_;
+    yaw_estimate_ = std::atan2(
+      std::sin(yaw_estimate_ + corrected_gz * dt), std::cos(yaw_estimate_ + corrected_gz * dt));
+    {
+      // Roll/pitch keep the upstream gravity reference (that part isn't
+      // bias-prone the way free-running yaw is); only yaw is replaced.
+      double roll, pitch, unused_yaw;
+      tf2::Matrix3x3(orientation).getRPY(roll, pitch, unused_yaw);
+      orientation.setRPY(roll, pitch, yaw_estimate_);
+      orientation.normalize();
+    }
+
     // Uncommanded gate: a silent /cmd_vel stream means nobody is driving (the
     // policy idles after 0.5 s of silence itself). Any velocity the integrator
     // still carries then is phantom — a tilted calibration pumps it straight
@@ -318,7 +396,7 @@ private:
     // acceleration) or simply uncommanded. Without this the leaky integrator
     // bleeds steady walking velocity to zero and standing drift accumulates
     // unbounded.
-    if (uncommanded || is_robot_stationary(msg)) {
+    if (uncommanded || stationary) {
       velocity = tf2::Vector3(0.0, 0.0, 0.0);
       // Freeze the dead-reckoned position while stationary. Zeroing only velocity
       // is not enough: the world-frame accel still carries a small residual bias
@@ -731,8 +809,17 @@ private:
   // Same cap as servo_converter.hpp's kMaxDt: one late/gapped command must
   // not authorise an unbounded slew step.
   static constexpr double kMaxDt_ = 0.10;
+  double command_rate_hz_{50.0};
+  rclcpp::Duration cmd_throttle_period_{0, 0};
   double bias_leak_tau_{3.0};
   tf2::Vector3 accel_bias_est_{0.0, 0.0, 0.0};
+  // Stationary-gated gyro-z bias estimate and this node's own integrated
+  // yaw (see yaw_bias_leak_tau's own comment). yaw_estimate_ is what actually
+  // becomes /odom's published yaw -- see on_imu().
+  bool yaw_bias_leak_enabled_{true};
+  double yaw_bias_leak_tau_{2.0};
+  double gyro_bias_z_est_{0.0};
+  double yaw_estimate_{0.0};
   // Latest post-leak world-frame specific force and validity flag; consumed by
   // the ZUPT accel gate so it judges motion on the bias-free signal. Written in
   // on_imu (via compute_imu_dead_reckon) before is_robot_stationary runs.
