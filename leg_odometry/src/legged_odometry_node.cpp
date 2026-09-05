@@ -61,8 +61,31 @@ public:
     stationary_accel_threshold_ = declare_parameter<double>("stationary_accel_threshold", 0.5);
     stationary_hold_s_ = declare_parameter<double>("stationary_hold_s", 0.4);
     servo_tau_ = declare_parameter<double>("servo_tau", 0.06);
+    // Ankle ("calf") joints get their own tau, separate from hip/knee: they're
+    // the only joints that touch the ground, so Isaac's actual response there
+    // is shaped by stance-phase contact (foot planted, load resisting motion)
+    // that this feedforward command-follower has no signal for. An offline
+    // resimulation sweep against a recorded yaw-sweep bag (jointsweep,
+    // 2026-09-05) measured how much of the time each joint sits within 5% of
+    // its own range-minimum ("floor dwell") vs Isaac ground truth: hip/knee
+    // were already close at the shared servo_tau_ (e.g. gap ~1pt), but ankle
+    // was not (front-left 43.6% modeled vs 1.3% actual; front-right 33.2% vs
+    // 4.1%; back-right 84.3% vs 17.7%). Applying the same tau bump to hip/knee
+    // made THEM worse (their dwell drops toward 0 vs their own true 1-10%),
+    // which is why this needed to split out rather than just raising
+    // servo_tau_ globally. 0.28 was the sweep optimum trading floor-dwell gap
+    // against the servo_tau_mismatch.png lag metric from the prior tuning
+    // pass -- see docs/ankle_tau_dwell_sweep.png. Back-left/back-right keep a
+    // residual gap (30pt / 47.4pt) no tau/rate combination closed -- that's
+    // the stance-phase effect a feedforward model structurally can't chase;
+    // accepted as a known limitation rather than over-fit to one recording.
+    servo_tau_ankle_ = declare_parameter<double>("servo_tau_ankle", 0.28);
     // Matches hardware_bridge's max_joint_rate_rad_s -- see servo_tau's own
-    // comment and legged_odometry.yaml for the full rationale.
+    // comment and legged_odometry.yaml for the full rationale. Shared across
+    // all joints including ankle: the same sweep that split out
+    // servo_tau_ankle_ found the slew rate had no meaningful effect on the
+    // ankle floor-dwell gap, so splitting it too would add a knob that does
+    // nothing.
     servo_max_rate_rad_s_ = declare_parameter<double>("servo_max_rate_rad_s", 3.0);
     // Matches hardware_bridge.yaml's command_rate_hz: the real chain
     // throttles the policy's raw ~200Hz stream down to this rate before its
@@ -125,8 +148,8 @@ public:
         get_logger(), "leg_kinematics mode is a stub — velocity estimates will be inaccurate");
     }
     RCLCPP_INFO(
-      get_logger(), "velocity source: %s, servo_tau=%.3f, ZUPT hold=%.2fs",
-      velocity_source_.c_str(), servo_tau_, stationary_hold_s_);
+      get_logger(), "velocity source: %s, servo_tau=%.3f (ankle=%.3f), ZUPT hold=%.2fs",
+      velocity_source_.c_str(), servo_tau_, servo_tau_ankle_, stationary_hold_s_);
 
     last_joint_positions_ = default_joint_pos_;
     filtered_positions_ = default_joint_pos_;
@@ -224,7 +247,12 @@ private:
     // effective tau -- see servo_tau's own comment for why). This breaks the
     // positive-feedback loop caused by feeding commanded positions as "measured"
     // joint state (see ISSUES.md #15).
-    const double alpha = first_call ? 1.0 : (1.0 - std::exp(-dt_capped / servo_tau_));
+    //
+    // Ankle joints (indices kAnkleStartIdx_..11, see servo_tau_ankle_'s own
+    // comment) use a separately-tuned tau, so two alphas are precomputed here
+    // and selected per-joint in the loop below.
+    const double alpha_default = first_call ? 1.0 : (1.0 - std::exp(-dt_capped / servo_tau_));
+    const double alpha_ankle = first_call ? 1.0 : (1.0 - std::exp(-dt_capped / servo_tau_ankle_));
 
     // Slew limit, mirroring servo_converter.hpp's convert(): the EWMA alone
     // is not what the real chain does to the target before it reaches the
@@ -239,6 +267,7 @@ private:
 
     for (size_t i = 0; i < 12; ++i) {
       double cmd_pos = msg->data[i];
+      const double alpha = (i >= kAnkleStartIdx_) ? alpha_ankle : alpha_default;
 
       // EWMA: blend commanded position toward filtered position
       double smoothed_pos = alpha * cmd_pos + (1.0 - alpha) * filtered_positions_[i];
@@ -805,10 +834,15 @@ private:
   rclcpp::Time still_since_{0, 0, RCL_ROS_TIME};
 
   double servo_tau_;
+  double servo_tau_ankle_;
   double servo_max_rate_rad_s_;
   // Same cap as servo_converter.hpp's kMaxDt: one late/gapped command must
   // not authorise an unbounded slew step.
   static constexpr double kMaxDt_ = 0.10;
+  // First ankle joint index in the 12-joint Isaac group order (hips 0-3,
+  // knees 4-7, ankles 8-11 -- see kDefaultJointNames). Selects servo_tau_ankle_
+  // vs servo_tau_ per-joint in on_cmd().
+  static constexpr size_t kAnkleStartIdx_ = 8;
   double command_rate_hz_{50.0};
   rclcpp::Duration cmd_throttle_period_{0, 0};
   double bias_leak_tau_{3.0};
