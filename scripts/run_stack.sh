@@ -5,6 +5,10 @@
 #   ./scripts/run_stack.sh with_lidar:=false        # servo/bench work
 #   ./scripts/run_stack.sh with_nav:=false start_enabled:=false
 #   ./scripts/run_stack.sh slam:=false map:=/path/to/map.yaml
+#   ./scripts/run_stack.sh slam_backend:=iris_lama  # A/B: iris_lama instead
+#                                                    # of slam_toolbox (only
+#                                                    # matters when slam:=true,
+#                                                    # the default)
 #
 # The DDS exports are the point of this script. Without CYCLONEDDS_URI the
 # profile is not loaded, discovery falls back to multicast, and multicast

@@ -27,6 +27,12 @@
 # leaves slam_toolbox unconfigured and not subscribed to /scan. Nothing is
 # mapped until this script runs. Flip the servo switch, walk back, run this.
 #
+# slam_backend:=iris_lama has no equivalent gate: iris_lama_ros2's slam2d_ros
+# is a plain node, not a lifecycle node, so it starts mapping the instant it
+# launches. This script detects that case (no /lifecycle_manager_slam-owned
+# node to activate) and just confirms it, rather than trying to fake an
+# activation step that does not exist for it.
+#
 # Usage: start_mapping.sh [timeout_s]
 set -uo pipefail
 
@@ -52,6 +58,14 @@ export CYCLONEDDS_URI="file://$(ros2 pkg prefix big_bertha_bringup)/share/big_be
 
 MGR=/lifecycle_manager_slam/manage_nodes
 TIMEOUT=${1:-30}
+
+# iris_lama has no lifecycle node to activate -- if it's up, it's already
+# mapping, and there is nothing for this script to do.
+if ros2 node list 2>/dev/null | grep -qx '/slam2d_ros'; then
+  echo "[start_mapping] slam_backend:=iris_lama detected (/slam2d_ros is up)."
+  echo "[start_mapping] it has no activation step; it has been mapping since launch."
+  exit 0
+fi
 
 state="$(ros2 lifecycle get /slam_toolbox 2>/dev/null || true)"
 if [ "$state" = "active [3]" ]; then
