@@ -63,6 +63,7 @@ def generate_launch_description():
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     slam = LaunchConfiguration('slam')
+    slam_backend = LaunchConfiguration('slam_backend')
     map_yaml = LaunchConfiguration('map')
     nav_speed = LaunchConfiguration('nav_speed')
     intra_process = LaunchConfiguration('intra_process')
@@ -72,6 +73,7 @@ def generate_launch_description():
 
     nav2_params = os.path.join(sim_pkg, 'config', 'nav2_params.yaml')
     slam_params = os.path.join(sim_pkg, 'config', 'slam_toolbox.yaml')
+    iris_lama_params = os.path.join(sim_pkg, 'config', 'iris_lama.yaml')
     amcl_params = os.path.join(sim_pkg, 'config', 'amcl.yaml')
 
     bt_to_pose = os.path.join(
@@ -123,10 +125,17 @@ def generate_launch_description():
         ]
     ]
 
-    # ── map -> odom, one of two ways ──────────────────────────────────
+    # ── map -> odom, one of two ways (three when mapping) ─────────────
     # SLAM: live mapping. x/y/yaw seed map_start_pose so the grid is built
     # around where the robot actually is, not the Gazebo spawn pose baked
-    # into slam_toolbox.yaml.
+    # into slam_toolbox.yaml. slam_backend picks which implementation runs;
+    # both conditions below require slam:=true AND the matching backend, so
+    # exactly one of the two is ever active (or neither, when slam:=false).
+    slam_toolbox_condition = IfCondition(PythonExpression(
+        ["'", slam, "' == 'true' and '", slam_backend, "' == 'slam_toolbox'"]))
+    iris_lama_condition = IfCondition(PythonExpression(
+        ["'", slam, "' == 'true' and '", slam_backend, "' == 'iris_lama'"]))
+
     slam_node = ComposableNode(
         package='slam_toolbox',
         plugin='slam_toolbox::AsynchronousSlamToolbox',
@@ -141,6 +150,29 @@ def generate_launch_description():
             },
         ],
         extra_arguments=ipc,
+    )
+
+    # iris_lama_ros2's slam2d_ros is a plain rclcpp::Node (not an
+    # rclcpp_components composable node, and not a lifecycle node like
+    # slam_toolbox) -- it cannot join big_bertha_slam_container above, and it
+    # starts mapping the instant this process launches with no
+    # start_mapping.sh-style activation step. That also means the
+    # mapping_autostart safety gate below (park unconfigured until the
+    # operator is clear of the lidar) has no equivalent here yet -- launching
+    # with slam_backend:=iris_lama starts mapping immediately.
+    iris_lama_node = Node(
+        package='iris_lama_ros2', executable='slam2d_ros', name='slam2d_ros',
+        output='screen',
+        parameters=[
+            iris_lama_params,
+            common,
+            {
+                'initial_pos_x': ParameterValue(x, value_type=float),
+                'initial_pos_y': ParameterValue(y, value_type=float),
+                'initial_pos_a': ParameterValue(yaw, value_type=float),
+            },
+        ],
+        condition=iris_lama_condition,
     )
 
     localization_nodes = [
@@ -201,6 +233,10 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'slam', default_value='true',
             description='true = live mapping, false = known map via AMCL'),
+        DeclareLaunchArgument(
+            'slam_backend', default_value='slam_toolbox',
+            description="'slam_toolbox' or 'iris_lama' -- which mapping "
+                        "implementation runs when slam:=true."),
         DeclareLaunchArgument('map', default_value=''),
         DeclareLaunchArgument('nav_speed', default_value='0.29'),
         DeclareLaunchArgument(
@@ -216,7 +252,7 @@ def generate_launch_description():
                         'clear before the first scan is frozen into the map'),
 
         container('big_bertha_slam_container', [slam_node],
-                  condition=IfCondition(slam)),
+                  condition=slam_toolbox_condition),
         # mapping_autostart:=false parks slam_toolbox unconfigured, so it holds
         # no /scan subscription and maps nothing until the operator runs
         # scripts/start_mapping.sh. Powering the servos means someone walks to
@@ -225,11 +261,15 @@ def generate_launch_description():
         # before it integrates another), so that person becomes an obstacle
         # overlapping the footprint and Nav2 refuses to plan. Only this manager
         # is gated; Nav2 itself still comes up and waits for a map.
+        # (slam_backend:=iris_lama has no equivalent gate -- see iris_lama_node
+        # above; mapping_autostart is silently ignored on that path for now.)
         lifecycle('lifecycle_manager_slam', ['slam_toolbox'],
-                  condition=IfCondition(slam),
+                  condition=slam_toolbox_condition,
                   autostart=ParameterValue(
                       LaunchConfiguration('mapping_autostart'),
                       value_type=bool)),
+
+        iris_lama_node,
 
         container('big_bertha_localization_container', localization_nodes,
                   condition=UnlessCondition(slam)),

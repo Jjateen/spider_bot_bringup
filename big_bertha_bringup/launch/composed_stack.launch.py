@@ -70,6 +70,7 @@ def generate_launch_description():
     imu_topic = LaunchConfiguration('imu_topic')
     start_enabled = LaunchConfiguration('start_enabled')
     slam = LaunchConfiguration('slam')
+    slam_backend = LaunchConfiguration('slam_backend')
     map_yaml = LaunchConfiguration('map')
     nav_speed = LaunchConfiguration('nav_speed')
     with_lidar = LaunchConfiguration('with_lidar')
@@ -102,6 +103,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'slam', default_value='true',
             description='true = live mapping, false = known map via AMCL'),
+        DeclareLaunchArgument(
+            'slam_backend', default_value='slam_toolbox',
+            description="'slam_toolbox' or 'iris_lama' -- which mapping "
+                        "implementation runs when slam:=true. No effect "
+                        "when slam:=false (AMCL known-map mode)."),
         DeclareLaunchArgument('map', default_value=''),
         DeclareLaunchArgument('nav_speed', default_value='0.29'),
         DeclareLaunchArgument(
@@ -142,6 +148,7 @@ def generate_launch_description():
             {
                 'use_sim_time': use_sim_time,
                 'slam': slam,
+                'slam_backend': slam_backend,
                 'map': map_yaml,
                 'nav_speed': nav_speed,
                 'mapping_autostart': LaunchConfiguration('mapping_autostart'),
