@@ -43,18 +43,30 @@ set -u
 export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI="file://$(ros2 pkg prefix big_bertha_bringup)/share/big_bertha_bringup/config/dds/cyclonedds.xml"
 
-echo "[reset_map] clearing the slam_toolbox map"
-if ros2 service list 2>/dev/null | grep -q '/slam_toolbox/reset'; then
-  ros2 service call /slam_toolbox/reset slam_toolbox/srv/Reset "{}" >/dev/null \
-    && echo "[reset_map]   slam_toolbox reset" \
-    || echo "[reset_map]   reset call failed"
+if ros2 node list 2>/dev/null | grep -qx '/slam2d_ros'; then
+  # iris_lama_ros2 exposes no reset/clear service (checked the source and the
+  # documented param list -- neither has one). The only real reset is
+  # restarting the process, which this script does not do on its own since
+  # it did not start it (ros2 launch owns it) -- kill it manually
+  # (`pkill -f slam2d_ros`) and it will start remapping from a blank map on
+  # relaunch. Still clear the costmaps below; that part is backend-independent.
+  echo "[reset_map] slam_backend:=iris_lama detected (/slam2d_ros is up)."
+  echo "[reset_map]   it has no reset service; restart the node to rebuild its map"
+  echo "[reset_map]   (e.g. pkill -f slam2d_ros, then relaunch the stack)."
 else
-  # older slam_toolbox has no reset: clearing the pose-graph changes is the
-  # closest equivalent that does not need a relaunch.
-  ros2 service call /slam_toolbox/clear_changes \
-    slam_toolbox/srv/Clear "{}" >/dev/null 2>&1 \
-    && echo "[reset_map]   cleared pose-graph changes" \
-    || echo "[reset_map]   no reset service; restart the slam node to rebuild"
+  echo "[reset_map] clearing the slam_toolbox map"
+  if ros2 service list 2>/dev/null | grep -q '/slam_toolbox/reset'; then
+    ros2 service call /slam_toolbox/reset slam_toolbox/srv/Reset "{}" >/dev/null \
+      && echo "[reset_map]   slam_toolbox reset" \
+      || echo "[reset_map]   reset call failed"
+  else
+    # older slam_toolbox has no reset: clearing the pose-graph changes is the
+    # closest equivalent that does not need a relaunch.
+    ros2 service call /slam_toolbox/clear_changes \
+      slam_toolbox/srv/Clear "{}" >/dev/null 2>&1 \
+      && echo "[reset_map]   cleared pose-graph changes" \
+      || echo "[reset_map]   no reset service; restart the slam node to rebuild"
+  fi
 fi
 
 # The costmaps keep their own copy, so the stale obstacle survives a map reset
