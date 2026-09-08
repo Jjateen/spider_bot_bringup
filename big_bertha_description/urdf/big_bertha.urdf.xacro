@@ -183,157 +183,157 @@
       </geometry>
     </collision>
     <visual>
-      <origin xyz="-0.03239606 0.07199993 0" rpy="3.140796 -0 -1.57"/>
+      <origin xyz="-0.07228187 0.03297877 -0.00495642" rpy="0 0.00079665 0.00079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="-0.03239606 0.07199993 0" rpy="3.140796 -0 -1.57"/>
+      <origin xyz="-0.07228187 0.03297877 -0.00495642" rpy="0 0.00079665 0.00079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.07210394 0.03299993 0" rpy="3.140796 -0 3.14"/>
-      <geometry>
-        <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-      <material name="silver"/>
-    </visual>
-    <collision>
-      <origin xyz="0.07210394 0.03299993 0" rpy="3.140796 -0 3.14"/>
-      <geometry>
-        <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
-      </geometry>
-    </collision>
-    <visual>
-      <origin xyz="-0.07189606 -0.03300007 0" rpy="3.140796 -0 0"/>
+      <origin xyz="0.03313434 0.07242838 -0.00495642" rpy="0 0.00079665 -1.57238898"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="-0.07189606 -0.03300007 0" rpy="3.140796 -0 0"/>
+      <origin xyz="0.03313434 0.07242838 -0.00495642" rpy="0 0.00079665 -1.57238898"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.03210394 -0.07200007 0" rpy="3.140796 -0 1.57"/>
+      <origin xyz="-0.03289610 -0.07240807 -0.00495642" rpy="0 0.00079665 1.57079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.03210394 -0.07200007 0" rpy="3.140796 -0 1.57"/>
+      <origin xyz="-0.03289610 -0.07240807 -0.00495642" rpy="0 0.00079665 1.57079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.09010394 -0.01300007 0.03" rpy="3.140796 -0 -1.57"/>
+      <origin xyz="0.07252212 -0.03302123 -0.00495642" rpy="0 0.00079665 3.14079633"/>
+      <geometry>
+        <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+      <material name="silver"/>
+    </visual>
+    <collision>
+      <origin xyz="0.07252212 -0.03302123 -0.00495642" rpy="0 0.00079665 3.14079633"/>
+      <geometry>
+        <mesh filename="${mesh_pkg}/arm_perforated_plate_bottom.stl" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
+    <visual>
+      <origin xyz="0.01313118 -0.09003815 0.02504051" rpy="-0 0.00079665 0.00079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.09010394 -0.01300007 0.03" rpy="3.140796 -0 -1.57"/>
+      <origin xyz="0.01313118 -0.09003815 0.02504051" rpy="-0 0.00079665 0.00079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="-0.01289606 -0.09000007 0.03" rpy="3.140796 -0 -3.14"/>
+      <origin xyz="-0.08996029 -0.01306255 0.02504051" rpy="-0 0.00079665 -1.56920367"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="-0.01289606 -0.09000007 0.03" rpy="3.140796 -0 -3.14"/>
+      <origin xyz="-0.08996029 -0.01306255 0.02504051" rpy="-0 0.00079665 -1.56920367"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.01310394 0.08999993 0.03" rpy="3.140796 -0 0"/>
+      <origin xyz="0.09010394 0.01299206 0.02504051" rpy="-0 0.00079665 1.57079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.01310394 0.08999993 0.03" rpy="3.140796 -0 0"/>
+      <origin xyz="0.09010394 0.01299206 0.02504051" rpy="-0 0.00079665 1.57079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="-0.08989606 0.01299993 0.03" rpy="3.140796 -0 1.57"/>
+      <origin xyz="-0.01286492 0.08996182 0.02504051" rpy="-0 0.00079665 3.14079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="-0.08989606 0.01299993 0.03" rpy="3.140796 -0 1.57"/>
+      <origin xyz="-0.01286492 0.08996182 0.02504051" rpy="-0 0.00079665 3.14079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/arm_perforated_plate_top.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="-0.07989606 0.05349993 0.002" rpy="0.0007963268 -0 0"/>
+      <origin xyz="-0.05357497 0.07986813 0.00250810" rpy="0 -0.00079633 1.57079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="-0.07989606 0.05349993 0.002" rpy="0.0007963268 -0 0"/>
+      <origin xyz="-0.05357497 0.07986813 0.00250810" rpy="0 -0.00079633 1.57079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="-0.05389606 -0.08000007 0.002" rpy="0.0007963268 -0 1.57"/>
+      <origin xyz="-0.07976937 -0.05374829 0.00250810" rpy="0 -0.00079633 3.14079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="-0.05389606 -0.08000007 0.002" rpy="0.0007963268 -0 1.57"/>
+      <origin xyz="-0.07976937 -0.05374829 0.00250810" rpy="0 -0.00079633 3.14079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.08010394 -0.05350007 0.002" rpy="0.0007963268 -0 -3.14"/>
+      <origin xyz="0.05382510 -0.07987963 0.00250810" rpy="0 -0.00079633 -1.56920367"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.08010394 -0.05350007 0.002" rpy="0.0007963268 -0 -3.14"/>
+      <origin xyz="0.05382510 -0.07987963 0.00250810" rpy="0 -0.00079633 -1.56920367"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
-      <origin xyz="0.05360394 0.07999993 0.002" rpy="0.0007963268 -0 -1.57"/>
+      <origin xyz="0.07997783 0.05369406 0.00250810" rpy="0 -0.00079633 0.00079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver"/>
     </visual>
     <collision>
-      <origin xyz="0.05360394 0.07999993 0.002" rpy="0.0007963268 -0 -1.57"/>
+      <origin xyz="0.07997783 0.05369406 0.00250810" rpy="0 -0.00079633 0.00079633"/>
       <geometry>
         <mesh filename="${mesh_pkg}/servo_mg995.stl" scale="0.001 0.001 0.001"/>
       </geometry>
@@ -1015,7 +1015,7 @@
        hardware cap every tick under the old (bringup-specific) geometry. -->
   <!-- Leg 4 (back-left): Revolute_110/111/112 -->
   <joint name="Revolute_110" type="revolute">
-    <origin xyz="0.06410394 0.07999993 0.04" rpy="1.570796 -0 -0.785"/>
+    <origin xyz="0.07993523 0.06369403 0.04" rpy="1.570796 -0 -0.785"/>
     <parent link="base_link"/>
     <child link="arm_a_4_1"/>
     <axis xyz="0 1.0 0"/>
@@ -1043,7 +1043,7 @@
 
   <!-- Leg 1 (front-left): Revolute_113/114/115 -->
   <joint name="Revolute_113" type="revolute">
-    <origin xyz="-0.07989606 0.06299993 0.04" rpy="1.570796 -0 0.785"/>
+    <origin xyz="-0.06357497 0.07983349 0.04" rpy="1.570796 -0 0.785"/>
     <parent link="base_link"/>
     <child link="arm_a_1_1"/>
     <axis xyz="0 1.0 0"/>
@@ -1071,7 +1071,7 @@
 
   <!-- Leg 2 (front-right): Revolute_116/117/118 -->
   <joint name="Revolute_116" type="revolute">
-    <origin xyz="-0.06219606 -0.08000007 0.04" rpy="1.570796 -0 2.355"/>
+    <origin xyz="-0.07974269 -0.06374831 0.04" rpy="1.570796 -0 2.355"/>
     <parent link="base_link"/>
     <child link="arm_a_2_1"/>
     <axis xyz="0 1.0 0"/>
@@ -1099,7 +1099,7 @@
 
   <!-- Leg 3 (back-right): Revolute_119/120/121 -->
   <joint name="Revolute_119" type="revolute">
-    <origin xyz="0.08010394 -0.06300007 0.04" rpy="1.570796 -0 -2.355"/>
+    <origin xyz="0.06382503 -0.07982906 0.04" rpy="1.570796 -0 -2.355"/>
     <parent link="base_link"/>
     <child link="arm_a_3_1"/>
     <axis xyz="0 1.0 0"/>
