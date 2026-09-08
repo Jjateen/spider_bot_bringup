@@ -33,7 +33,7 @@
   <exec_depend>slam_toolbox</exec_depend>
   <!-- Alternative SLAM backend, selected via slam_backend:=iris_lama. Package
        name is iris_lama_ros2 (the ROS package inside the iris_lama_ros repo,
-       eloquent-devel branch -- actively maintained despite the branch name). -->
+       eloquent-devel branch, actively maintained despite the branch name). -->
   <exec_depend>iris_lama_ros2</exec_depend>
   <exec_depend>nav2_amcl</exec_depend>
   <exec_depend>nav2_map_server</exec_depend>

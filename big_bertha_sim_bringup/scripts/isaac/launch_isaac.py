@@ -32,6 +32,21 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # stack over DDS is fine; only the in-process rclpy build differs.
 os.environ["ROS_DISTRO"] = "humble"
 
+# Strip any system ROS install off sys.path (e.g. leaked in via PYTHONPATH
+# when this is invoked -- directly or through `ros2 launch` -- from a shell
+# that has /opt/ros/*/setup.bash sourced). run_isaac_sim.sh already does
+# `unset PYTHONPATH` before exec'ing this script, but that only helps if
+# nothing upstream re-adds it and this is always run that way; sys.path is
+# fixed at interpreter startup from PYTHONPATH, so scrubbing os.environ here
+# would be too late to matter -- this has to filter sys.path itself.
+# create_command_subscriber() below does a bare `import rclpy` trusting
+# isaacsim.ros2.bridge's own startup already substituted its bundled,
+# Python-3.11-compatible rclpy into sys.modules; if a system dist-packages
+# path (built for Python 3.10) is still visible here, that import instead
+# partially resolves to the system one and dies with "No module named
+# 'rclpy._rclpy_pybind11'" once it reaches the compiled extension.
+sys.path = [p for p in sys.path if "/opt/ros/" not in p]
+
 
 def expand_urdf() -> str:
     """Run prepare_urdf.sh and return the path to the expanded URDF."""
