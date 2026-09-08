@@ -136,6 +136,12 @@ def generate_launch_description():
                 'heading_hold': 'false',
                 'position_hold': 'false',
                 'lateral_hold': 'false',
+                # hardware_bridge_node's ServoConverter already applies this
+                # exact EWMA+slew law to /position_controller/commands; leaving
+                # policy_controller's own copy on double-shapes every joint on
+                # real hardware (sim has no hardware_bridge_node in its graph,
+                # so it still needs shape_enable's launch-arg default of true).
+                'shape_enable': 'false',
             },
         ),
     ], scoped=True)
