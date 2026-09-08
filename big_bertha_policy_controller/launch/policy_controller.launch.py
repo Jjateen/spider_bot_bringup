@@ -48,6 +48,7 @@ def generate_launch_description():
     lateral_hold = LaunchConfiguration('lateral_hold')
     position_hold = LaunchConfiguration('position_hold')
     imu_topic = LaunchConfiguration('imu_topic')
+    shape_enable = LaunchConfiguration('shape_enable')
 
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
@@ -74,6 +75,16 @@ def generate_launch_description():
         # IMU topic the gait controller reads orientation from. On real hardware
         # this is the filtered output (/filtered/imu); sim supplies /imu.
         DeclareLaunchArgument('imu_topic', default_value='/imu'),
+        # EWMA(shape_tau_s)+slew(shape_max_rate_rad_s) shaping of target_pos_
+        # right before publish, matching hardware_bridge_node's ServoConverter
+        # law exactly (see policy_controller_node.cpp). Isaac/Gazebo need this
+        # on: their PD controllers otherwise see raw square-wave policy steps a
+        # real servo never would. On real hardware, hardware_bridge_node's
+        # ServoConverter already applies this same shaping to
+        # /position_controller/commands, so leaving it on here too shapes every
+        # joint target twice in series -- hardware launch files override this
+        # to 'false'.
+        DeclareLaunchArgument('shape_enable', default_value='true'),
 
         Node(
             package='big_bertha_policy_controller',
@@ -101,6 +112,8 @@ def generate_launch_description():
                     'position_hold': ParameterValue(
                         position_hold, value_type=bool),
                     'imu_topic': imu_topic,
+                    'shape_enable': ParameterValue(
+                        shape_enable, value_type=bool),
                 },
             ],
         ),
