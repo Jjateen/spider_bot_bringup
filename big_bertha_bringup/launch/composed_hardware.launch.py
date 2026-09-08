@@ -127,6 +127,11 @@ def generate_launch_description():
                     'heading_hold': False,
                     'position_hold': False,
                     'lateral_hold': False,
+                    # hardware_bridge (the ComposableNode above) already runs
+                    # this same EWMA+slew law via ServoConverter on
+                    # /position_controller/commands; doing it again here
+                    # double-shapes every joint target on real hardware.
+                    'shape_enable': False,
                 },
             ],
             extra_arguments=[{'use_intra_process_comms': True}],
