@@ -19,6 +19,9 @@ __pycache__/
 *.bag
 rosbag2_*/
 verification_artifacts/
+# isaac_bags/ instead of under verification_artifacts/: that directory is
+# root-owned on this host and not writable by the dev user.
+isaac_bags/
 
 # ONNX Runtime (downloaded at build time)
 .onnxruntime/

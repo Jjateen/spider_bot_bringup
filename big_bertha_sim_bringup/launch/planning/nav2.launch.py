@@ -32,11 +32,14 @@ Nav2 uses the trees shipped under config/behavior_trees/ in this package
 Launch arguments
 ----------------
 use_sim_time   Use /clock time (default: ``true``).
-params_file    Nav2 parameter file (default: config/nav2_params.yaml).
+params_file    Nav2 parameter file (default: config/nav2_params.yaml, or a
+               Humble-compatible patched copy -- see select_nav2_params.py).
 autostart      Lifecycle-autostart the Nav2 servers (default: ``true``).
 """
 
 import os
+import subprocess
+import sys
 
 from ament_index_python.packages import get_package_share_directory
 
@@ -49,15 +52,64 @@ from launch_ros.actions import Node
 from nav2_common.launch import RewrittenYaml
 
 
+def _select_params_file(pkg: str) -> str:
+    """Resolve nav2_params.yaml for whichever ROS distro is actually
+    running the Nav2 servers -- see select_nav2_params.py's own docstring
+    for why this is needed (Humble 1.1.20 vs this repo's Jazzy-style
+    config) and why it's not a blanket rewrite."""
+    source_file = os.path.join(pkg, 'config', 'nav2_params.yaml')
+    selector = os.path.join(pkg, 'scripts', 'select_nav2_params.py')
+    try:
+        result = subprocess.run(
+            [sys.executable, selector, source_file],
+            check=True, capture_output=True, text=True)
+        return result.stdout.strip()
+    except (subprocess.CalledProcessError, OSError):
+        # selector missing/failing shouldn't block launch -- fall back to
+        # the file as-shipped.
+        return source_file
+
+
+def _select_bt_xml(repo_tree: str) -> str:
+    """Resolve a behavior-tree XML for whichever ROS distro is actually
+    running bt_navigator.
+
+    This repo's own trees under config/behavior_trees/ target Jazzy: they
+    use BTCPP_format="4" and the WouldAPlannerRecoveryHelp /
+    WouldAControllerRecoveryHelp condition nodes (error-code-aware
+    conditional recovery). Neither exists on Humble -- confirmed no
+    libnav2_would_a_*_bt_node.so is installed at all under
+    /opt/ros/humble/lib, and bt_navigator throws "Node not recognized"
+    trying to parse them. This isn't a renamed-lookup-key situation like
+    select_nav2_params.py; the functionality plain doesn't exist on Humble,
+    so there's nothing to alias -- fall back to Nav2's own stock tree of
+    the same name (BT.CPP v3, unconditional RecoveryNode-based retry
+    instead) shipped with the installed nav2_bt_navigator package. Jazzy
+    keeps using this repo's own tree, unchanged.
+    """
+    distro = os.environ.get('ROS_DISTRO', '')
+    if distro != 'humble':
+        return repo_tree
+    try:
+        stock_dir = os.path.join(
+            get_package_share_directory('nav2_bt_navigator'), 'behavior_trees')
+        stock_tree = os.path.join(stock_dir, os.path.basename(repo_tree))
+        if os.path.isfile(stock_tree):
+            return stock_tree
+    except Exception:
+        pass
+    return repo_tree
+
+
 def generate_launch_description():
     """Build the Nav2 planning launch description."""
     pkg = get_package_share_directory('big_bertha_sim_bringup')
-    default_params = os.path.join(pkg, 'config', 'nav2_params.yaml')
+    default_params = _select_params_file(pkg)
     bt_dir = os.path.join(pkg, 'config', 'behavior_trees')
-    bt_to_pose = os.path.join(
-        bt_dir, 'navigate_to_pose_w_replanning_and_recovery.xml')
-    bt_through_poses = os.path.join(
-        bt_dir, 'navigate_through_poses_w_replanning_and_recovery.xml')
+    bt_to_pose = _select_bt_xml(os.path.join(
+        bt_dir, 'navigate_to_pose_w_replanning_and_recovery.xml'))
+    bt_through_poses = _select_bt_xml(os.path.join(
+        bt_dir, 'navigate_through_poses_w_replanning_and_recovery.xml'))
 
     use_sim_time = LaunchConfiguration('use_sim_time')
     params_file = LaunchConfiguration('params_file')

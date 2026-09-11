@@ -1,0 +1,52 @@
+# iris_lama (Online SLAM, slam2d_ros) configuration for Big Bertha (mapping
+# module) -- alternative backend to slam_toolbox.yaml, selected via
+# slam_backend:=iris_lama. Not a lifecycle node (plain rclcpp::Node): it
+# starts mapping the instant this process launches, no start_mapping.sh-style
+# activation step exists or is needed for it.
+#
+# Frames/topics/thresholds mirror slam_toolbox.yaml's current tuning for a
+# fair A/B comparison, not iris_lama_ros2's own upstream sample defaults
+# (which use use_sim_time:true, scan_topic:/scan, d_thresh/a_thresh:0.5, and
+# map_publish_period:30.0 -- all wrong for this robot).
+slam2d_ros:
+  ros__parameters:
+    use_sim_time: false
+
+    # Frames / topics -- same as slam_toolbox.yaml
+    global_frame_id: map
+    odom_frame_id: odom
+    base_frame_id: base_link
+    # Filtered, not raw: see slam_toolbox.yaml's comment -- the body-fixed
+    # lidar tilts with the gait and its floor strikes would otherwise be
+    # baked into the saved map.
+    scan_topic: /scan_filtered
+
+    # Motion thresholds -- matched to slam_toolbox's minimum_travel_distance/
+    # minimum_travel_heading (0.1 m / 0.1 rad), not iris_lama_ros2's own
+    # sample defaults (0.5/0.5).
+    d_thresh: 0.1
+    a_thresh: 0.1
+
+    # Matched to slam_toolbox's max_laser_range (5.0 m -- see that file's
+    # comment on why not the lidar's full 8 m range).
+    mrange: 5.0
+    # Matched to slam_toolbox's resolution.
+    resolution: 0.05
+    # Matched to slam_toolbox's map_update_interval, as a same-rate starting
+    # point for the first A/B run. Raise once a real on-robot CPU measurement
+    # confirms headroom -- see project_slam_iris_lama_upgrade memory / the
+    # PR for the 15%-vs-450% CPU comparison this is meant to test.
+    map_publish_period: 1.0
+
+    # initial_pos_x/y/a are overridden at launch time from x/y/yaw (same
+    # mechanism as slam_toolbox's map_start_pose) -- these are just the
+    # fallback if launched standalone without that override.
+    initial_pos_x: 0.0
+    initial_pos_y: 0.0
+    initial_pos_a: 0.0
+
+    strategy: gn
+    max_iterations: 100
+    l2_max: 0.5
+    use_compression: false
+    transform_tolerance: 0.2

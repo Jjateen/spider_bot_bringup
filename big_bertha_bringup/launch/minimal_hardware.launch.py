@@ -86,5 +86,9 @@ def generate_launch_description():
             'use_sim_time': use_sim_time,
             'imu_topic': imu_topic,
             'start_enabled': start_enabled,
+            # See big_bertha.launch.py: hardware_bridge_node's ServoConverter
+            # already shapes /position_controller/commands, so policy_controller
+            # doesn't need to shape it again here.
+            'shape_enable': 'false',
         }),
     ])

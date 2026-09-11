@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <vector>
 
 #include "big_bertha_sim_bringup/ground_ray.hpp"
 
@@ -63,6 +64,49 @@ TEST(GroundRay, NearWallSurvivesWalkingTilt)
   // above the floor margin -> never culled.
   const double rzx = rzx_pitch(0.058);
   EXPECT_FALSE(bbs::is_ground_ray(M_PI, kYawPi, rzx, 0.0, 1.0, kH, kMargin));
+}
+
+TEST(InterpolateRz, EmptyHistoryReturnsZero)
+{
+  // No IMU data buffered yet -- level, not garbage/uninitialized.
+  double rzx = 99.0, rzy = 99.0;
+  bbs::interpolate_rz({}, 1.0, rzx, rzy);
+  EXPECT_DOUBLE_EQ(rzx, 0.0);
+  EXPECT_DOUBLE_EQ(rzy, 0.0);
+}
+
+TEST(InterpolateRz, ClampsBeforeFirstAndAfterLastSample)
+{
+  const std::vector<bbs::RzSample> hist{{1.0, 0.1, 0.2}, {2.0, 0.3, 0.4}};
+  double rzx, rzy;
+  bbs::interpolate_rz(hist, 0.0, rzx, rzy);  // before the first sample
+  EXPECT_DOUBLE_EQ(rzx, 0.1);
+  EXPECT_DOUBLE_EQ(rzy, 0.2);
+  bbs::interpolate_rz(hist, 5.0, rzx, rzy);  // after the last sample
+  EXPECT_DOUBLE_EQ(rzx, 0.3);
+  EXPECT_DOUBLE_EQ(rzy, 0.4);
+}
+
+TEST(InterpolateRz, LinearlyInterpolatesBetweenTwoSamples)
+{
+  const std::vector<bbs::RzSample> hist{{0.0, 0.0, 0.0}, {1.0, 1.0, -2.0}};
+  double rzx, rzy;
+  bbs::interpolate_rz(hist, 0.25, rzx, rzy);
+  EXPECT_DOUBLE_EQ(rzx, 0.25);
+  EXPECT_DOUBLE_EQ(rzy, -0.5);
+}
+
+TEST(InterpolateRz, PicksTheRightSegmentAcrossMultipleSamples)
+{
+  // A per-ray query mid-sweep must land in ITS bracketing pair, not the
+  // first or last -- this is the exact mechanism replacing the old
+  // single-sample-per-scan correction.
+  const std::vector<bbs::RzSample> hist{
+    {0.0, 0.0, 0.0}, {1.0, 1.0, 0.0}, {2.0, 1.0, 1.0}, {3.0, 0.0, 1.0}};
+  double rzx, rzy;
+  bbs::interpolate_rz(hist, 1.5, rzx, rzy);
+  EXPECT_DOUBLE_EQ(rzx, 1.0);
+  EXPECT_DOUBLE_EQ(rzy, 0.5);
 }
 
 int main(int argc, char ** argv)
