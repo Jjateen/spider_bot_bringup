@@ -12,7 +12,7 @@
   ros__parameters:
     # Absolute path is supplied by the launch file (package share /models).
     model_path: ""
-    action_scale: 0.25
+    action_scale: 0.3205
     # Swing amplitude per physical group. The coxa keeps action_scale.
     #
     # Why per group: the exported policy SATURATES action_clip on all twelve
@@ -40,8 +40,8 @@
     # Raising the coxa instead was measured and rejected: 0.25 -> 0.33 moved
     # foot sweep 98 -> 100 mm and clearance not at all, for a third of its
     # margin. Yaw comes from steer_max, not from coxa swing.
-    thigh_action_scale: 0.45
-    shin_action_scale: 0.32
+    thigh_action_scale: 0.3224
+    shin_action_scale: 0.2651
     control_rate: 50.0       # Hz
     start_enabled: true
     cmd_vel_timeout: 0.5     # s; stale /cmd_vel -> command zeroed (safe stop)

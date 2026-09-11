@@ -78,7 +78,7 @@
     # Raised to match hardware_bridge's effective tau, so /joint_states
     # reflects (approximately) what the servo is actually doing rather than
     # an independently-guessed number.
-    servo_tau: 0.0896
+    servo_tau: 0.1546
     # Ankle ("calf") joints -- indices 8-11, the only joints that touch the
     # ground -- get their own tau instead of sharing servo_tau above. An
     # offline resimulation sweep against a recorded yaw-sweep bag measured
@@ -102,7 +102,7 @@
     # cannot chase without a contact/stance signal it doesn't have. Accepted
     # as a known limitation rather than over-fit to one recording -- flag for
     # a stance-aware follow-up only if hardware behavior shows it matters.
-    servo_tau_ankle: 0.28
+    servo_tau_ankle: 0.1695
     # Slew cap matching hardware_bridge's max_joint_rate_rad_s (see that
     # file's comment for the derivation). EWMA alone still converges faster
     # than the real chain during large steps, because the real chain also
@@ -117,7 +117,7 @@
     # above also varied this rate and found it had no meaningful effect on the
     # ankle floor-dwell gap, so a separate ankle rate would just be a knob
     # that does nothing.
-    servo_max_rate_rad_s: 3.0
+    servo_max_rate_rad_s: 3.8156
     # Matches hardware_bridge.yaml's command_rate_hz. The real chain
     # throttles the policy's raw ~200Hz stream down to this rate BEFORE its
     # EWMA+slew ever run (the PCA9685 only refreshes this fast); this node's
