@@ -1,0 +1,571 @@
+<?xml version="1.0"?>
+<!-- Design ledger: Big Bertha v2, for Isaac Lab and ROS. Units are metres,
+     kilograms, seconds, and radians. Full-resolution collision meshes use
+     the visual transforms; lower-leg collision proxies are expressed in
+     link-frame metres. base_link is the root. Existing frames, joints, and
+     inertials are unchanged. Visual materials are pure white. -->
+<!-- ROS packaging: mesh URIs resolve through big_bertha_v2_description.
+     Geometry, scales, joints, limits, and inertials match the training URDF.
+     Consumers: robot_state_publisher and RViz; base_link remains the root. -->
+<robot name="Big_Bertha_organized_assembly">
+
+  <!-- Materials -->
+  <material name="ABS_solid_baseline_25pct_print_NOT_calibrated">
+    <color rgba="1 1 1 1"/>
+  </material>
+  <material name="MG995_envelope_55g_mass_proxy">
+    <color rgba="1 1 1 1"/>
+  </material>
+  <material name="Steel">
+    <color rgba="1 1 1 1"/>
+  </material>
+
+  <link name="base_link">
+    <inertial>
+      <origin xyz="-0.000399815 0.000235078 0.041254653" rpy="0 0 0"/>
+      <mass value="0.445417951"/>
+      <inertia ixx="2.025931563e-03" ixy="-5.768541748e-06" ixz="8.760573303e-06"
+               iyy="1.491427683e-03" iyz="-9.403896543e-07" izz="2.902914278e-03"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 0.000000 3.141593"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Payload_assembly/base_link.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="Steel"/>
+    </visual>
+    <collision>
+      <origin xyz="0.000000 0.000000 0.000000" rpy="0.000000 0.000000 3.141593"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Payload_assembly/base_link.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="Right_Rear_hip_rigid_assembly">
+    <inertial>
+      <origin xyz="0.014689012 -0.045583481 0.029102130" rpy="0 0 0"/>
+      <mass value="0.064687091"/>
+      <inertia ixx="1.923152136e-05" ixy="3.775396110e-07" ixz="-1.022636775e-07"
+               iyy="2.021779280e-05" iyz="4.128071963e-07" izz="1.387799077e-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.002940 -0.060503 0.026733" rpy="-1.569735 -1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_1/Right_Rear_hip_rigid_assembly.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="MG995_envelope_55g_mass_proxy"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.002940 -0.060503 0.026733" rpy="-1.569735 -1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_1/Right_Rear_hip_rigid_assembly.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="left_rear_hip_rigid_assembly">
+    <inertial>
+      <origin xyz="0.020787580 -0.043152996 -0.029097104" rpy="0 0 0"/>
+      <mass value="0.064675539"/>
+      <inertia ixx="1.911935049e-05" ixy="2.050906447e-07" ixz="2.219804472e-07"
+               iyy="2.028500635e-05" iyz="-3.900055044e-07" izz="1.385661926e-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.003397 -0.040469 -0.026733" rpy="1.580517 1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_1/left_rear_hip_rigid_assembly.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="MG995_envelope_55g_mass_proxy"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.003397 -0.040469 -0.026733" rpy="1.580517 1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_1/left_rear_hip_rigid_assembly.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="right_front_hip_rigid_assembly">
+    <inertial>
+      <origin xyz="-0.038310871 -0.028750840 0.029098329" rpy="0 0 0"/>
+      <mass value="0.064677172"/>
+      <inertia ixx="2.032838067e-05" ixy="2.044533118e-08" ixz="3.680700527e-07"
+               iyy="1.907745191e-05" iyz="2.393591847e-07" izz="1.384780390e-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.003264 -0.060487 0.026733" rpy="-1.575091 -1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_2/right_front_hip_rigid_assembly.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="MG995_envelope_55g_mass_proxy"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.003264 -0.060487 0.026733" rpy="-1.575091 -1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_2/right_front_hip_rigid_assembly.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="left_front_hip_rigid_assembly">
+    <inertial>
+      <origin xyz="-0.026821821 -0.039685242 -0.029096646" rpy="0 0 0"/>
+      <mass value="0.064676354"/>
+      <inertia ixx="2.016835816e-05" ixy="4.058323394e-07" ixz="-2.253242012e-07"
+               iyy="1.923701339e-05" iyz="-3.879284212e-07" izz="1.385678533e-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.002885 -0.040509 -0.026733" rpy="1.567857 1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_2/left_front_hip_rigid_assembly.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="MG995_envelope_55g_mass_proxy"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.002885 -0.040509 -0.026733" rpy="1.567857 1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_2/left_front_hip_rigid_assembly.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="Right_Rear_upper_rigid_assembly">
+    <inertial>
+      <origin xyz="0.039702806 0.004866234 0.026347990" rpy="0 0 0"/>
+      <mass value="0.011264224"/>
+      <inertia ixx="6.665938976e-06" ixy="-5.328564217e-07" ixz="9.782274659e-11"
+               iyy="1.101975463e-05" iyz="-8.145716201e-10" izz="5.312884473e-06"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.039984 0.001120 0.026150" rpy="-1.542802 -1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_1/Right_Rear_upper_rigid_assembly.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="ABS_solid_baseline_25pct_print_NOT_calibrated"/>
+    </visual>
+    <collision>
+      <origin xyz="0.039984 0.001120 0.026150" rpy="-1.542802 -1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_1/Right_Rear_upper_rigid_assembly.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="left_rear_upper_rigid_assembly">
+    <inertial>
+      <origin xyz="0.037513788 0.013883038 0.026347990" rpy="0 0 0"/>
+      <mass value="0.011264224"/>
+      <inertia ixx="7.147220887e-06" ixy="-1.465508925e-06" ixz="4.051887929e-10"
+               iyy="1.053847272e-05" iyz="-1.089591122e-09" izz="5.312884473e-06"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.039999 -0.000292 0.026150" rpy="1.578096 -1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_1/left_rear_upper_rigid_assembly.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="ABS_solid_baseline_25pct_print_NOT_calibrated"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.039999 -0.000292 0.026150" rpy="1.578096 -1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_1/left_rear_upper_rigid_assembly.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="right_front_upper_rigid_assembly">
+    <inertial>
+      <origin xyz="-0.039869970 -0.003217549 0.026347990" rpy="0 0 0"/>
+      <mass value="0.011264224"/>
+      <inertia ixx="6.629313069e-06" ixy="-3.509017876e-07" ixz="-6.487400246e-11"
+               iyy="1.105638053e-05" iyz="8.182305789e-10" izz="5.312884474e-06"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.039999 0.000276 0.026150" rpy="1.563884 -1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_2/right_front_upper_rigid_assembly.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="ABS_solid_baseline_25pct_print_NOT_calibrated"/>
+    </visual>
+    <collision>
+      <origin xyz="-0.039999 0.000276 0.026150" rpy="1.563884 -1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_2/right_front_upper_rigid_assembly.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="left_front_upper_rigid_assembly">
+    <inertial>
+      <origin xyz="-0.037240165 -0.014600566 0.026347990" rpy="0 0 0"/>
+      <mass value="0.011264224"/>
+      <inertia ixx="7.204727539e-06" ixy="-1.529519184e-06" ixz="-4.272579665e-10"
+               iyy="1.048096607e-05" iyz="1.082579016e-09" izz="5.312884474e-06"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.039999 0.000292 0.026150" rpy="-1.563497 -1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_2/left_front_upper_rigid_assembly.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="ABS_solid_baseline_25pct_print_NOT_calibrated"/>
+    </visual>
+    <collision>
+      <origin xyz="0.039999 0.000292 0.026150" rpy="-1.563497 -1.570796 0.000000"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_2/left_front_upper_rigid_assembly.stl" scale="0.01 0.01 0.01"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="Right_Rear_lower_rigid_assembly">
+    <inertial>
+      <origin xyz="0.000890652 0.015739241 0.023239710" rpy="0 0 0"/>
+      <mass value="0.067204437"/>
+      <inertia ixx="4.867017553e-05" ixy="-1.503998602e-06" ixz="7.131588015e-07"
+               iyy="1.089577418e-05" iyz="1.586626633e-06" izz="4.421815550e-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.009701 0.012701 0.019496" rpy="1.570796 0.000000 -1.547065"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_1/Right_Rear_lower_rigid_assembly.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="MG995_envelope_55g_mass_proxy"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_1/Right_Rear_lower_rigid_assembly_arm_collision.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_1/Right_Rear_lower_rigid_assembly_servo_collision.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_1/Right_Rear_lower_rigid_assembly_foot_collision.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="left_rear_lower_rigid_assembly">
+    <inertial>
+      <origin xyz="0.004992832 0.014936389 -0.023187755" rpy="0 0 0"/>
+      <mass value="0.067181784"/>
+      <inertia ixx="4.528390371e-05" ixy="-1.087305226e-05" ixz="-1.114878245e-06"
+               iyy="1.427516247e-05" iyz="-1.390858643e-06" izz="4.419377923e-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="0.009599 -0.012779 -0.019496" rpy="-1.570796 0.000000 1.539044"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_1/left_rear_lower_rigid_assembly.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="MG995_envelope_55g_mass_proxy"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_1/left_rear_lower_rigid_assembly_arm_collision.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_1/left_rear_lower_rigid_assembly_servo_collision.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_1/left_rear_lower_rigid_assembly_foot_collision.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="right_front_lower_rigid_assembly">
+    <inertial>
+      <origin xyz="-0.005109314 -0.014918840 0.023236748" rpy="0 0 0"/>
+      <mass value="0.067218822"/>
+      <inertia ixx="4.514772435e-05" ixy="-1.110668508e-05" ixz="-1.117899637e-06"
+               iyy="1.443542016e-05" iyz="-1.337916596e-06" izz="4.423145191e-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.010139 -0.012355 0.019496" rpy="1.570796 0.000000 1.559621"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_2/right_front_lower_rigid_assembly.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="MG995_envelope_55g_mass_proxy"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_2/right_front_lower_rigid_assembly_arm_collision.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_2/right_front_lower_rigid_assembly_servo_collision.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Right_leg_2/right_front_lower_rigid_assembly_foot_collision.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="left_front_lower_rigid_assembly">
+    <inertial>
+      <origin xyz="-0.006148848 -0.014499311 -0.023187977" rpy="0 0 0"/>
+      <mass value="0.067181531"/>
+      <inertia ixx="4.339205835e-05" ixy="-1.316460358e-05" ixz="1.220591381e-06"
+               iyy="1.616682447e-05" iyz="1.299282533e-06" izz="4.419361145e-05"/>
+    </inertial>
+    <visual>
+      <origin xyz="-0.009821 0.012609 -0.019496" rpy="-1.570796 0.000000 -1.585095"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_2/left_front_lower_rigid_assembly.obj" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="MG995_envelope_55g_mass_proxy"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_2/left_front_lower_rigid_assembly_arm_collision.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_2/left_front_lower_rigid_assembly_servo_collision.stl"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://big_bertha_v2_description/meshes/Left_leg_2/left_front_lower_rigid_assembly_foot_collision.stl"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <joint name="right_rear_hip_yaw" type="revolute">
+    <parent link="base_link"/>
+    <child link="Right_Rear_hip_rigid_assembly"/>
+    <origin xyz="0.064900 -0.080200 0.008100" rpy="0.000000 0.000000 0.000000"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit lower="-4.363323" upper="1.134464" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="left_rear_hip_yaw" type="revolute">
+    <parent link="base_link"/>
+    <child link="left_rear_hip_rigid_assembly"/>
+    <origin xyz="0.064900 0.080200 0.008100" rpy="3.141593 0.000000 0.000000"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit lower="-1.047198" upper="1.134464" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="right_front_hip_yaw" type="revolute">
+    <parent link="base_link"/>
+    <child link="right_front_hip_rigid_assembly"/>
+    <origin xyz="-0.064900 -0.080200 0.008100" rpy="0.000000 0.000000 0.000000"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit lower="-1.047198" upper="2.094395" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="left_front_hip_yaw" type="revolute">
+    <parent link="base_link"/>
+    <child link="left_front_hip_rigid_assembly"/>
+    <origin xyz="-0.064900 0.080200 0.008100" rpy="3.141593 0.000000 0.000000"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit lower="-1.047198" upper="1.396263" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="right_rear_hip_pitch" type="revolute">
+    <parent link="Right_Rear_hip_rigid_assembly"/>
+    <child link="Right_Rear_upper_rigid_assembly"/>
+    <origin xyz="-0.026846 -0.050529 0.039200" rpy="-1.570796 0.000000 -1.569735"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit lower="-1.221730" upper="1.570796" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="left_rear_hip_pitch" type="revolute">
+    <parent link="left_rear_hip_rigid_assembly"/>
+    <child link="left_rear_upper_rigid_assembly"/>
+    <origin xyz="-0.027390 -0.050236 -0.039200" rpy="1.570796 0.000000 1.561076"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit lower="-1.308997" upper="1.658063" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="right_front_hip_pitch" type="revolute">
+    <parent link="right_front_hip_rigid_assembly"/>
+    <child link="right_front_upper_rigid_assembly"/>
+    <origin xyz="-0.027117 -0.050384 0.039200" rpy="1.570796 0.000000 1.566502"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit lower="-1.134464" upper="1.221730" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="left_front_hip_pitch" type="revolute">
+    <parent link="left_front_hip_rigid_assembly"/>
+    <child link="left_front_upper_rigid_assembly"/>
+    <origin xyz="-0.026751 -0.050579 -0.039200" rpy="-1.570796 0.000000 -1.567857"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit lower="-1.221730" upper="1.221730" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="right_rear_knee_pitch" type="revolute">
+    <parent link="Right_Rear_upper_rigid_assembly"/>
+    <child link="Right_Rear_lower_rigid_assembly"/>
+    <origin xyz="0.079969 0.002239 0.004400" rpy="0.000000 0.000000 0.000000"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit lower="-1.919862" upper="0.610865" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="left_rear_knee_pitch" type="revolute">
+    <parent link="left_rear_upper_rigid_assembly"/>
+    <child link="left_rear_lower_rigid_assembly"/>
+    <origin xyz="-0.079998 -0.000584 0.004400" rpy="3.141593 0.000000 -0.000000"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit lower="-1.745329" upper="0.785398" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="right_front_knee_pitch" type="revolute">
+    <parent link="right_front_upper_rigid_assembly"/>
+    <child link="right_front_lower_rigid_assembly"/>
+    <origin xyz="-0.079998 0.000553 0.004400" rpy="0.000000 0.000000 0.000000"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit lower="-1.919862" upper="0.523599" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <joint name="left_front_knee_pitch" type="revolute">
+    <parent link="left_front_upper_rigid_assembly"/>
+    <child link="left_front_lower_rigid_assembly"/>
+    <origin xyz="0.079998 0.000584 0.004400" rpy="3.141593 0.000000 -0.000000"/>
+    <axis xyz="0.000000 0.000000 1.000000"/>
+    <limit lower="-1.745329" upper="0.698132" effort="100.0" velocity="1.00"/>
+  </joint>
+
+  <!-- ROS 2 control: generated generic system -->
+  <ros2_control name="Big_Bertha_organized_assembly_system" type="system">
+    <hardware>
+      <plugin>mock_components/GenericSystem</plugin>
+      <param name="cmd_topic">sim/Big_Bertha_organized_assembly_system/cmd</param>
+      <param name="state_topic">sim/Big_Bertha_organized_assembly_system/state</param>
+    </hardware>
+
+    <joint name="left_front_hip_pitch">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="left_front_hip_yaw">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="left_front_knee_pitch">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="left_rear_hip_pitch">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="left_rear_hip_yaw">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="left_rear_knee_pitch">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="right_front_hip_pitch">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="right_front_hip_yaw">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="right_front_knee_pitch">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="right_rear_hip_pitch">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="right_rear_hip_yaw">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="right_rear_knee_pitch">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </ros2_control>
+
+</robot>
