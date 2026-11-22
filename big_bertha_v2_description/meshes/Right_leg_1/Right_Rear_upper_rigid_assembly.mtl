@@ -1,0 +1,16 @@
+# Merged MTL for Right_Rear_upper_rigid_assembly
+
+newmtl Arm_B_split_H_bracket__Bertha_arm
+Kd 0.854902 0.349020 0.349020
+
+newmtl 686_ZZ_Deep_Groove_Ball_Bearing_ID_6mm_OD_13mm_T_5mm_9__Bertha_hardware
+Kd 0.960784 0.960784 0.964706
+
+newmtl 686_ZZ_Deep_Groove_Ball_Bearing_ID_6mm_OD_13mm_T_5mm_3__Bertha_hardware
+Kd 0.960784 0.960784 0.964706
+
+newmtl H_crossbar_hardware_vertical_heads_up__Steel_-_Satin
+Kd 0.627451 0.627451 0.627451
+
+newmtl Servo_attachment_bracket__Bertha_hardware
+Kd 0.960784 0.960784 0.964706

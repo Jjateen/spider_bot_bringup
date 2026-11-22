@@ -1,0 +1,16 @@
+# Merged MTL for left_front_hip_rigid_assembly
+
+newmtl Arm_A_Left_1__Bertha_arm
+Kd 0.854902 0.349020 0.349020
+
+newmtl M4_Hex_Nut_SS304_Dia_4mm_2__Steel_-_Satin
+Kd 0.627451 0.627451 0.627451
+
+newmtl Servo_MG995_4__Bertha_servo
+Kd 0.349020 0.349020 0.349020
+
+newmtl Servo_attachment_bracket_3__Bertha_hardware
+Kd 0.960784 0.960784 0.964706
+
+newmtl M4_X_20mm_Hex_Allen_Socket_Head_SS_304_Screw_Dia_4mm_Length_20mm_1__Bertha_hardware
+Kd 0.960784 0.960784 0.964706
